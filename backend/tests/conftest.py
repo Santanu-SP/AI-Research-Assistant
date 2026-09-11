@@ -1,4 +1,5 @@
 from collections.abc import Generator
+from pathlib import Path
 
 import pytest
 from fastapi import FastAPI
@@ -14,11 +15,18 @@ import app.models  # noqa: F401 - registers models with Base metadata
 
 
 @pytest.fixture
-def test_settings(tmp_path) -> Settings:
+def upload_dir(tmp_path: Path) -> Path:
+    return tmp_path / "uploads"
+
+
+@pytest.fixture
+def test_settings(tmp_path: Path, upload_dir: Path) -> Settings:
     return Settings(
         app_environment="test",
         database_url=f"sqlite:///{tmp_path / 'test.db'}",
         cors_origins=["http://localhost:3000"],
+        document_upload_dir=upload_dir,
+        document_max_upload_bytes=64,
     )
 
 

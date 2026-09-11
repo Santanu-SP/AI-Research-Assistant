@@ -9,5 +9,6 @@ htmlcov/
 *.db
 *.sqlite
 *.sqlite3
+/backend/data/uploads/
 .idea/
 .vscode/
