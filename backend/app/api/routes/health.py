@@ -1,19 +1,13 @@
-from fastapi import APIRouter
-from pydantic import BaseModel
+from fastapi import APIRouter, Request
 
-from app.core.config import settings
+from app.schemas.system import HealthResponse
 
 router = APIRouter(tags=["system"])
 
 
-class HealthResponse(BaseModel):
-    status: str
-    service: str
-    environment: str
-
-
 @router.get("/health", response_model=HealthResponse)
-def health_check() -> HealthResponse:
+def health_check(request: Request) -> HealthResponse:
+    settings = request.app.state.settings
     return HealthResponse(
         status="ok",
         service="ai-research-assistant-api",

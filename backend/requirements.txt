@@ -1,3 +1,5 @@
-fastapi
-pydantic-settings
-uvicorn[standard]
+alembic>=1.14,<2
+fastapi>=0.115,<1
+pydantic-settings>=2.6,<3
+sqlalchemy>=2.0,<3
+uvicorn[standard]>=0.34,<1
