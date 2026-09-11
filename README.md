@@ -36,10 +36,11 @@ This repository currently contains:
 - configurable CORS for the local frontend
 - SQLAlchemy 2.x database and session infrastructure
 - Alembic migration infrastructure
+- persistent research CRUD with filtering, pagination, and soft archiving
 - the main project, paper, and answer states from the PRD
 - a small test suite for the initial API contract
 
-Research management, document management, search, document processing, retrieval, model providers, and authentication are not implemented yet.
+Document management, search, document processing, retrieval, model providers, and authentication are not implemented yet.
 
 ## Local setup
 
@@ -97,6 +98,14 @@ Example response:
   "environment": "development"
 }
 ```
+
+### Research management
+
+- `POST /api/v1/research` creates a draft research record without starting an AI workflow.
+- `GET /api/v1/research` lists research with search, domain, status, pagination, and optional archived-record filters.
+- `GET /api/v1/research/{research_id}` retrieves an active research record.
+- `PATCH /api/v1/research/{research_id}` updates supported metadata or its summary status.
+- `DELETE /api/v1/research/{research_id}` soft-archives the record.
 
 ## Product principles
 
