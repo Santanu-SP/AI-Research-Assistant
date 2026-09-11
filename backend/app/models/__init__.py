@@ -1,4 +1,5 @@
-"""SQLAlchemy models.
+"""SQLAlchemy model registry used by the app and Alembic."""
 
-Domain models are intentionally added by their owning backend feature.
-"""
+from app.models.research import Research
+
+__all__ = ["Research"]

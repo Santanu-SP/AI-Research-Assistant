@@ -7,8 +7,10 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import Settings
+from app.db.base import Base
 from app.db.session import create_db_engine, create_session_factory
 from app.main import create_app
+import app.models  # noqa: F401 - registers models with Base metadata
 
 
 @pytest.fixture
@@ -43,8 +45,13 @@ def db_session(
 
 
 @pytest.fixture
-def test_app(test_settings: Settings) -> FastAPI:
-    return create_app(test_settings)
+def test_app(test_settings: Settings) -> Generator[FastAPI, None, None]:
+    application = create_app(test_settings)
+    Base.metadata.create_all(application.state.db_engine)
+    try:
+        yield application
+    finally:
+        Base.metadata.drop_all(application.state.db_engine)
 
 
 @pytest.fixture
