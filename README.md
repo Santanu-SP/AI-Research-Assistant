@@ -37,10 +37,11 @@ This repository currently contains:
 - SQLAlchemy 2.x database and session infrastructure
 - Alembic migration infrastructure
 - persistent research CRUD with filtering, pagination, and soft archiving
+- safe local document upload and metadata management
 - the main project, paper, and answer states from the PRD
 - a small test suite for the initial API contract
 
-Document management, search, document processing, retrieval, model providers, and authentication are not implemented yet.
+Document content processing, research execution, search, retrieval, model providers, and authentication are not implemented yet.
 
 ## Local setup
 
@@ -106,6 +107,15 @@ Example response:
 - `GET /api/v1/research/{research_id}` retrieves an active research record.
 - `PATCH /api/v1/research/{research_id}` updates supported metadata or its summary status.
 - `DELETE /api/v1/research/{research_id}` soft-archives the record.
+
+### Document management
+
+- `POST /api/v1/documents` validates and stores one PDF, DOCX, or TXT upload.
+- `GET /api/v1/documents` lists document metadata with search, status, type, and pagination filters.
+- `GET /api/v1/documents/{document_id}` retrieves document metadata without exposing its storage path.
+- `DELETE /api/v1/documents/{document_id}` removes the stored file and metadata.
+
+Uploaded files are stored under `DOCUMENT_UPLOAD_DIR` and are ignored by Git. The default maximum upload size is 25 MiB. This phase does not parse, extract, index, or otherwise process document content.
 
 ## Product principles
 
