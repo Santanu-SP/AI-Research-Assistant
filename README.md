@@ -33,10 +33,13 @@ This repository currently contains:
 - a FastAPI application factory
 - a versioned health endpoint
 - environment-based settings
+- configurable CORS for the local frontend
+- SQLAlchemy 2.x database and session infrastructure
+- Alembic migration infrastructure
 - the main project, paper, and answer states from the PRD
 - a small test suite for the initial API contract
 
-Search, document processing, storage, retrieval, model providers, and authentication are not implemented yet.
+Research management, document management, search, document processing, retrieval, model providers, and authentication are not implemented yet.
 
 ## Local setup
 
@@ -51,6 +54,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r backend/requirements-dev.txt
 cp .env.example .env
+alembic upgrade head
 uvicorn app.main:app --app-dir backend --reload
 ```
 
@@ -66,10 +70,15 @@ pytest
 
 ```text
 backend/
+  alembic/         Database migrations
   app/
     api/routes/     API endpoints
     core/           Application settings
+    db/             SQLAlchemy engine, sessions, and model base
     domain/         Shared product states
+    models/         Persisted domain models
+    schemas/        API request and response schemas
+  data/             Local SQLite database location
   tests/            Backend tests
 ```
 
