@@ -86,8 +86,8 @@ const createField = (width: number, height: number): ResearchField => {
       y: cluster
         ? clamp(cluster.y + Math.sin(angle) * distance, 12, height - 12)
         : 12 + random() * Math.max(height - 24, 1),
-      radius: 0.65 + random() * 0.55,
-      opacity: strongerPoint ? 0.1 + random() * 0.03 : 0.04 + random() * 0.035,
+      radius: 0.95 + random() * 0.7,
+      opacity: strongerPoint ? 0.16 + random() * 0.04 : 0.09 + random() * 0.04,
       phase: random() * Math.PI * 2,
       driftX: driftingPoint ? 1.5 + random() * 3.5 : 0,
       driftY: driftingPoint ? 1.5 + random() * 3.5 : 0,
@@ -138,8 +138,8 @@ const drawField = (
       ? 0
       : Math.cos(driftTime * 0.83 + point.phase) * point.driftY;
     const opacity = Math.min(
-      point.opacity + (point.cluster ? formation * 0.025 : 0),
-      0.14,
+      point.opacity + (point.cluster ? formation * 0.035 : 0),
+      0.21,
     );
 
     context.beginPath();
@@ -170,7 +170,7 @@ const drawField = (
       segment.x + (segment.vertical ? 0 : segment.length),
       segment.y + (segment.vertical ? segment.length : 0),
     );
-    context.strokeStyle = `rgba(${FOREST_GREEN}, ${0.025 + pulse * 0.045})`;
+    context.strokeStyle = `rgba(${FOREST_GREEN}, ${0.05 + pulse * 0.06})`;
     context.lineWidth = 0.75;
     context.stroke();
   });
