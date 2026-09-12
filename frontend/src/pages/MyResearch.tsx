@@ -122,12 +122,19 @@ export const MyResearchPage: React.FC = () => {
           </div>
 
           {/* Research List / Table */}
-          {filtered.length === 0 ? (
+          {researchList.length === 0 ? (
+            <EmptyState
+              title="No research yet"
+              description="Start your first investigation to build an evidence-backed research report."
+              primaryActionLabel="New research"
+              onPrimaryAction={() => navigate('/research/new')}
+            />
+          ) : filtered.length === 0 ? (
             <EmptyState
               title="No research investigations found"
               description="No investigations match your active filters. Try clearing your search parameters or start a new synthesis."
-              actionLabel="Start new research"
-              onAction={() => navigate('/research/new')}
+              primaryActionLabel="Start new research"
+              onPrimaryAction={() => navigate('/research/new')}
             />
           ) : (
             <div className="bg-white border border-[#e5e7e4] rounded-xl overflow-hidden shadow-xs divide-y divide-[#e5e7e4]">

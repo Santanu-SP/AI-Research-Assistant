@@ -6,6 +6,7 @@ import { ResearchProgressPage } from '../pages/ResearchProgress';
 import { MyResearchPage } from '../pages/MyResearch';
 import { ResearchReportPage } from '../pages/ResearchReport';
 import { DocumentsPage } from '../pages/Documents';
+import { NotFoundPage } from '../pages/NotFound';
 
 export const AppRouter: React.FC = () => {
   return (
@@ -18,7 +19,7 @@ export const AppRouter: React.FC = () => {
         <Route path="/research/:id" element={<ResearchReportPage />} />
         <Route path="/documents" element={<DocumentsPage />} />
         {/* Fallback route */}
-        <Route path="*" element={<Navigate to="/research/new" replace />} />
+        <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>
   );
