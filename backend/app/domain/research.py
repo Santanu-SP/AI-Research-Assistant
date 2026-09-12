@@ -14,3 +14,18 @@ class ResearchStatus(StrEnum):
     RESEARCHING = "researching"
     COMPLETED = "completed"
     FAILED = "failed"
+
+
+class ResearchProgressStage(StrEnum):
+    PLANNING = "planning"
+    SEARCHING_SOURCES = "searching_sources"
+    FINDING_DOCUMENTS = "finding_documents"
+    REVIEWING_EVIDENCE = "reviewing_evidence"
+    BUILDING_SYNTHESIS = "building_synthesis"
+
+
+class ResearchProgressStepStatus(StrEnum):
+    PENDING = "pending"
+    ACTIVE = "active"
+    COMPLETED = "completed"
+    FAILED = "failed"
