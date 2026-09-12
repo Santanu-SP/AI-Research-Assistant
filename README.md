@@ -45,44 +45,11 @@ Document content processing, research execution, search, retrieval, model provid
 
 ## Local setup
 
-Requirements:
-
-- Python 3.11 or newer
-
-From the repository root:
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -r backend/requirements-dev.txt
-cp .env.example .env
-alembic upgrade head
-uvicorn app.main:app --app-dir backend --reload
-```
-
-Open `http://127.0.0.1:8000/docs` for the API documentation.
-
-Run the tests with:
-
-```bash
-pytest
-```
+Please see the full developer guide in [docs/development.md](docs/development.md) for prerequisite details, backend setup, and frontend configuration.
 
 ## Project structure
 
-```text
-backend/
-  alembic/         Database migrations
-  app/
-    api/routes/     API endpoints
-    core/           Application settings
-    db/             SQLAlchemy engine, sessions, and model base
-    domain/         Shared product states
-    models/         Persisted domain models
-    schemas/        API request and response schemas
-  data/             Local SQLite database location
-  tests/            Backend tests
-```
+Please refer to [docs/project-structure.md](docs/project-structure.md) for a detailed overview of the current architecture and codebase layout.
 
 ## API
 
