@@ -5,16 +5,20 @@ interface EmptyStateProps {
   icon?: LucideIcon;
   title: string;
   description: string;
-  actionLabel?: string;
-  onAction?: () => void;
+  primaryActionLabel?: string;
+  onPrimaryAction?: () => void;
+  secondaryActionLabel?: string;
+  onSecondaryAction?: () => void;
 }
 
 export const EmptyState: React.FC<EmptyStateProps> = ({
   icon: Icon = FolderSearch,
   title,
   description,
-  actionLabel,
-  onAction,
+  primaryActionLabel,
+  onPrimaryAction,
+  secondaryActionLabel,
+  onSecondaryAction,
 }) => {
   return (
     <div className="w-full py-16 px-4 flex flex-col items-center justify-center text-center bg-white border border-[#e5e7e4] rounded-lg">
@@ -25,13 +29,25 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
       <p className="text-xs text-[#6b706c] max-w-sm mb-5 leading-relaxed">
         {description}
       </p>
-      {actionLabel && onAction && (
-        <button
-          onClick={onAction}
-          className="bg-[#163328] hover:bg-[#214f40] text-white text-xs font-medium px-3.5 py-1.5 rounded-md transition-colors"
-        >
-          {actionLabel}
-        </button>
+      {(primaryActionLabel || secondaryActionLabel) && (
+        <div className="flex items-center gap-3">
+          {secondaryActionLabel && onSecondaryAction && (
+            <button
+              onClick={onSecondaryAction}
+              className="bg-transparent border border-[#e5e7e4] hover:bg-[#fafaf8] text-[#181a18] text-xs font-medium px-3.5 py-1.5 rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-[#163328] focus:ring-offset-2"
+            >
+              {secondaryActionLabel}
+            </button>
+          )}
+          {primaryActionLabel && onPrimaryAction && (
+            <button
+              onClick={onPrimaryAction}
+              className="bg-[#163328] hover:bg-[#214f40] text-white text-xs font-medium px-3.5 py-1.5 rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-[#163328] focus:ring-offset-2"
+            >
+              {primaryActionLabel}
+            </button>
+          )}
+        </div>
       )}
     </div>
   );
