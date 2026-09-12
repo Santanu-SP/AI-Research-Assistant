@@ -26,6 +26,11 @@
   }
 }
 
+/* Route containers inherit the warm shell so the fixed ambient field stays visible. */
+.app-content-surface > * {
+  background-color: transparent;
+}
+
 /* Custom scrollbar styling */
 ::-webkit-scrollbar {
   width: 6px;
