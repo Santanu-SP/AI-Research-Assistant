@@ -1,6 +1,9 @@
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
+
+from app.services import research as research_service
 
 
 def create_research(
@@ -148,14 +151,15 @@ def test_filter_by_domain(client: TestClient) -> None:
     assert [item["id"] for item in items] == [matching["id"]]
 
 
-def test_filter_by_status_and_validate_status(client: TestClient) -> None:
+def test_filter_by_status_and_validate_status(
+    client: TestClient,
+    db_session: Session,
+) -> None:
     completed = create_research(client, title="Completed")
     create_research(client, title="Draft")
-    update = client.patch(
-        f"/api/v1/research/{completed['id']}",
-        json={"status": "completed"},
-    )
-    assert update.status_code == 200
+    research_id = UUID(str(completed["id"]))
+    research_service.start_research(db_session, research_id)
+    research_service.mark_research_completed(db_session, research_id)
 
     filtered = client.get(
         "/api/v1/research",
@@ -168,6 +172,18 @@ def test_filter_by_status_and_validate_status(client: TestClient) -> None:
 
     assert [item["id"] for item in filtered.json()["items"]] == [completed["id"]]
     assert invalid.status_code == 422
+
+
+def test_public_update_rejects_status_changes(client: TestClient) -> None:
+    created = create_research(client)
+
+    response = client.patch(
+        f"/api/v1/research/{created['id']}",
+        json={"status": "completed"},
+    )
+
+    assert response.status_code == 422
+    assert client.get(f"/api/v1/research/{created['id']}").json()["status"] == "draft"
 
 
 def test_pagination_with_limit_and_offset(client: TestClient) -> None:
