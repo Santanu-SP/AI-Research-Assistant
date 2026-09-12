@@ -138,13 +138,21 @@ export const DocumentsPage: React.FC = () => {
           </div>
 
           {/* Document Rows List */}
-          {filtered.length === 0 ? (
+          {documents.length === 0 ? (
+            <EmptyState
+              icon={FolderUp}
+              title="No documents yet"
+              description="Upload documents to include your own material in research."
+              primaryActionLabel="Upload documents"
+              onPrimaryAction={() => setIsUploadOpen(true)}
+            />
+          ) : filtered.length === 0 ? (
             <EmptyState
               icon={FolderUp}
               title="No documents in workspace"
               description="Upload PDF, DOCX, or text files to enrich future research investigations with internal evidence."
-              actionLabel="Upload first document"
-              onAction={() => setIsUploadOpen(true)}
+              primaryActionLabel="Upload first document"
+              onPrimaryAction={() => setIsUploadOpen(true)}
             />
           ) : (
             <div className="flex flex-col gap-2.5">
