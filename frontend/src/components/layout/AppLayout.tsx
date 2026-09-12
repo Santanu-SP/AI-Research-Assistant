@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { AppSidebar } from './AppSidebar';
+import { AnimatedResearchBackground } from './AnimatedResearchBackground';
 import { Menu, X } from 'lucide-react';
 
 export const AppLayout: React.FC = () => {
@@ -13,7 +14,9 @@ export const AppLayout: React.FC = () => {
   }, [location.pathname]);
 
   return (
-    <div className="min-h-screen bg-[#fafaf8] text-[#181a18]">
+    <div className="relative isolate min-h-screen overflow-x-clip bg-[#fafaf8] text-[#181a18]">
+      <AnimatedResearchBackground />
+
       {/* Desktop Sidebar */}
       <div className="hidden lg:block">
         <AppSidebar />
@@ -53,7 +56,7 @@ export const AppLayout: React.FC = () => {
       )}
 
       {/* Main content offset by desktop sidebar */}
-      <div className="lg:pl-[232px] pt-14 lg:pt-0 min-h-screen flex flex-col">
+      <div className="app-content-surface relative z-10 lg:pl-[232px] pt-14 lg:pt-0 min-h-screen flex flex-col">
         <Outlet />
       </div>
     </div>
