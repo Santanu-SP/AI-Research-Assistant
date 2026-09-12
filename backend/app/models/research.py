@@ -1,15 +1,17 @@
 from datetime import datetime
+from enum import StrEnum
 from uuid import UUID, uuid4
 
-from sqlalchemy import Enum, String, Text, Uuid
+from sqlalchemy import CheckConstraint, Enum, Integer, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin
 from app.db.types import UTCDateTime
-from app.domain.research import ResearchDepth, ResearchStatus
+from app.domain.research import ResearchDepth, ResearchProgressStage, ResearchStatus
+from app.domain.states import ProjectStatus
 
 
-def _enum_values(enum_class: type[ResearchDepth] | type[ResearchStatus]) -> list[str]:
+def _enum_values(enum_class: type[StrEnum]) -> list[str]:
     return [member.value for member in enum_class]
 
 
@@ -31,9 +33,45 @@ research_status_enum = Enum(
     values_callable=_enum_values,
 )
 
+project_status_enum = Enum(
+    ProjectStatus,
+    name="project_status",
+    native_enum=False,
+    create_constraint=True,
+    validate_strings=True,
+    values_callable=_enum_values,
+)
+
+research_progress_stage_enum = Enum(
+    ResearchProgressStage,
+    name="research_progress_stage",
+    native_enum=False,
+    create_constraint=True,
+    validate_strings=True,
+    values_callable=_enum_values,
+)
+
 
 class Research(TimestampMixin, Base):
     __tablename__ = "research"
+    __table_args__ = (
+        CheckConstraint(
+            "sources_discovered >= 0",
+            name="ck_research_sources_discovered_nonnegative",
+        ),
+        CheckConstraint(
+            "sources_reviewed >= 0",
+            name="ck_research_sources_reviewed_nonnegative",
+        ),
+        CheckConstraint(
+            "documents_found >= 0",
+            name="ck_research_documents_found_nonnegative",
+        ),
+        CheckConstraint(
+            "sources_reviewed <= sources_discovered",
+            name="ck_research_sources_reviewed_lte_discovered",
+        ),
+    )
 
     id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True),
@@ -61,3 +99,37 @@ class Research(TimestampMixin, Base):
         nullable=True,
         index=True,
     )
+    project_status: Mapped[ProjectStatus | None] = mapped_column(
+        project_status_enum,
+        default=ProjectStatus.DRAFT,
+        nullable=True,
+    )
+    progress_stage: Mapped[ResearchProgressStage | None] = mapped_column(
+        research_progress_stage_enum,
+        nullable=True,
+    )
+    sources_discovered: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        server_default="0",
+        nullable=False,
+    )
+    sources_reviewed: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        server_default="0",
+        nullable=False,
+    )
+    documents_found: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        server_default="0",
+        nullable=False,
+    )
+    started_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    stage_started_at: Mapped[datetime | None] = mapped_column(
+        UTCDateTime(),
+        nullable=True,
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    failed_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)

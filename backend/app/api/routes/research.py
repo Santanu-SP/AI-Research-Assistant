@@ -9,6 +9,7 @@ from app.domain.research import ResearchStatus
 from app.schemas.research import (
     ResearchCreate,
     ResearchListResponse,
+    ResearchProgressResponse,
     ResearchResponse,
     ResearchUpdate,
 )
@@ -57,6 +58,14 @@ def list_research(
         limit=limit,
         offset=offset,
     )
+
+
+@router.get("/{research_id}/status", response_model=ResearchProgressResponse)
+def get_research_progress(
+    research_id: UUID,
+    session: DatabaseSession,
+) -> ResearchProgressResponse:
+    return research_service.get_research_progress(session, research_id)
 
 
 @router.get("/{research_id}", response_model=ResearchResponse)
