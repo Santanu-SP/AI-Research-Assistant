@@ -5,6 +5,12 @@ const MAX_DEVICE_PIXEL_RATIO = 2;
 const TARGET_FRAME_INTERVAL = 1000 / 45;
 const PATH_COUNT = 3;
 
+export type BackgroundMotionMode =
+  | 'composer'
+  | 'workspace'
+  | 'progress'
+  | 'reading';
+
 interface FieldPalette {
   primaryRgb: string;
   accentRgb: string;
@@ -131,6 +137,7 @@ const drawSignalGrid = (
   time: number,
   reducedMotion: boolean,
   palette: FieldPalette,
+  mode: BackgroundMotionMode,
 ) => {
   const spacing = getGridSpacing(width);
   const columns = Math.ceil(width / spacing) + 2;
@@ -182,7 +189,17 @@ const drawSignalGrid = (
       const topReadingBand =
         smoothStep(0.035, 0.075, normalizedY) *
         (1 - smoothStep(0.08, 0.22, normalizedY));
-      const readabilityFade = 1 - readingColumn * topReadingBand * 0.76;
+      const headerReadabilityFade = 1 - readingColumn * topReadingBand * 0.76;
+      const documentColumn =
+        smoothStep(0.16, 0.25, normalizedX) *
+        smoothStep(0.79, 0.7, normalizedX) *
+        smoothStep(0.08, 0.16, normalizedY);
+      const readingModeFade =
+        mode === 'reading' ? 1 - documentColumn * 0.96 : 1;
+      const progressModeBoost = mode === 'progress' ? 1.08 : 1;
+      const composerModeBoost = mode === 'composer' ? 1.05 : 1;
+      const readabilityFade =
+        headerReadabilityFade * readingModeFade * progressModeBoost * composerModeBoost;
       const emphasis = (column * 11 + row * 7) % 19 === 0;
       const opacity =
         (0.14 * ambientPulse + strongestInfluence * 0.29 * currentPulse) *
@@ -236,6 +253,7 @@ const drawField = (
   elapsed: number,
   reducedMotion: boolean,
   palette: FieldPalette,
+  mode: BackgroundMotionMode,
 ) => {
   context.clearRect(0, 0, width, height);
   const time = reducedMotion ? 3.2 : elapsed / 1000;
@@ -248,10 +266,17 @@ const drawField = (
     time,
     reducedMotion,
     palette,
+    mode,
   );
 };
 
-export const AnimatedResearchBackground: React.FC = () => {
+interface AnimatedResearchBackgroundProps {
+  mode?: BackgroundMotionMode;
+}
+
+export const AnimatedResearchBackground: React.FC<AnimatedResearchBackgroundProps> = ({
+  mode = 'workspace',
+}) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -278,6 +303,7 @@ export const AnimatedResearchBackground: React.FC = () => {
         elapsed,
         reducedMotion,
         palette,
+        mode,
       );
     };
 
@@ -358,7 +384,7 @@ export const AnimatedResearchBackground: React.FC = () => {
       reducedMotionQuery.removeEventListener('change', handleMotionPreference);
       window.removeEventListener(THEME_CHANGE_EVENT, handleThemeChange);
     };
-  }, []);
+  }, [mode]);
 
   return (
     <canvas

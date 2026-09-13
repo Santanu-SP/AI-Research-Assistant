@@ -14,9 +14,17 @@ export const AppLayout: React.FC = () => {
     setMobileMenuOpen(false);
   }, [location.pathname]);
 
+  const motionMode = location.pathname.endsWith('/progress')
+    ? 'progress'
+    : location.pathname === '/research/new'
+      ? 'composer'
+      : /^\/research\/[^/]+$/.test(location.pathname)
+        ? 'reading'
+        : 'workspace';
+
   return (
     <div className="relative isolate min-h-screen overflow-x-clip bg-[#fafaf8] text-[#181a18]">
-      <AnimatedResearchBackground />
+      <AnimatedResearchBackground mode={motionMode} />
 
       {/* Desktop Sidebar */}
       <div className="hidden lg:block">
