@@ -6,14 +6,12 @@ import { StatusBadge } from '../common/StatusBadge';
 interface DocumentRowProps {
   document: Document;
   onDelete: (id: string) => void;
-  onRetry?: (id: string) => void;
   onUseInResearch?: (document: Document) => void;
 }
 
 export const DocumentRow: React.FC<DocumentRowProps> = ({
   document,
   onDelete,
-  onRetry,
   onUseInResearch,
 }) => {
   const formatSize = (bytes: number): string => {
@@ -23,8 +21,8 @@ export const DocumentRow: React.FC<DocumentRowProps> = ({
     return `${Math.round(bytes / 1024)} KB`;
   };
 
-  const isPdf = document.type === 'PDF';
-  const isDocx = document.type === 'DOCX';
+  const isPdf = document.type === 'pdf';
+  const isDocx = document.type === 'docx';
 
   return (
     <div className="p-4 bg-white border border-[#e5e7e4] rounded-lg hover:border-[#cbd0ca] hover:shadow-xs transition-all duration-150 flex flex-col sm:flex-row sm:items-center justify-between gap-3 group">
@@ -48,24 +46,12 @@ export const DocumentRow: React.FC<DocumentRowProps> = ({
           </h4>
 
           <div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-[#6b706c]">
-            <span className="font-medium text-[#181a18]">{document.type}</span>
+            <span className="font-medium text-[#181a18] uppercase">{document.type}</span>
             <span className="text-[#929792]">·</span>
             <span>Size: {formatSize(document.size)}</span>
-            {document.pageCount && (
-              <>
-                <span className="text-[#929792]">·</span>
-                <span>{document.pageCount} pages</span>
-              </>
-            )}
             <span className="text-[#929792]">·</span>
-            <span>{document.uploadedAt}</span>
+            <span>{new Date(document.created_at).toLocaleDateString()}</span>
           </div>
-
-          {document.notes && (
-            <p className="text-[11.5px] text-[#929792] truncate mt-0.5">
-              {document.notes}
-            </p>
-          )}
         </div>
       </div>
 
@@ -88,17 +74,6 @@ export const DocumentRow: React.FC<DocumentRowProps> = ({
             <span className="text-xs text-[#b45309] font-medium px-2 py-1">
               Processing…
             </span>
-          )}
-
-          {document.status === 'failed' && onRetry && (
-            <button
-              type="button"
-              onClick={() => onRetry(document.id)}
-              className="text-xs font-medium text-[#b91c1c] bg-[#fee2e2]/60 hover:bg-[#fee2e2] border border-[#fecaca] px-2.5 py-1.5 rounded-md flex items-center gap-1 transition-colors cursor-pointer"
-            >
-              <RotateCw className="w-3 h-3" />
-              <span>Retry processing</span>
-            </button>
           )}
 
           <button
