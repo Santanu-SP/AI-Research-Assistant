@@ -4,7 +4,9 @@ import { TopBar } from '../components/layout/TopBar';
 import { ProgressStepper } from '../components/research/ProgressStepper';
 import { researchService } from '../services/research.service';
 import { ResearchProgress as IResearchProgress } from '../types/research';
-import { Radio, Ban } from 'lucide-react';
+import { Ban } from 'lucide-react';
+import { CenteredLoadingState } from '../components/common/LoadingState';
+import { LoadingOrb } from '../components/common/LoadingOrb';
 
 export const ResearchProgressPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -33,7 +35,7 @@ export const ResearchProgressPage: React.FC = () => {
   if (!progress) {
     return (
       <div className="min-h-screen bg-[#fafaf8] flex items-center justify-center">
-        <div className="text-xs text-[#6b706c]">Loading investigation state…</div>
+        <CenteredLoadingState label="Loading investigation state…" />
       </div>
     );
   }
@@ -99,7 +101,7 @@ export const ResearchProgressPage: React.FC = () => {
             <div className="lg:col-span-7 flex flex-col gap-4">
               <div className="flex items-center justify-between pb-2 border-b border-[#e5e7e4]">
                 <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-emerald-600 animate-ping" />
+                  <LoadingOrb size={17} />
                   <span className="uppercase tracking-wider text-[11px] font-semibold text-[#163328]">
                     Live Evidence Ingestion
                   </span>
@@ -147,7 +149,7 @@ export const ResearchProgressPage: React.FC = () => {
                 {/* Pulsing Active Analysis Log */}
                 <div className="p-3 bg-[#f1f6f3]/80 border border-[#cbe0d5] rounded-lg flex items-center justify-between gap-2 text-xs">
                   <div className="flex items-center gap-2 text-[#163328] font-medium min-w-0">
-                    <Radio className="w-4 h-4 text-emerald-600 animate-pulse shrink-0" />
+                    <LoadingOrb size={17} />
                     <span className="truncate">
                       Synthesizing cross-correlation: Phosphorylation kinetics vs. amyloid formation
                     </span>
@@ -192,8 +194,11 @@ export const ResearchProgressPage: React.FC = () => {
                 ))}
 
                 {/* Queue status */}
-                <div className="p-3 bg-white border border-dashed border-[#d0d7d2] rounded-lg text-center text-xs text-[#6b706c]">
-                  Ingesting {progress.ingestingQueueCount} pending citations… Queue: {progress.ingestingQueueCount}
+                <div className="p-3 bg-white border border-dashed border-[#d0d7d2] rounded-lg text-xs text-[#6b706c] flex items-center justify-center gap-2">
+                  <LoadingOrb size={17} />
+                  <span>
+                    Ingesting {progress.ingestingQueueCount} pending citations… Queue: {progress.ingestingQueueCount}
+                  </span>
                 </div>
               </div>
             </div>

@@ -92,6 +92,59 @@
   background-color: var(--app-chrome);
 }
 
+/* Radial loading field: dots swell inward and release outward in a soft loop. */
+.loading-orb {
+  --loading-orb-cell: calc(var(--loading-orb-size) / 6);
+  display: inline-block;
+  position: relative;
+  width: var(--loading-orb-size);
+  height: var(--loading-orb-size);
+  flex: 0 0 auto;
+  color: var(--app-solid);
+}
+
+.loading-orb__dot {
+  position: absolute;
+  left: calc((var(--loading-orb-x) + 0.5) * var(--loading-orb-cell));
+  top: calc((var(--loading-orb-y) + 0.5) * var(--loading-orb-cell));
+  width: calc(var(--loading-orb-cell) * (0.28 + (2 - var(--loading-orb-tier)) * 0.3));
+  height: calc(var(--loading-orb-cell) * (0.28 + (2 - var(--loading-orb-tier)) * 0.3));
+  border-radius: 999px;
+  background: currentColor;
+  transform: translate(-50%, -50%) scale(0.38);
+  opacity: 0.2;
+  animation: loading-orb-pulse 2.3s cubic-bezier(0.33, 0.01, 0.24, 1) infinite;
+  /* The central four dots open first; the two outer tiers follow. */
+  animation-delay: calc(var(--loading-orb-tier) * 0.14s);
+}
+
+.loading-orb--on-solid {
+  color: currentColor;
+}
+
+@keyframes loading-orb-pulse {
+  0%, 100% {
+    opacity: 0.16;
+    transform: translate(-50%, -50%) scale(0.42);
+  }
+  48% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  70% {
+    opacity: 0.68;
+    transform: translate(-50%, -50%) scale(0.72);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-orb__dot {
+    animation: none;
+    opacity: 0.72;
+    transform: translate(-50%, -50%) scale(0.72);
+  }
+}
+
 /* Long-form prose gets a quiet paper surface; animation remains in the gutters. */
 .report-reading-paper {
   background-color: rgb(255 255 255 / 0.94);

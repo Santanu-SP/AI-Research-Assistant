@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Check, FileText, ChevronDown, ArrowRight, Plus } from 'lucide-react';
 import { ResearchDepth } from '../../types/research';
+import { LoadingOrb } from '../common/LoadingOrb';
 
 interface ResearchComposerProps {
   initialPrompt?: string;
@@ -206,8 +207,11 @@ export const ResearchComposer: React.FC<ResearchComposerProps> = ({
             disabled={!prompt.trim() || isLoading}
             className="bg-[#163328] hover:bg-[#214f40] active:scale-[0.98] text-white text-xs font-medium px-4 py-2 rounded-md flex items-center gap-1.5 transition-all duration-150 shadow-none cursor-pointer group disabled:opacity-60 disabled:cursor-not-allowed"
           >
+            {isLoading ? <LoadingOrb size={16} className="loading-orb--on-solid" /> : null}
             <span>{isLoading ? 'Starting research...' : 'Start research'}</span>
-            <ArrowRight className="w-3.5 h-3.5 transition-transform duration-150 group-hover:translate-x-0.5" />
+            {!isLoading ? (
+              <ArrowRight className="w-3.5 h-3.5 transition-transform duration-150 group-hover:translate-x-0.5" />
+            ) : null}
           </button>
         </div>
       </div>
