@@ -1,5 +1,6 @@
 import React from 'react';
-import { ArrowRight, Loader2 } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
+import { LoadingOrb } from './LoadingOrb';
 
 interface PrimaryButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -49,7 +50,7 @@ export const PrimaryButton: React.FC<PrimaryButtonProps> = ({
       {...props}
     >
       {isLoading ? (
-        <Loader2 className="w-3.5 h-3.5 animate-spin text-current" />
+        <LoadingOrb size={16} className="loading-orb--on-solid" />
       ) : null}
       <span>{children}</span>
       {showArrow && !isLoading && (
