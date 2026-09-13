@@ -13,7 +13,9 @@ from app.schemas.research import (
     ResearchResponse,
     ResearchUpdate,
 )
+from app.schemas.reports import ComposedReportResponse
 from app.services import research as research_service
+from app.services import reports as reports_service
 
 router = APIRouter(prefix="/research", tags=["research"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
@@ -66,6 +68,14 @@ def get_research_progress(
     session: DatabaseSession,
 ) -> ResearchProgressResponse:
     return research_service.get_research_progress(session, research_id)
+
+
+@router.get("/{research_id}/report", response_model=ComposedReportResponse)
+def get_research_report(
+    research_id: UUID,
+    session: DatabaseSession,
+) -> ComposedReportResponse:
+    return reports_service.get_composed_report(session, research_id)
 
 
 @router.get("/{research_id}", response_model=ResearchResponse)
