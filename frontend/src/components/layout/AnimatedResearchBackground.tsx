@@ -2,7 +2,8 @@ import React, { useEffect, useRef } from 'react';
 import { THEME_CHANGE_EVENT } from '../../theme';
 
 const MAX_DEVICE_PIXEL_RATIO = 2;
-const TARGET_FRAME_INTERVAL = 1000 / 30;
+const TARGET_FRAME_INTERVAL = 1000 / 45;
+const REVEAL_CYCLE_DURATION = 7.8;
 
 interface FieldPalette {
   rgb: string;
@@ -58,7 +59,19 @@ const getGridSpacing = (width: number) => {
 const getPrimaryCurve = (normalizedX: number, time: number) =>
   0.86 -
   normalizedX * 0.67 +
-  Math.sin(normalizedX * Math.PI * 3.1 + time * 0.34) * 0.075;
+  Math.sin(normalizedX * Math.PI * 3.1 + time * 0.7) * 0.075;
+
+const getRevealReach = (time: number) => {
+  const cycleTime = (time + 2.4) % REVEAL_CYCLE_DURATION;
+
+  if (cycleTime < 2.2) {
+    return smoothStep(0, 2.2, cycleTime) * 0.52;
+  }
+
+  if (cycleTime < 5.5) return 0.52;
+
+  return (1 - smoothStep(5.5, REVEAL_CYCLE_DURATION, cycleTime)) * 0.52;
+};
 
 const createScanDashes = (width: number, height: number): ScanDash[] => {
   const random = createRandom(0xd07f13 + Math.round(width) * 23 + Math.round(height));
@@ -96,6 +109,7 @@ const drawDotField = (
   const columns = Math.ceil(width / spacing) + 2;
   const rows = Math.ceil(height / spacing) + 2;
   const time = reducedMotion ? 4.5 : elapsed / 1000;
+  const revealReach = reducedMotion ? 0.52 : getRevealReach(time);
 
   for (let row = -1; row < rows; row += 1) {
     for (let column = -1; column < columns; column += 1) {
@@ -107,7 +121,7 @@ const drawDotField = (
       const echoCurve =
         primaryCurve -
         0.24 +
-        Math.sin(normalizedX * Math.PI * 4.4 - time * 0.28) * 0.035;
+        Math.sin(normalizedX * Math.PI * 4.4 - time * 0.62) * 0.035;
       const primaryDistance = Math.abs(normalizedY - primaryCurve);
       const echoDistance = Math.abs(normalizedY - echoCurve);
       const primaryBand = 1 - smoothStep(0.035, 0.18, primaryDistance);
@@ -134,18 +148,29 @@ const drawDotField = (
         smoothStep(0.035, 0.075, normalizedY) *
         (1 - smoothStep(0.08, 0.22, normalizedY));
       const readabilityFade = 1 - readingColumn * topReadingBand * 0.72;
+      const diagonalProgress = clamp(
+        (normalizedX + (1 - normalizedY)) / 2,
+      );
+      const distanceFromEnd = Math.min(
+        diagonalProgress,
+        1 - diagonalProgress,
+      );
+      const spatialReveal =
+        1 - smoothStep(revealReach, revealReach + 0.085, distanceFromEnd);
+      const revealStrength = 0.3 + spatialReveal * 0.7;
       const flow = reducedMotion
         ? 0.9
         : 0.78 +
-          Math.sin(time * 1.05 + column * 0.38 - row * 0.24) * 0.22;
+          Math.sin(time * 1.55 + column * 0.38 - row * 0.24) * 0.22;
       const broadPulse = reducedMotion
         ? 0.92
-        : 0.84 + Math.sin(time * 0.43 - normalizedX * 5.2) * 0.16;
+        : 0.84 + Math.sin(time * 0.9 - normalizedX * 5.2) * 0.16;
       const emphasis = (column * 7 + row * 11) % 13 === 0;
       const opacity =
         bandStrength *
         edgeFade *
         readabilityFade *
+        revealStrength *
         flow *
         broadPulse *
         (emphasis ? 0.58 : 0.38) *
@@ -155,14 +180,14 @@ const drawDotField = (
 
       const displacement = reducedMotion
         ? 0
-        : Math.sin(time * 0.62 + normalizedX * 7.5 + row * 0.055) *
+        : Math.sin(time * 1.1 + normalizedX * 7.5 + row * 0.055) *
           4.2 *
           bandStrength;
       const x =
         baseX +
         (reducedMotion
           ? 0
-          : Math.cos(time * 0.38 + normalizedY * 5.5) * 1.7 * bandStrength);
+          : Math.cos(time * 0.76 + normalizedY * 5.5) * 1.7 * bandStrength);
       const y = baseY + displacement;
       const radius = emphasis ? 1.85 : 1.3;
 
@@ -183,22 +208,24 @@ const drawDotField = (
   if (reducedMotion) return;
 
   context.lineCap = 'round';
+  const transitionActivity =
+    1 - smoothStep(0.24, 0.5, revealReach);
   scanDashes.forEach((dash) => {
     const pulse = Math.pow(
-      Math.max(0, Math.sin(time * 0.72 + dash.phase)),
-      7,
+      Math.max(0, Math.sin(time * 1.85 + dash.phase)),
+      6,
     );
 
     if (pulse < 0.045) return;
 
-    const travel = Math.sin(time * 0.31 + dash.phase) * 10;
+    const travel = Math.sin(time * 0.92 + dash.phase) * 14;
     const xStart = dash.x + (dash.vertical ? 0 : travel) - dash.length / 2;
     const yStart = dash.y + (dash.vertical ? travel : 0) - dash.length / 2;
     const xEnd = xStart + (dash.vertical ? 0 : dash.length);
     const yEnd = yStart + (dash.vertical ? dash.length : 0);
     const gradient = context.createLinearGradient(xStart, yStart, xEnd, yEnd);
     const dashOpacity = Math.min(
-      pulse * 0.72 * palette.opacityScale,
+      pulse * (0.34 + transitionActivity * 0.5) * palette.opacityScale,
       0.82,
     );
 
