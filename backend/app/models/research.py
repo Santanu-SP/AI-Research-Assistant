@@ -3,7 +3,7 @@ from enum import StrEnum
 from uuid import UUID, uuid4
 
 from sqlalchemy import CheckConstraint, Enum, Integer, String, Text, Uuid
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin
 from app.db.types import UTCDateTime
@@ -133,3 +133,14 @@ class Research(TimestampMixin, Base):
     )
     completed_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
     failed_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    report: Mapped["ResearchReport | None"] = relationship(
+        back_populates="research",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        uselist=False,
+    )
+    sources: Mapped[list["Source"]] = relationship(
+        back_populates="research",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
