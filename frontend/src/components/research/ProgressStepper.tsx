@@ -1,9 +1,9 @@
 import React from 'react';
 import { CheckCircle2, Circle, FileSpreadsheet } from 'lucide-react';
-import { ResearchProgress } from '../../types/research';
+import { ResearchProgressResponse } from '../../types/progress';
 
 interface ProgressStepperProps {
-  progress: ResearchProgress;
+  progress: ResearchProgressResponse;
 }
 
 export const ProgressStepper: React.FC<ProgressStepperProps> = ({ progress }) => {
@@ -15,13 +15,13 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({ progress }) =>
           Research Progress Stepper
         </span>
         <span className="text-xs text-[#6b706c] font-medium">
-          Step {progress.currentStepIndex + 1} of {progress.totalSteps} in progress
+          Step {(progress.currentStepIndex ?? -1) + 1} of {progress.totalSteps} in progress
         </span>
       </div>
 
-      {/* Steps 5-card grid */}
+      {/* Steps grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-2.5 mb-4">
-        {progress.steps.map((step) => {
+        {progress.steps.map((step, index) => {
           const isCompleted = step.status === 'completed';
           const isActive = step.status === 'active';
 
@@ -46,7 +46,7 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({ progress }) =>
                       : 'text-[#929792]'
                   }`}
                 >
-                  {step.number}
+                  STAGE {(index + 1).toString().padStart(2, '0')}{isActive ? ' · ACTIVE' : ''}
                 </span>
 
                 {isCompleted ? (
@@ -70,8 +70,8 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({ progress }) =>
                 >
                   {step.title}
                 </h4>
-                <p className="text-[11px] text-[#929792] leading-tight mt-1 line-clamp-1">
-                  {step.detail}
+                <p className="text-[11px] text-[#929792] leading-tight mt-1 line-clamp-1 capitalize">
+                  {step.status}
                 </p>
               </div>
             </div>
@@ -90,10 +90,7 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({ progress }) =>
 
         <div className="flex items-center gap-2">
           <span className="bg-[#fafaf8] border border-[#e5e7e4] text-[#6b706c] text-[11px] px-2.5 py-1 rounded-md">
-            Web &amp; academic: {progress.webAcademicCount} sources
-          </span>
-          <span className="bg-[#fafaf8] border border-[#e5e7e4] text-[#6b706c] text-[11px] px-2.5 py-1 rounded-md">
-            Uploaded documents: {progress.uploadedDocumentsCount} sources
+            Documents Found: {progress.documentsFound}
           </span>
         </div>
       </div>
