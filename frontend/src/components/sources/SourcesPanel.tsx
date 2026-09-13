@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Search, X, BookOpen, StickyNote, ChevronDown } from 'lucide-react';
-import { Source } from '../../types/source';
+import { SourceResponse } from '../../types/report';
 import { ExpandedSource } from './ExpandedSource';
 import { SourceRow } from './SourceRow';
 
 interface SourcesPanelProps {
-  sources: Source[];
+  sources: SourceResponse[];
   selectedSourceNumber: number;
   onSelectSource: (number: number) => void;
   onCloseMobileDrawer?: () => void;

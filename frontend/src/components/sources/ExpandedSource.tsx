@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { ExternalLink, Copy, Check } from 'lucide-react';
-import { Source } from '../../types/source';
+import { SourceResponse } from '../../types/report';
 
 interface ExpandedSourceProps {
-  source: Source;
+  source: SourceResponse;
 }
 
 export const ExpandedSource: React.FC<ExpandedSourceProps> = ({ source }) => {
