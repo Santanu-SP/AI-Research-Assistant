@@ -3,7 +3,7 @@ import { THEME_CHANGE_EVENT } from '../../theme';
 
 const MAX_DEVICE_PIXEL_RATIO = 2;
 const TARGET_FRAME_INTERVAL = 1000 / 45;
-const REVEAL_CYCLE_DURATION = 7.8;
+const REVEAL_CYCLE_DURATION = 6.6;
 
 interface FieldPalette {
   rgb: string;
@@ -59,30 +59,36 @@ const getGridSpacing = (width: number) => {
 const getPrimaryCurve = (normalizedX: number, time: number) =>
   0.86 -
   normalizedX * 0.67 +
-  Math.sin(normalizedX * Math.PI * 3.1 + time * 0.7) * 0.075;
+  Math.sin(normalizedX * Math.PI * 3.1 + time * 0.95) * 0.075;
+
+const getCounterCurve = (normalizedX: number, time: number) =>
+  0.13 +
+  normalizedX * 0.68 +
+  Math.sin(normalizedX * Math.PI * 2.7 - time * 0.82) * 0.07;
 
 const getRevealReach = (time: number) => {
-  const cycleTime = (time + 2.4) % REVEAL_CYCLE_DURATION;
+  const cycleTime = (time + 1.9) % REVEAL_CYCLE_DURATION;
 
-  if (cycleTime < 2.2) {
-    return smoothStep(0, 2.2, cycleTime) * 0.52;
+  if (cycleTime < 1.7) {
+    return smoothStep(0, 1.7, cycleTime) * 0.52;
   }
 
-  if (cycleTime < 5.5) return 0.52;
+  if (cycleTime < 4.6) return 0.52;
 
-  return (1 - smoothStep(5.5, REVEAL_CYCLE_DURATION, cycleTime)) * 0.52;
+  return (1 - smoothStep(4.6, REVEAL_CYCLE_DURATION, cycleTime)) * 0.52;
 };
 
 const createScanDashes = (width: number, height: number): ScanDash[] => {
   const random = createRandom(0xd07f13 + Math.round(width) * 23 + Math.round(height));
-  const count = width < 640 ? 6 : width < 1024 ? 9 : 13;
+  const count = width < 640 ? 8 : width < 1024 ? 12 : 18;
 
   return Array.from({ length: count }, () => {
     const normalizedX = 0.04 + random() * 0.92;
-    const curve = getPrimaryCurve(normalizedX, 0);
-    const echoCurve = curve - 0.24;
-    const useEcho = normalizedX > 0.42 && random() > 0.46;
-    const normalizedY = (useEcho ? echoCurve : curve) + (random() - 0.5) * 0.22;
+    const primaryCurve = getPrimaryCurve(normalizedX, 0);
+    const counterCurve = getCounterCurve(normalizedX, 0);
+    const useCounterCurve = random() > 0.5;
+    const curve = useCounterCurve ? counterCurve : primaryCurve;
+    const normalizedY = curve + (random() - 0.5) * 0.34;
 
     return {
       x: normalizedX * width,
@@ -121,24 +127,34 @@ const drawDotField = (
       const echoCurve =
         primaryCurve -
         0.24 +
-        Math.sin(normalizedX * Math.PI * 4.4 - time * 0.62) * 0.035;
+        Math.sin(normalizedX * Math.PI * 4.4 - time * 0.86) * 0.035;
+      const counterCurve = getCounterCurve(normalizedX, time);
       const primaryDistance = Math.abs(normalizedY - primaryCurve);
       const echoDistance = Math.abs(normalizedY - echoCurve);
+      const counterDistance = Math.abs(normalizedY - counterCurve);
       const primaryBand = 1 - smoothStep(0.035, 0.18, primaryDistance);
       const echoGate = smoothStep(0.34, 0.58, normalizedX);
       const echoBand =
         (1 - smoothStep(0.025, 0.14, echoDistance)) * echoGate * 0.78;
-      const bandStrength = Math.max(primaryBand, echoBand);
-
-      if (bandStrength < 0.035) continue;
+      const counterBand =
+        (1 - smoothStep(0.035, 0.17, counterDistance)) * 0.76;
+      const ribbonStrength = Math.max(primaryBand, echoBand, counterBand);
+      const ambientWave =
+        0.18 +
+        (reducedMotion
+          ? 0.025
+          : (Math.sin(time * 1.18 + normalizedX * 8 - normalizedY * 6) + 1) *
+            0.025);
+      const bandStrength =
+        ambientWave + (1 - ambientWave) * ribbonStrength;
 
       const horizontalEdge = Math.min(
-        smoothStep(0, 0.07, normalizedX),
-        smoothStep(1, 0.93, normalizedX),
+        smoothStep(0, 0.025, normalizedX),
+        smoothStep(1, 0.975, normalizedX),
       );
       const verticalEdge = Math.min(
-        smoothStep(0, 0.06, normalizedY),
-        smoothStep(1, 0.94, normalizedY),
+        smoothStep(0, 0.025, normalizedY),
+        smoothStep(1, 0.975, normalizedY),
       );
       const edgeFade = horizontalEdge * verticalEdge;
       const readingColumn =
@@ -157,14 +173,14 @@ const drawDotField = (
       );
       const spatialReveal =
         1 - smoothStep(revealReach, revealReach + 0.085, distanceFromEnd);
-      const revealStrength = 0.3 + spatialReveal * 0.7;
+      const revealStrength = 0.58 + spatialReveal * 0.42;
       const flow = reducedMotion
         ? 0.9
         : 0.78 +
-          Math.sin(time * 1.55 + column * 0.38 - row * 0.24) * 0.22;
+          Math.sin(time * 1.95 + column * 0.38 - row * 0.24) * 0.22;
       const broadPulse = reducedMotion
         ? 0.92
-        : 0.84 + Math.sin(time * 0.9 - normalizedX * 5.2) * 0.16;
+        : 0.84 + Math.sin(time * 1.22 - normalizedX * 5.2) * 0.16;
       const emphasis = (column * 7 + row * 11) % 13 === 0;
       const opacity =
         bandStrength *
@@ -176,18 +192,19 @@ const drawDotField = (
         (emphasis ? 0.58 : 0.38) *
         palette.opacityScale;
 
-      if (opacity < 0.025) continue;
+      if (opacity < 0.018) continue;
 
+      const motionStrength = 0.38 + bandStrength * 0.62;
       const displacement = reducedMotion
         ? 0
-        : Math.sin(time * 1.1 + normalizedX * 7.5 + row * 0.055) *
+        : Math.sin(time * 1.42 + normalizedX * 7.5 + row * 0.055) *
           4.2 *
-          bandStrength;
+          motionStrength;
       const x =
         baseX +
         (reducedMotion
           ? 0
-          : Math.cos(time * 0.76 + normalizedY * 5.5) * 1.7 * bandStrength);
+          : Math.cos(time * 1.05 + normalizedY * 5.5) * 1.7 * motionStrength);
       const y = baseY + displacement;
       const radius = emphasis ? 1.85 : 1.3;
 
@@ -212,13 +229,13 @@ const drawDotField = (
     1 - smoothStep(0.24, 0.5, revealReach);
   scanDashes.forEach((dash) => {
     const pulse = Math.pow(
-      Math.max(0, Math.sin(time * 1.85 + dash.phase)),
+      Math.max(0, Math.sin(time * 2.2 + dash.phase)),
       6,
     );
 
     if (pulse < 0.045) return;
 
-    const travel = Math.sin(time * 0.92 + dash.phase) * 14;
+    const travel = Math.sin(time * 1.18 + dash.phase) * 16;
     const xStart = dash.x + (dash.vertical ? 0 : travel) - dash.length / 2;
     const yStart = dash.y + (dash.vertical ? travel : 0) - dash.length / 2;
     const xEnd = xStart + (dash.vertical ? 0 : dash.length);
