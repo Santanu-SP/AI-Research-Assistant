@@ -1,8 +1,8 @@
 import React from 'react';
-import { Source } from '../../types/source';
+import { SourceResponse } from '../../types/report';
 
 interface SourceRowProps {
-  source: Source;
+  source: SourceResponse;
   onSelect: (number: number) => void;
 }
 

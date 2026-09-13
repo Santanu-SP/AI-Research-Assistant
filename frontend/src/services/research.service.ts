@@ -3,12 +3,10 @@ import {
   CreateResearchInput,
   ResearchListParams,
   ResearchListResponse,
-  ResearchReport,
   ResearchResponse,
   UpdateResearchInput,
 } from '../types/research';
 import { Source } from '../types/source';
-import { mockFlagshipReport, mockFlagshipSources } from '../data/mockResearch';
 
 const buildResearchQuery = (params: ResearchListParams = {}): string => {
   const query = new URLSearchParams();
@@ -105,14 +103,4 @@ export const researchService = {
   getResearch,
   updateResearch,
   archiveResearch,
-
-  /** Report integration remains mocked until its dedicated PR. */
-  async getResearchReport(
-    id: string
-  ): Promise<{ report: ResearchReport; sources: Source[] }> {
-    return {
-      report: { ...mockFlagshipReport, id },
-      sources: mockFlagshipSources,
-    };
-  },
 };
