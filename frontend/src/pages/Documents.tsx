@@ -5,6 +5,7 @@ import { DocumentRow } from '../components/documents/DocumentRow';
 import { UploadDocumentModal } from '../components/documents/UploadDocumentModal';
 import { EmptyState } from '../components/common/EmptyState';
 import { PrimaryButton } from '../components/common/PrimaryButton';
+import { CenteredLoadingState } from '../components/common/LoadingState';
 import { documentsService } from '../services/documents.service';
 import { Document } from '../types/document';
 import { Search, Upload, FolderUp } from 'lucide-react';
@@ -17,6 +18,7 @@ export const DocumentsPage: React.FC = () => {
   const [selectedFormat, setSelectedFormat] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -26,13 +28,17 @@ export const DocumentsPage: React.FC = () => {
   }, [searchQuery, selectedFormat, selectedStatus]);
 
   const loadDocuments = async () => {
-    const response = await documentsService.getDocuments({
-      search: searchQuery || undefined,
-      status: selectedStatus !== 'all' ? selectedStatus : undefined,
-      type: selectedFormat !== 'all' ? selectedFormat : undefined,
-    });
-    setDocuments(response.items);
-    setTotalDocuments(response.total);
+    try {
+      const response = await documentsService.getDocuments({
+        search: searchQuery || undefined,
+        status: selectedStatus !== 'all' ? selectedStatus : undefined,
+        type: selectedFormat !== 'all' ? selectedFormat : undefined,
+      });
+      setDocuments(response.items);
+      setTotalDocuments(response.total);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleUploadFile = async (file: File) => {
@@ -128,7 +134,9 @@ export const DocumentsPage: React.FC = () => {
           </div>
 
           {/* Document Rows List */}
-          {documents.length === 0 ? (
+          {isLoading ? (
+            <CenteredLoadingState label="Loading workspace documents…" />
+          ) : documents.length === 0 ? (
             <EmptyState
               icon={FolderUp}
               title="No documents yet"

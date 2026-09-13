@@ -4,6 +4,7 @@ import { TopBar } from '../components/layout/TopBar';
 import { StatusBadge } from '../components/common/StatusBadge';
 import { EmptyState } from '../components/common/EmptyState';
 import { PrimaryButton } from '../components/common/PrimaryButton';
+import { CenteredLoadingState } from '../components/common/LoadingState';
 import { researchService } from '../services/research.service';
 import { Research } from '../types/research';
 import { Search, Clock, ChevronRight } from 'lucide-react';
@@ -14,11 +15,15 @@ export const MyResearchPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDomain, setSelectedDomain] = useState<string>('all');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    researchService.getResearchList().then((data) => {
-      setResearchList(data);
-    });
+    researchService
+      .getResearchList()
+      .then((data) => {
+        setResearchList(data);
+      })
+      .finally(() => setIsLoading(false));
   }, []);
 
   const domains = Array.from(new Set(researchList.map((r) => r.domain)));
@@ -122,7 +127,9 @@ export const MyResearchPage: React.FC = () => {
           </div>
 
           {/* Research List / Table */}
-          {researchList.length === 0 ? (
+          {isLoading ? (
+            <CenteredLoadingState label="Loading your research…" />
+          ) : researchList.length === 0 ? (
             <EmptyState
               title="No research yet"
               description="Start your first investigation to build an evidence-backed research report."

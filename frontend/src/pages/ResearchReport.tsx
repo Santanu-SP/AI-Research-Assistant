@@ -4,6 +4,7 @@ import { TopBar } from '../components/layout/TopBar';
 import { StatusBadge } from '../components/common/StatusBadge';
 import { CitationChip } from '../components/research/CitationChip';
 import { SourcesPanel } from '../components/sources/SourcesPanel';
+import { CenteredLoadingState } from '../components/common/LoadingState';
 import { researchService } from '../services/research.service';
 import { ResearchReport as IResearchReport } from '../types/research';
 import { Source } from '../types/source';
@@ -75,7 +76,7 @@ export const ResearchReportPage: React.FC = () => {
   if (!report) {
     return (
       <div className="min-h-screen bg-[#fafaf8] flex items-center justify-center">
-        <div className="text-xs text-[#6b706c]">Loading research synthesis…</div>
+        <CenteredLoadingState label="Loading research synthesis…" />
       </div>
     );
   }
