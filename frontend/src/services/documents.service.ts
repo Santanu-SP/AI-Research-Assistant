@@ -1,69 +1,70 @@
-import { Document, DocumentFormat } from '../types/document';
-import { mockDocumentsList } from '../data/mockDocuments';
-let currentDocuments: Document[] = [...mockDocumentsList];
+import { Document, DocumentListResponse } from '../types/document';
+import { apiRequest, API_BASE_URL } from './api';
 
 export const documentsService = {
   /**
    * Fetch all documents.
-   * Future: GET /api/v1/documents
+   * GET /api/v1/documents
    */
-  async getDocuments(): Promise<Document[]> {
-    return Promise.resolve([...currentDocuments]);
+  async getDocuments(params?: {
+    search?: string;
+    status?: string;
+    type?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<DocumentListResponse> {
+    const query = new URLSearchParams();
+    if (params?.search) query.append('search', params.search);
+    if (params?.status && params.status !== 'all') query.append('status', params.status);
+    if (params?.type && params.type !== 'all') query.append('type', params.type.toLowerCase());
+    if (params?.limit) query.append('limit', params.limit.toString());
+    if (params?.offset) query.append('offset', params.offset.toString());
+    
+    const qs = query.toString();
+    const endpoint = qs ? `/documents?${qs}` : '/documents';
+    
+    return apiRequest<DocumentListResponse>(endpoint);
   },
 
   /**
    * Upload documents to the knowledge workspace.
-   * Future: POST /api/v1/documents (multipart/form-data)
+   * POST /api/v1/documents (multipart/form-data)
    */
   async uploadDocument(file: File): Promise<Document> {
-    const extension = file.name.split('.').pop()?.toUpperCase();
-    let docType: DocumentFormat = 'PDF';
-    if (extension === 'DOCX' || extension === 'DOC') docType = 'DOCX';
-    else if (extension === 'TXT') docType = 'TXT';
-    else if (extension === 'MD') docType = 'MD';
+    const formData = new FormData();
+    formData.append('file', file);
 
-    const newDoc: Document = {
-      id: `doc-${Date.now()}`,
-      name: file.name,
-      type: docType,
-      size: file.size,
-      status: 'processing',
-      uploadedAt: 'Just now',
-    };
+    const url = `${API_BASE_URL}/documents`;
+    const response = await fetch(url, {
+      method: 'POST',
+      body: formData,
+      headers: {
+        'Accept': 'application/json',
+      }
+    });
 
-    currentDocuments = [newDoc, ...currentDocuments];
+    if (!response.ok) {
+      const errText = await response.text().catch(() => '');
+      throw new Error(`Failed to upload document: ${response.statusText} ${errText}`);
+    }
 
-    // Simulate background processing transition to ready after a short delay
-    setTimeout(() => {
-      currentDocuments = currentDocuments.map((d) =>
-        d.id === newDoc.id ? { ...d, status: 'ready' } : d
-      );
-    }, 2500);
-
-    return Promise.resolve(newDoc);
+    return (await response.json()) as Document;
   },
 
   /**
    * Delete a document.
-   * Future: DELETE /api/v1/documents/{id}
+   * DELETE /api/v1/documents/{id}
    */
   async deleteDocument(id: string): Promise<boolean> {
-    currentDocuments = currentDocuments.filter((doc) => doc.id !== id);
-    return Promise.resolve(true);
-  },
+    const url = `${API_BASE_URL}/documents/${id}`;
+    const response = await fetch(url, {
+      method: 'DELETE',
+    });
 
-  /**
-   * Retry the frontend-only processing demonstration.
-   */
-  async retryDocument(id: string): Promise<Document | undefined> {
-    const doc = currentDocuments.find((d) => d.id === id);
-    if (!doc) return undefined;
-
-    doc.status = 'processing';
-    setTimeout(() => {
-      doc.status = 'ready';
-    }, 2000);
-
-    return Promise.resolve(doc);
-  },
+    if (!response.ok) {
+      throw new Error(`Failed to delete document: ${response.statusText}`);
+    }
+    
+    return true;
+  }
 };
