@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { AppSidebar } from './AppSidebar';
+import { AnimatedResearchBackground } from './AnimatedResearchBackground';
+import { ThemeToggle } from './ThemeToggle';
 import { Menu, X } from 'lucide-react';
 
 export const AppLayout: React.FC = () => {
@@ -12,15 +14,25 @@ export const AppLayout: React.FC = () => {
     setMobileMenuOpen(false);
   }, [location.pathname]);
 
+  const motionMode = location.pathname.endsWith('/progress')
+    ? 'progress'
+    : location.pathname === '/research/new'
+      ? 'composer'
+      : /^\/research\/[^/]+$/.test(location.pathname)
+        ? 'reading'
+        : 'workspace';
+
   return (
-    <div className="min-h-screen bg-[#fafaf8] text-[#181a18]">
+    <div className="relative isolate min-h-screen overflow-x-clip bg-[#fafaf8] text-[#181a18]">
+      <AnimatedResearchBackground mode={motionMode} />
+
       {/* Desktop Sidebar */}
       <div className="hidden lg:block">
         <AppSidebar />
       </div>
 
       {/* Mobile Header Bar with Hamburger */}
-      <div className="lg:hidden fixed top-0 left-0 right-0 h-14 bg-[#fafaf8] border-b border-[#e5e7e4] z-50 flex items-center justify-between px-4">
+      <div className="app-chrome-surface lg:hidden fixed top-0 left-0 right-0 h-14 border-b border-[#e5e7e4] z-50 flex items-center justify-between px-4">
         <button
           type="button"
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -34,8 +46,11 @@ export const AppLayout: React.FC = () => {
           Research Assistant
         </span>
 
-        <div className="w-8 h-8 rounded-full bg-[#e2e8e4] text-[#163328] font-semibold text-xs flex items-center justify-center border border-[#d0d7d2]">
-          EV
+        <div className="flex items-center gap-2">
+          <ThemeToggle className="inline-flex lg:hidden" />
+          <div className="w-8 h-8 rounded-full bg-[#e2e8e4] text-[#163328] font-semibold text-xs flex items-center justify-center border border-[#d0d7d2]">
+            EV
+          </div>
         </div>
       </div>
 
@@ -53,7 +68,7 @@ export const AppLayout: React.FC = () => {
       )}
 
       {/* Main content offset by desktop sidebar */}
-      <div className="lg:pl-[232px] pt-14 lg:pt-0 min-h-screen flex flex-col">
+      <div className="app-content-surface relative z-10 lg:pl-[232px] pt-14 lg:pt-0 min-h-screen flex flex-col">
         <Outlet />
       </div>
     </div>

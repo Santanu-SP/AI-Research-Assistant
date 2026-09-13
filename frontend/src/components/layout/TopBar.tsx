@@ -1,5 +1,6 @@
 import React from 'react';
 import { Search } from 'lucide-react';
+import { ThemeToggle } from './ThemeToggle';
 
 interface TopBarProps {
   breadcrumbs?: React.ReactNode;
@@ -13,7 +14,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   showGlobalSearch = true,
 }) => {
   return (
-    <header className="fixed top-0 left-0 lg:left-[232px] right-0 h-14 bg-white border-b border-[#e5e7e4] z-40 flex items-center justify-between px-6">
+    <header className="app-chrome-surface fixed top-0 left-0 lg:left-[232px] right-0 h-14 border-b border-[#e5e7e4] z-40 flex items-center justify-between px-6">
       {/* Breadcrumb section */}
       <div className="flex items-center gap-2 text-[13px] overflow-hidden">
         {breadcrumbs}
@@ -22,6 +23,7 @@ export const TopBar: React.FC<TopBarProps> = ({
       {/* Right actions / Search trigger */}
       <div className="flex items-center gap-3 shrink-0">
         {rightActions}
+        <ThemeToggle className="hidden lg:inline-flex" />
 
         {showGlobalSearch && (
           <button
