@@ -1,13 +1,20 @@
 export type DocumentStatus = 'ready' | 'processing' | 'failed';
-export type DocumentFormat = 'PDF' | 'DOCX' | 'TXT' | 'MD';
+export type DocumentFormat = 'pdf' | 'docx' | 'txt';
 
 export interface Document {
   id: string;
   name: string;
   type: DocumentFormat;
-  size: number; // in bytes
-  pageCount?: number;
+  mime_type: string;
+  size: number;
   status: DocumentStatus;
-  uploadedAt: string;
-  notes?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DocumentListResponse {
+  items: Document[];
+  total: number;
+  limit: number;
+  offset: number;
 }

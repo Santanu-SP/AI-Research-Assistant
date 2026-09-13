@@ -12,18 +12,27 @@ import { Search, Upload, FolderUp } from 'lucide-react';
 export const DocumentsPage: React.FC = () => {
   const navigate = useNavigate();
   const [documents, setDocuments] = useState<Document[]>([]);
+  const [totalDocuments, setTotalDocuments] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFormat, setSelectedFormat] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [isUploadOpen, setIsUploadOpen] = useState(false);
 
   useEffect(() => {
-    loadDocuments();
-  }, []);
+    const timer = setTimeout(() => {
+      loadDocuments();
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery, selectedFormat, selectedStatus]);
 
   const loadDocuments = async () => {
-    const list = await documentsService.getDocuments();
-    setDocuments(list);
+    const response = await documentsService.getDocuments({
+      search: searchQuery || undefined,
+      status: selectedStatus !== 'all' ? selectedStatus : undefined,
+      type: selectedFormat !== 'all' ? selectedFormat : undefined,
+    });
+    setDocuments(response.items);
+    setTotalDocuments(response.total);
   };
 
   const handleUploadFile = async (file: File) => {
@@ -36,29 +45,10 @@ export const DocumentsPage: React.FC = () => {
     await loadDocuments();
   };
 
-  const handleRetryDocument = async (id: string) => {
-    await documentsService.retryDocument(id);
-    await loadDocuments();
-  };
-
   const handleUseInResearch = () => {
     // Navigate to new research with document pre-selected or referenced
     navigate('/research/new');
   };
-
-  const filtered = documents.filter((doc) => {
-    const matchesSearch =
-      doc.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (doc.notes && doc.notes.toLowerCase().includes(searchQuery.toLowerCase()));
-
-    const matchesFormat =
-      selectedFormat === 'all' || doc.type === selectedFormat;
-
-    const matchesStatus =
-      selectedStatus === 'all' || doc.status === selectedStatus;
-
-    return matchesSearch && matchesFormat && matchesStatus;
-  });
 
   return (
     <div className="min-h-screen bg-[#fafaf8] flex flex-col">
@@ -146,22 +136,25 @@ export const DocumentsPage: React.FC = () => {
               primaryActionLabel="Upload documents"
               onPrimaryAction={() => setIsUploadOpen(true)}
             />
-          ) : filtered.length === 0 ? (
+          ) : documents.length === 0 && (searchQuery || selectedFormat !== 'all' || selectedStatus !== 'all') ? (
             <EmptyState
               icon={FolderUp}
-              title="No documents in workspace"
-              description="Upload PDF, DOCX, or text files to enrich future research investigations with internal evidence."
-              primaryActionLabel="Upload first document"
-              onPrimaryAction={() => setIsUploadOpen(true)}
+              title="No documents found"
+              description="Adjust your filters or search query to find documents."
+              primaryActionLabel="Clear filters"
+              onPrimaryAction={() => {
+                setSearchQuery('');
+                setSelectedFormat('all');
+                setSelectedStatus('all');
+              }}
             />
           ) : (
             <div className="flex flex-col gap-2.5">
-              {filtered.map((doc) => (
+              {documents.map((doc) => (
                 <DocumentRow
                   key={doc.id}
                   document={doc}
                   onDelete={handleDeleteDocument}
-                  onRetry={handleRetryDocument}
                   onUseInResearch={handleUseInResearch}
                 />
               ))}
@@ -169,7 +162,7 @@ export const DocumentsPage: React.FC = () => {
           )}
 
           <div className="mt-3 text-right text-xs text-[#929792]">
-            Showing {filtered.length} of {documents.length} documents
+            Showing {documents.length} of {totalDocuments} documents
           </div>
         </div>
       </main>
