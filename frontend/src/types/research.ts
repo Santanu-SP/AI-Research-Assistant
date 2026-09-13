@@ -14,6 +14,49 @@ export interface Research {
   description?: string;
 }
 
+export interface ResearchResponse {
+  id: string;
+  title: string;
+  question: string;
+  domain: string | null;
+  status: ResearchStatus;
+  researchDepth: ResearchDepth;
+  sourceCount: number;
+  createdAt: string;
+  updatedAt: string;
+  archivedAt: string | null;
+}
+
+export interface CreateResearchInput {
+  question: string;
+  title?: string;
+  domain?: string;
+  researchDepth?: ResearchDepth;
+}
+
+export interface UpdateResearchInput {
+  title?: string;
+  question?: string;
+  domain?: string | null;
+  researchDepth?: ResearchDepth;
+}
+
+export interface ResearchListParams {
+  search?: string;
+  domain?: string;
+  status?: ResearchStatus;
+  limit?: number;
+  offset?: number;
+  includeArchived?: boolean;
+}
+
+export interface ResearchListResponse {
+  items: ResearchResponse[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export interface ResearchProgress {
   id: string;
   question: string;
