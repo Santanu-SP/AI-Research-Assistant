@@ -1,4 +1,5 @@
 import React from 'react';
+import { LoadingOrb } from './LoadingOrb';
 
 interface LoadingStateProps {
   rows?: number;
@@ -29,3 +30,15 @@ export const LoadingState: React.FC<LoadingStateProps> = ({ rows = 3 }) => {
     </div>
   );
 };
+
+interface CenteredLoadingStateProps {
+  label: string;
+}
+
+/** A focused, low-noise waiting state for full-page data fetches. */
+export const CenteredLoadingState: React.FC<CenteredLoadingStateProps> = ({ label }) => (
+  <div className="flex min-h-[15rem] flex-col items-center justify-center gap-3 text-center">
+    <LoadingOrb size={46} label={label} />
+    <p className="text-xs text-[#6b706c]">{label}</p>
+  </div>
+);

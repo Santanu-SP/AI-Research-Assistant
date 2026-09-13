@@ -2,6 +2,7 @@ import React from 'react';
 import { FileText, Trash2, RotateCw } from 'lucide-react';
 import { Document } from '../../types/document';
 import { StatusBadge } from '../common/StatusBadge';
+import { LoadingOrb } from '../common/LoadingOrb';
 
 interface DocumentRowProps {
   document: Document;
@@ -71,7 +72,8 @@ export const DocumentRow: React.FC<DocumentRowProps> = ({
           )}
 
           {document.status === 'processing' && (
-            <span className="text-xs text-[#b45309] font-medium px-2 py-1">
+            <span className="inline-flex items-center gap-1.5 text-xs text-[#b45309] font-medium px-2 py-1">
+              <LoadingOrb size={15} />
               Processing…
             </span>
           )}
