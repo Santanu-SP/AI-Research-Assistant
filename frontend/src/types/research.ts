@@ -100,23 +100,3 @@ export interface ResearchProgress {
   ingestingQueueCount: number;
 }
 
-export interface ResearchSection {
-  id: string;
-  heading: string;
-  content: string;
-  quote?: string;
-  citationIds: number[];
-}
-
-export interface ResearchReport {
-  id: string;
-  title: string;
-  summary: string;
-  dossierRef: string;
-  readingTimeMinutes: number;
-  sourceCount: number;
-  status: ResearchStatus;
-  sections: ResearchSection[];
-  createdAt: string;
-  updatedAt: string;
-}

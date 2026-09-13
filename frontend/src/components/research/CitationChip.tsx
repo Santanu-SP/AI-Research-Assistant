@@ -1,9 +1,9 @@
 import React, { useState, useRef } from 'react';
-import { Source } from '../../types/source';
+import { SourceResponse } from '../../types/report';
 
 interface CitationChipProps {
   number: number;
-  source?: Source;
+  source?: SourceResponse;
   isSelected?: boolean;
   onSelect: (number: number) => void;
 }
