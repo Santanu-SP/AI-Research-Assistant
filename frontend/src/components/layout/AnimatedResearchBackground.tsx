@@ -47,18 +47,18 @@ const getPathY = (pathIndex: number, normalizedX: number, time: number) => {
       return (
         0.84 -
         normalizedX * 0.61 +
-        Math.sin(normalizedX * 7.2 + time * 0.86) * 0.065
+        Math.sin(normalizedX * 7.2 + time * 1.18) * 0.065
       );
     case 1:
       return (
         0.17 +
         normalizedX * 0.58 +
-        Math.sin(normalizedX * 6.4 - time * 0.74 + 1.4) * 0.06
+        Math.sin(normalizedX * 6.4 - time * 1.04 + 1.4) * 0.06
       );
     default:
       return (
         0.51 +
-        Math.sin(normalizedX * 8.6 + time * 0.92 + 2.1) * 0.085
+        Math.sin(normalizedX * 8.6 + time * 1.28 + 2.1) * 0.085
       );
   }
 };
@@ -167,11 +167,11 @@ const drawSignalGrid = (
       const ambientPulse = reducedMotion
         ? 0.88
         : 0.8 +
-          Math.sin(time * 1.45 + column * 0.31 - row * 0.27) * 0.2;
+          Math.sin(time * 2.1 + column * 0.31 - row * 0.27) * 0.2;
       const currentPulse = reducedMotion
         ? 0.9
         : 0.82 +
-          Math.sin(time * 2.05 - normalizedX * 6.2 + row * 0.08) * 0.18;
+          Math.sin(time * 2.8 - normalizedX * 6.2 + row * 0.08) * 0.18;
       const edgeFade =
         Math.min(
           smoothStep(0, 0.025, normalizedX),
@@ -190,7 +190,7 @@ const drawSignalGrid = (
       const readabilityFade = 1 - readingColumn * topReadingBand * 0.76;
       const emphasis = (column * 11 + row * 7) % 19 === 0;
       const opacity =
-        (0.07 * ambientPulse + strongestInfluence * 0.39 * currentPulse) *
+        (0.105 * ambientPulse + strongestInfluence * 0.41 * currentPulse) *
         edgeFade *
         readabilityFade *
         palette.opacityScale *
@@ -203,15 +203,15 @@ const drawSignalGrid = (
         baseX +
         (reducedMotion
           ? 0
-          : Math.cos(time * 0.94 + normalizedY * 6.1 + dominantPath) *
-            2.2 *
+          : Math.cos(time * 1.68 + normalizedY * 6.1 + dominantPath) *
+            3.4 *
             motionStrength);
       const y =
         baseY +
         (reducedMotion
           ? 0
-          : Math.sin(time * 1.18 + normalizedX * 7.4 - dominantPath) *
-            4.8 *
+          : Math.sin(time * 2.08 + normalizedX * 7.4 - dominantPath) *
+            6.6 *
             motionStrength);
       const radius =
         1.05 + strongestInfluence * 0.48 + (emphasis ? 0.42 : 0);
@@ -228,71 +228,6 @@ const drawSignalGrid = (
       context.arc(x, y, radius, 0, Math.PI * 2);
       context.fillStyle = `rgba(${rgb}, ${Math.min(opacity, 0.72)})`;
       context.fill();
-    }
-  }
-};
-
-const drawSignalPackets = (
-  context: CanvasRenderingContext2D,
-  width: number,
-  height: number,
-  time: number,
-  palette: FieldPalette,
-) => {
-  const packetCount = width < 640 ? 3 : width < 1024 ? 4 : 6;
-  context.lineCap = 'round';
-
-  for (let pathIndex = 0; pathIndex < PATH_COUNT; pathIndex += 1) {
-    for (let packetIndex = 0; packetIndex < packetCount; packetIndex += 1) {
-      const speed = 0.065 + pathIndex * 0.012;
-      const direction = pathIndex === 1 ? -1 : 1;
-      const rawProgress =
-        time * speed * direction +
-        packetIndex / packetCount +
-        pathIndex * 0.19;
-      const progress = ((rawProgress % 1) + 1) % 1;
-      const normalizedX = progress;
-      const nextX = clamp(progress + 0.008 * direction);
-      const normalizedY = getPathY(pathIndex, normalizedX, time);
-      const nextY = getPathY(pathIndex, nextX, time);
-      const x = normalizedX * width;
-      const y = normalizedY * height;
-      const tangentX = (nextX - normalizedX) * width;
-      const tangentY = (nextY - normalizedY) * height;
-      const magnitude = Math.hypot(tangentX, tangentY) || 1;
-      const packetLength =
-        (width < 640 ? 15 : 24) +
-        (Math.sin(time * 1.7 + packetIndex * 1.8 + pathIndex) + 1) *
-          (width < 640 ? 6 : 11);
-      const unitX = tangentX / magnitude;
-      const unitY = tangentY / magnitude;
-      const startX = x - unitX * packetLength * 0.5;
-      const startY = y - unitY * packetLength * 0.5;
-      const endX = x + unitX * packetLength * 0.5;
-      const endY = y + unitY * packetLength * 0.5;
-      const rgb = pathIndex === 1 ? palette.accentRgb : palette.primaryRgb;
-      const gradient = context.createLinearGradient(
-        startX,
-        startY,
-        endX,
-        endY,
-      );
-      const pulse =
-        0.62 +
-        Math.sin(time * 2.35 + packetIndex * 1.45 + pathIndex * 0.8) * 0.28;
-      const opacity = Math.min(pulse * 0.78 * palette.opacityScale, 0.88);
-
-      gradient.addColorStop(0, `rgba(${rgb}, 0)`);
-      gradient.addColorStop(0.28, `rgba(${rgb}, ${opacity})`);
-      gradient.addColorStop(0.74, `rgba(${rgb}, ${opacity})`);
-      gradient.addColorStop(1, `rgba(${rgb}, 0)`);
-
-      context.beginPath();
-      context.moveTo(startX, startY);
-      context.lineTo(endX, endY);
-      context.strokeStyle = gradient;
-      context.lineWidth = pathIndex === 2 ? 1.25 : 1.6;
-      context.stroke();
     }
   }
 };
@@ -317,10 +252,6 @@ const drawField = (
     reducedMotion,
     palette,
   );
-
-  if (!reducedMotion) {
-    drawSignalPackets(context, width, height, time, palette);
-  }
 };
 
 export const AnimatedResearchBackground: React.FC = () => {
