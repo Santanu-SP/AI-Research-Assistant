@@ -31,7 +31,7 @@
   --app-solid: #163328;
   --app-solid-hover: #214f40;
   --research-field-rgb: 22, 51, 40;
-  --research-field-opacity-scale: 1.25;
+  --research-field-opacity-scale: 1.55;
 }
 
 :root[data-theme="dark"] {
