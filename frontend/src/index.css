@@ -30,10 +30,10 @@
   --app-accent: #163328;
   --app-solid: #163328;
   --app-solid-hover: #214f40;
-  --app-chrome: rgb(250 250 248 / 72%);
+  --app-chrome: rgb(250 250 248 / 66%);
   --research-field-rgb: 22, 51, 40;
   --research-field-accent-rgb: 66, 119, 94;
-  --research-field-opacity-scale: 2.05;
+  --research-field-opacity-scale: 2.4;
 }
 
 :root[data-theme="dark"] {

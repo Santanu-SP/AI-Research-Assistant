@@ -172,15 +172,10 @@ const drawSignalGrid = (
         ? 0.9
         : 0.82 +
           Math.sin(time * 2.8 - normalizedX * 6.2 + row * 0.08) * 0.18;
-      const edgeFade =
-        Math.min(
-          smoothStep(0, 0.025, normalizedX),
-          smoothStep(1, 0.975, normalizedX),
-        ) *
-        Math.min(
-          smoothStep(0, 0.025, normalizedY),
-          smoothStep(1, 0.975, normalizedY),
-        );
+      const horizontalEdgeFade = Math.min(
+        smoothStep(0, 0.012, normalizedX),
+        smoothStep(1, 0.988, normalizedX),
+      );
       const readingColumn =
         smoothStep(0.2, 0.31, normalizedX) *
         smoothStep(0.96, 0.84, normalizedX);
@@ -191,7 +186,7 @@ const drawSignalGrid = (
       const emphasis = (column * 11 + row * 7) % 19 === 0;
       const opacity =
         (0.14 * ambientPulse + strongestInfluence * 0.29 * currentPulse) *
-        edgeFade *
+        horizontalEdgeFade *
         readabilityFade *
         palette.opacityScale *
         (emphasis ? 1.15 : 1);
