@@ -208,7 +208,7 @@ export const ResearchComposer: React.FC<ResearchComposerProps> = ({
             className="bg-[#163328] hover:bg-[#214f40] active:scale-[0.98] text-white text-xs font-medium px-4 py-2 rounded-md flex items-center gap-1.5 transition-all duration-150 shadow-none cursor-pointer group disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {isLoading ? <LoadingOrb size={16} className="loading-orb--on-solid" /> : null}
-            <span>{isLoading ? 'Starting research...' : 'Start research'}</span>
+            <span>{isLoading ? 'Creating research...' : 'Create research'}</span>
             {!isLoading ? (
               <ArrowRight className="w-3.5 h-3.5 transition-transform duration-150 group-hover:translate-x-0.5" />
             ) : null}

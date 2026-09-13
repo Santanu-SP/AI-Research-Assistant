@@ -1,94 +1,118 @@
+import { ApiError, API_BASE_URL, apiRequest } from './api';
 import {
-  Research,
-  ResearchProgress,
+  CreateResearchInput,
+  ResearchListParams,
+  ResearchListResponse,
   ResearchReport,
-  ResearchDepth,
+  ResearchResponse,
+  UpdateResearchInput,
 } from '../types/research';
 import { Source } from '../types/source';
-import {
-  mockResearchList,
-  mockActiveInvestigationProgress,
-  mockFlagshipReport,
-  mockFlagshipSources,
-} from '../data/mockResearch';
-// In-memory frontend state for demonstrations
-let currentResearchList: Research[] = [...mockResearchList];
+import { mockFlagshipReport, mockFlagshipSources } from '../data/mockResearch';
+
+const buildResearchQuery = (params: ResearchListParams = {}): string => {
+  const query = new URLSearchParams();
+
+  if (params.search?.trim()) query.set('search', params.search.trim());
+  if (params.domain?.trim()) query.set('domain', params.domain.trim());
+  if (params.status) query.set('status', params.status);
+  if (params.limit !== undefined) query.set('limit', String(params.limit));
+  if (params.offset !== undefined) query.set('offset', String(params.offset));
+  if (params.includeArchived !== undefined) {
+    query.set('includeArchived', String(params.includeArchived));
+  }
+
+  const serialized = query.toString();
+  return serialized ? `/research?${serialized}` : '/research';
+};
+
+export const createResearch = (payload: CreateResearchInput): Promise<ResearchResponse> =>
+  apiRequest<ResearchResponse>('/research', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+export const listResearch = (
+  params: ResearchListParams = {}
+): Promise<ResearchListResponse> =>
+  apiRequest<ResearchListResponse>(buildResearchQuery(params));
+
+export const getResearch = (researchId: string): Promise<ResearchResponse> =>
+  apiRequest<ResearchResponse>(`/research/${encodeURIComponent(researchId)}`);
+
+export const updateResearch = (
+  researchId: string,
+  payload: UpdateResearchInput
+): Promise<ResearchResponse> =>
+  apiRequest<ResearchResponse>(`/research/${encodeURIComponent(researchId)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+export const archiveResearch = async (researchId: string): Promise<void> => {
+  try {
+    const response = await fetch(
+      `${API_BASE_URL}/research/${encodeURIComponent(researchId)}`,
+      { method: 'DELETE', headers: { Accept: 'application/json' } }
+    );
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => undefined);
+      throw new ApiError(
+        `API request failed: ${response.status} ${response.statusText}`,
+        response.status,
+        data
+      );
+    }
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    throw new ApiError(
+      error instanceof Error ? error.message : 'Unknown network error'
+    );
+  }
+};
+
+export const getResearchErrorMessage = (
+  error: unknown,
+  fallback: string
+): string => {
+  if (!(error instanceof ApiError)) return fallback;
+
+  const data = error.data;
+  if (typeof data === 'object' && data !== null && 'detail' in data) {
+    const detail = (data as { detail?: unknown }).detail;
+    if (typeof detail === 'string') return detail;
+    if (Array.isArray(detail)) {
+      const firstMessage = detail.find(
+        (item): item is { msg: string } =>
+          typeof item === 'object' &&
+          item !== null &&
+          'msg' in item &&
+          typeof (item as { msg?: unknown }).msg === 'string'
+      );
+      if (firstMessage) return firstMessage.msg;
+    }
+  }
+
+  return error.status === 404 ? 'Research not found.' : fallback;
+};
 
 export const researchService = {
-  /**
-   * Fetch list of all research projects.
-   * Future: GET /api/v1/research
-   */
-  async getResearchList(): Promise<Research[]> {
-    return Promise.resolve([...currentResearchList]);
-  },
+  createResearch,
+  listResearch,
+  getResearch,
+  updateResearch,
+  archiveResearch,
 
-  /**
-   * Fetch single research project by ID.
-   * Future: GET /api/v1/research/{id}
-   */
-  async getResearchById(id: string): Promise<Research | undefined> {
-    const item = currentResearchList.find((r) => r.id === id);
-    return Promise.resolve(item);
-  },
-
-  /**
-   * Start a new research investigation.
-   * Future: POST /api/v1/research
-   */
-  async startResearch(payload: {
-    question: string;
-    depth: ResearchDepth;
-    includeWeb: boolean;
-    includeDocs: boolean;
-  }): Promise<{ id: string }> {
-    const newId = `res-${Date.now().toString(36)}`;
-    const newResearch: Research = {
-      id: newId,
-      title: payload.question.slice(0, 70),
-      question: payload.question,
-      domain: 'General Investigation',
-      status: 'researching',
-      researchDepth: payload.depth,
-      sourceCount: payload.includeDocs ? 12 : 8,
-      createdAt: new Date().toISOString(),
-      updatedAt: 'Just now',
-      description: payload.question,
-    };
-
-    currentResearchList = [newResearch, ...currentResearchList];
-    return Promise.resolve({ id: newId });
-  },
-
-  /**
-   * Fetch research progress / status for active investigations.
-   * Future: GET /api/v1/research/{id}/status
-   */
-  async getResearchProgress(id: string): Promise<ResearchProgress> {
-    const item = currentResearchList.find((r) => r.id === id);
-    return Promise.resolve({
-      ...mockActiveInvestigationProgress,
-      id,
-      question: item?.question || mockActiveInvestigationProgress.question,
-    });
-  },
-
-  /**
-   * Fetch finalized synthesis report.
-   * Future: GET /api/v1/research/{id}/report
-   */
+  /** Report integration remains mocked until its dedicated PR. */
   async getResearchReport(
     id: string
   ): Promise<{ report: ResearchReport; sources: Source[] }> {
-    const item = currentResearchList.find((r) => r.id === id);
-    const report: ResearchReport = {
-      ...mockFlagshipReport,
-      id,
-      title: item?.title || mockFlagshipReport.title,
-    };
-    return Promise.resolve({
-      report,
+    return {
+      report: { ...mockFlagshipReport, id },
       sources: mockFlagshipSources,
-    });
+    };
   },
 };
