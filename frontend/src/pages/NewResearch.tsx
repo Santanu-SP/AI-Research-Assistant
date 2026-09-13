@@ -1,12 +1,25 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { TopBar } from '../components/layout/TopBar';
 import { ResearchComposer } from '../components/research/ResearchComposer';
 import { StatusBadge } from '../components/common/StatusBadge';
-import { mockResearchList, mockSuggestedQuestions } from '../data/mockResearch';
-import { researchService } from '../services/research.service';
+import { EmptyState } from '../components/common/EmptyState';
+import { ErrorState } from '../components/common/ErrorState';
+import { LoadingState } from '../components/common/LoadingState';
+import { mockSuggestedQuestions } from '../data/mockResearch';
+import {
+  getResearchErrorMessage,
+  researchService,
+} from '../services/research.service';
 import { ArrowUpRight, Clock } from 'lucide-react';
-import { ResearchDepth } from '../types/research';
+import { ResearchDepth, ResearchResponse } from '../types/research';
+
+const formatUpdatedAt = (value: string): string =>
+  new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: new Date(value).getFullYear() === new Date().getFullYear() ? undefined : 'numeric',
+  }).format(new Date(value));
 
 export const NewResearch: React.FC = () => {
   const navigate = useNavigate();
@@ -14,6 +27,31 @@ export const NewResearch: React.FC = () => {
     'How do post-translational modifications regulate TDP-43 phase separation in neurodegenerative phenotypes?'
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [recentResearch, setRecentResearch] = useState<ResearchResponse[]>([]);
+  const [recentTotal, setRecentTotal] = useState(0);
+  const [isRecentLoading, setIsRecentLoading] = useState(true);
+  const [recentError, setRecentError] = useState<string | null>(null);
+
+  const loadRecentResearch = useCallback(async () => {
+    setIsRecentLoading(true);
+    setRecentError(null);
+    try {
+      const response = await researchService.listResearch({ limit: 4, offset: 0 });
+      setRecentResearch(response.items);
+      setRecentTotal(response.total);
+    } catch (error) {
+      setRecentError(
+        getResearchErrorMessage(error, 'We could not load your recent research.')
+      );
+    } finally {
+      setIsRecentLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadRecentResearch();
+  }, [loadRecentResearch]);
 
   const handleStartResearch = async (payload: {
     question: string;
@@ -22,12 +60,18 @@ export const NewResearch: React.FC = () => {
     includeDocs: boolean;
   }) => {
     setIsSubmitting(true);
+    setCreateError(null);
     try {
-      const result = await researchService.startResearch(payload);
-      // Navigate to the research progress screen for this investigation
-      navigate(`/research/${result.id}/progress`);
-    } catch (e) {
-      console.error(e);
+      await researchService.createResearch({
+        question: payload.question,
+        researchDepth: payload.depth,
+      });
+      navigate('/research');
+    } catch (error) {
+      setCreateError(
+        getResearchErrorMessage(error, 'Research could not be created. Please try again.')
+      );
+    } finally {
       setIsSubmitting(false);
     }
   };
@@ -69,6 +113,14 @@ export const NewResearch: React.FC = () => {
               onStartResearch={handleStartResearch}
               isLoading={isSubmitting}
             />
+            {createError ? (
+              <div className="mt-3">
+                <ErrorState
+                  title="Research was not created"
+                  message={createError}
+                />
+              </div>
+            ) : null}
           </div>
 
           {/* Suggested Research Questions */}
@@ -109,16 +161,32 @@ export const NewResearch: React.FC = () => {
                 to="/research"
                 className="text-xs font-medium text-[#163328] hover:underline"
               >
-                View all ({mockResearchList.length})
+                View all ({recentTotal})
               </Link>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {mockResearchList.slice(0, 4).map((item) => {
+            {isRecentLoading ? (
+              <LoadingState rows={2} />
+            ) : recentError ? (
+              <ErrorState
+                title="Recent research unavailable"
+                message={recentError}
+                onRetry={() => void loadRecentResearch()}
+              />
+            ) : recentResearch.length === 0 ? (
+              <EmptyState
+                title="No research yet"
+                description="Create your first research record using the question above."
+              />
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {recentResearch.map((item) => {
                 const targetPath =
                   item.status === 'researching'
                     ? `/research/${item.id}/progress`
-                    : `/research/${item.id}`;
+                    : item.status === 'completed'
+                      ? `/research/${item.id}`
+                      : '/research';
 
                 return (
                   <Link
@@ -129,7 +197,7 @@ export const NewResearch: React.FC = () => {
                     <div>
                       <div className="flex items-center justify-between gap-2 mb-2">
                         <span className="text-[11px] font-medium text-[#6b706c] truncate">
-                          {item.domain}
+                          {item.domain || 'General research'}
                         </span>
                         <StatusBadge status={item.status} size="sm" />
                       </div>
@@ -143,13 +211,14 @@ export const NewResearch: React.FC = () => {
                       <span>{item.sourceCount} sources</span>
                       <span className="flex items-center gap-1">
                         <Clock className="w-3 h-3" />
-                        <span>{item.updatedAt}</span>
+                        <span>{formatUpdatedAt(item.updatedAt)}</span>
                       </span>
                     </div>
                   </Link>
                 );
               })}
-            </div>
+              </div>
+            )}
           </div>
         </div>
       </main>
