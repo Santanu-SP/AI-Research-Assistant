@@ -83,7 +83,7 @@ export const ResearchReportPage: React.FC = () => {
   const getSourceByNum = (n: number) => sources.find((s) => s.number === n);
 
   return (
-    <div className="min-h-screen bg-[#fafaf8] flex flex-col">
+    <div className="report-reading-page min-h-screen bg-[#fafaf8] flex flex-col">
       {/* TopBar */}
       <TopBar
         breadcrumbs={
@@ -147,8 +147,8 @@ export const ResearchReportPage: React.FC = () => {
       {/* Main Layout: Split between Report document and Sources panel */}
       <div className="flex-1 pt-14 flex overflow-hidden">
         {/* Left/Center Document Content */}
-        <main className="flex-1 overflow-y-auto px-4 sm:px-8 py-10">
-          <div className="max-w-3xl mx-auto">
+        <main className="report-document-scroll flex-1 overflow-y-auto px-4 sm:px-8 py-10">
+          <div className="report-reading-paper max-w-3xl mx-auto">
             {/* Memo Dossier Header */}
             <div className="pb-6 mb-8 border-b border-[#e5e7e4]">
               <div className="font-mono text-xs text-[#929792] tracking-wider uppercase mb-2">
