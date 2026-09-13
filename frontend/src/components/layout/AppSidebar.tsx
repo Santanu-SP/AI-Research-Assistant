@@ -43,7 +43,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ className = '' }) => {
 
   return (
     <aside
-      className={`fixed left-0 top-0 h-full w-[232px] bg-[#fafaf8] z-50 flex flex-col justify-between border-r border-[#e5e7e4] select-none ${className}`}
+      className={`app-chrome-surface fixed left-0 top-0 h-full w-[232px] z-50 flex flex-col justify-between border-r border-[#e5e7e4] select-none ${className}`}
     >
       <div className="flex flex-col">
         {/* Brand / Logo Header */}
@@ -166,7 +166,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ className = '' }) => {
       </div>
 
       {/* Bottom Profile & Settings */}
-      <div className="border-t border-[#e5e7e4] p-2 bg-[#fafaf8]">
+      <div className="border-t border-[#e5e7e4] p-2">
         <button
           type="button"
           onClick={() => {}}

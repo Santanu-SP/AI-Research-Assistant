@@ -24,7 +24,7 @@ export const AppLayout: React.FC = () => {
       </div>
 
       {/* Mobile Header Bar with Hamburger */}
-      <div className="lg:hidden fixed top-0 left-0 right-0 h-14 bg-[#fafaf8] border-b border-[#e5e7e4] z-50 flex items-center justify-between px-4">
+      <div className="app-chrome-surface lg:hidden fixed top-0 left-0 right-0 h-14 border-b border-[#e5e7e4] z-50 flex items-center justify-between px-4">
         <button
           type="button"
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}

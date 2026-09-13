@@ -190,7 +190,7 @@ const drawSignalGrid = (
       const readabilityFade = 1 - readingColumn * topReadingBand * 0.76;
       const emphasis = (column * 11 + row * 7) % 19 === 0;
       const opacity =
-        (0.105 * ambientPulse + strongestInfluence * 0.41 * currentPulse) *
+        (0.14 * ambientPulse + strongestInfluence * 0.29 * currentPulse) *
         edgeFade *
         readabilityFade *
         palette.opacityScale *
@@ -198,20 +198,22 @@ const drawSignalGrid = (
 
       if (opacity < 0.018) continue;
 
-      const motionStrength = 0.32 + strongestInfluence * 0.68;
+      // Keep the whole viewport alive; the research currents add emphasis
+      // without limiting visible movement to a few narrow bands.
+      const motionStrength = 0.72 + strongestInfluence * 0.28;
       const x =
         baseX +
         (reducedMotion
           ? 0
           : Math.cos(time * 1.68 + normalizedY * 6.1 + dominantPath) *
-            3.4 *
+            3.8 *
             motionStrength);
       const y =
         baseY +
         (reducedMotion
           ? 0
           : Math.sin(time * 2.08 + normalizedX * 7.4 - dominantPath) *
-            6.6 *
+            7.2 *
             motionStrength);
       const radius =
         1.05 + strongestInfluence * 0.48 + (emphasis ? 0.42 : 0);
