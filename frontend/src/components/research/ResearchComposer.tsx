@@ -15,7 +15,7 @@ interface ResearchComposerProps {
 }
 
 export const ResearchComposer: React.FC<ResearchComposerProps> = ({
-  initialPrompt = 'How do post-translational modifications regulate TDP-43 phase separation in neurodegenerative phenotypes?',
+  initialPrompt = '',
   onStartResearch,
   isLoading = false,
 }) => {
