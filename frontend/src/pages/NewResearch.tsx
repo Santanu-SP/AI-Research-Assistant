@@ -23,9 +23,7 @@ const formatUpdatedAt = (value: string): string =>
 
 export const NewResearch: React.FC = () => {
   const navigate = useNavigate();
-  const [selectedPrompt, setSelectedPrompt] = useState(
-    'How do post-translational modifications regulate TDP-43 phase separation in neurodegenerative phenotypes?'
-  );
+  const [selectedPrompt, setSelectedPrompt] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [recentResearch, setRecentResearch] = useState<ResearchResponse[]>([]);
