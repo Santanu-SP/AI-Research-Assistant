@@ -198,8 +198,8 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
           <div className="mt-4 p-3 bg-[#fafaf8] border border-[#e5e7e4] rounded-lg text-xs text-[#6b706c] flex items-start gap-2">
             <Check className="w-4 h-4 text-[#163328] shrink-0 mt-0.5" />
             <div>
-              <span className="font-medium text-[#181a18]">Local demonstration:</span>{' '}
-              Selected files are added only to this mock workspace and are not sent to a server.
+              <span className="font-medium text-[#181a18]">Secure upload:</span>{' '}
+              Documents are processed securely and used only for your research.
             </div>
           </div>
         </div>
