@@ -118,7 +118,7 @@ export const ResearchComposer: React.FC<ResearchComposerProps> = ({
             }`}
           >
             <FileText className={`w-3.5 h-3.5 ${includeDocs ? 'text-[#163328]' : 'text-[#929792]'}`} />
-            <span>Documents · 3</span>
+            <span>Documents</span>
           </button>
 
           {/* Research Depth Dropdown Trigger */}
