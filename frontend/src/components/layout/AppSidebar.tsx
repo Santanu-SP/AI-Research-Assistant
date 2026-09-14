@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   Compass,
@@ -6,6 +6,8 @@ import {
   FileText,
   Settings,
 } from 'lucide-react';
+import { researchService } from '../../services/research.service';
+import { ResearchResponse } from '../../types/research';
 
 interface AppSidebarProps {
   className?: string;
@@ -13,33 +15,18 @@ interface AppSidebarProps {
 
 export const AppSidebar: React.FC<AppSidebarProps> = ({ className = '' }) => {
   const location = useLocation();
+  const [recentItems, setRecentItems] = useState<ResearchResponse[]>([]);
 
-  const recentItems = [
-    {
-      title: 'How is generative AI changing software development?',
-      path: '/research/res-genai-2025',
-      type: 'report',
-      tooltip: 'View Completed Report',
-    },
-    {
-      title: 'Small Modular Reactor (SMR) Levelized Cost of Energy',
-      path: '/research/res-smr-lcoe',
-      type: 'report',
-      tooltip: 'View Report',
-    },
-    {
-      title: 'CRISPR-Cas9 Field Trials',
-      path: '/research/res-crispr-sorghum/progress',
-      type: 'progress',
-      tooltip: 'Active Researching',
-    },
-    {
-      title: 'Lithium-Sulfur Battery Longevity',
-      path: '/research/res-lis-cathodes',
-      type: 'report',
-      tooltip: 'View Report',
-    },
-  ];
+  useEffect(() => {
+    researchService
+      .listResearch({ limit: 4, offset: 0 })
+      .then((res) => {
+        setRecentItems(res.items);
+      })
+      .catch((err) => {
+        console.error('Failed to load recent research for sidebar:', err);
+      });
+  }, [location.pathname]); // Refresh when navigation changes
 
   return (
     <aside
@@ -135,34 +122,50 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ className = '' }) => {
         </div>
 
         {/* Recent Research Section */}
-        <div className="px-2 mt-3">
-          <div className="uppercase tracking-wider text-[10.5px] text-[#929792] font-semibold px-3 mb-1.5">
-            Recent Research
-          </div>
-          <nav className="flex flex-col gap-0.5">
-            {recentItems.map((item, idx) => {
-              const isActive = location.pathname === item.path;
-              return (
-                <div key={idx} className="relative group/tooltip">
-                  <NavLink
-                    to={item.path}
-                    className={`text-[13px] truncate px-3 py-1.5 rounded-md transition-colors duration-150 block ${
-                      isActive
-                        ? 'bg-[#f1f6f3] text-[#163328] font-medium'
-                        : 'text-[#6b706c] hover:text-[#181a18] hover:bg-[#f5f5f2]'
-                    }`}
-                  >
-                    {item.title}
-                  </NavLink>
-                  {/* Tooltip */}
-                  <div className="pointer-events-none absolute left-[98%] top-1/2 -translate-y-1/2 ml-2 z-50 bg-[#181a18] text-white text-[11px] font-normal px-2.5 py-1 rounded shadow-md whitespace-nowrap opacity-0 group-hover/tooltip:opacity-100 transition-opacity duration-150">
-                    {item.tooltip}
+        {recentItems.length > 0 && (
+          <div className="px-2 mt-3">
+            <div className="uppercase tracking-wider text-[10.5px] text-[#929792] font-semibold px-3 mb-1.5">
+              Recent Research
+            </div>
+            <nav className="flex flex-col gap-0.5">
+              {recentItems.map((item) => {
+                const targetPath =
+                  item.status === 'researching'
+                    ? `/research/${item.id}/progress`
+                    : item.status === 'completed'
+                    ? `/research/${item.id}`
+                    : '/research';
+
+                const tooltipText =
+                  item.status === 'completed'
+                    ? 'View Report'
+                    : item.status === 'researching'
+                    ? 'Active Researching'
+                    : 'View Research';
+
+                const isActive = location.pathname === targetPath;
+                return (
+                  <div key={item.id} className="relative group/tooltip">
+                    <NavLink
+                      to={targetPath}
+                      className={`text-[13px] truncate px-3 py-1.5 rounded-md transition-colors duration-150 block ${
+                        isActive
+                          ? 'bg-[#f1f6f3] text-[#163328] font-medium'
+                          : 'text-[#6b706c] hover:text-[#181a18] hover:bg-[#f5f5f2]'
+                      }`}
+                    >
+                      {item.title}
+                    </NavLink>
+                    {/* Tooltip */}
+                    <div className="pointer-events-none absolute left-[98%] top-1/2 -translate-y-1/2 ml-2 z-50 bg-[#181a18] text-white text-[11px] font-normal px-2.5 py-1 rounded shadow-md whitespace-nowrap opacity-0 group-hover/tooltip:opacity-100 transition-opacity duration-150">
+                      {tooltipText}
+                    </div>
                   </div>
-                </div>
-              );
-            })}
-          </nav>
-        </div>
+                );
+              })}
+            </nav>
+          </div>
+        )}
       </div>
 
       {/* Bottom Profile & Settings */}
@@ -179,14 +182,14 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ className = '' }) => {
         <div className="flex items-center justify-between p-2 rounded-md hover:bg-[#f5f5f2] transition-colors duration-150 cursor-pointer">
           <div className="flex items-center gap-2.5 overflow-hidden">
             <div className="w-8 h-8 rounded-full bg-[#e2e8e4] text-[#163328] font-semibold text-xs flex items-center justify-center border border-[#d0d7d2] shrink-0">
-              EV
+              R
             </div>
             <div className="flex flex-col min-w-0 text-left">
               <span className="text-[13px] font-semibold text-[#181a18] truncate leading-tight">
-                Dr. Elena Vance
+                Researcher
               </span>
               <span className="text-[11px] text-[#929792] truncate leading-tight">
-                Senior Research Fellow
+                Local workspace
               </span>
             </div>
           </div>
