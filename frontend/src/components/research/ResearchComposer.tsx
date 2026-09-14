@@ -15,7 +15,7 @@ interface ResearchComposerProps {
 }
 
 export const ResearchComposer: React.FC<ResearchComposerProps> = ({
-  initialPrompt = 'How do post-translational modifications regulate TDP-43 phase separation in neurodegenerative phenotypes?',
+  initialPrompt = '',
   onStartResearch,
   isLoading = false,
 }) => {
@@ -118,7 +118,7 @@ export const ResearchComposer: React.FC<ResearchComposerProps> = ({
             }`}
           >
             <FileText className={`w-3.5 h-3.5 ${includeDocs ? 'text-[#163328]' : 'text-[#929792]'}`} />
-            <span>Documents · 3</span>
+            <span>Documents</span>
           </button>
 
           {/* Research Depth Dropdown Trigger */}
