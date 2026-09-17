@@ -26,7 +26,9 @@ def test_settings(tmp_path: Path, upload_dir: Path) -> Settings:
         database_url=f"sqlite:///{tmp_path / 'test.db'}",
         cors_origins=["http://localhost:3000"],
         document_upload_dir=upload_dir,
-        document_max_upload_bytes=64,
+        document_max_upload_bytes=1024 * 1024,
+        document_chunk_size=256,
+        document_chunk_overlap=32,
     )
 
 

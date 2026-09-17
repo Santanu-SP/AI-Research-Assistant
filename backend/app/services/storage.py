@@ -12,15 +12,6 @@ MAX_ORIGINAL_FILENAME_LENGTH = 255
 
 SUPPORTED_DOCUMENT_TYPES: dict[str, tuple[DocumentType, frozenset[str]]] = {
     ".pdf": (DocumentType.PDF, frozenset({"application/pdf"})),
-    ".docx": (
-        DocumentType.DOCX,
-        frozenset(
-            {
-                "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            }
-        ),
-    ),
-    ".txt": (DocumentType.TXT, frozenset({"text/plain"})),
 }
 
 
@@ -63,7 +54,7 @@ class LocalDocumentStorage:
         supported = SUPPORTED_DOCUMENT_TYPES.get(extension)
         if supported is None:
             raise AppError(
-                "Supported document types are PDF, DOCX, and TXT",
+                "Only PDF documents are supported",
                 status_code=400,
                 code="unsupported_document_type",
             )
@@ -107,6 +98,11 @@ class LocalDocumentStorage:
             )
         return candidate
 
+    def path_for(self, stored_name: str) -> Path:
+        """Resolve a validated storage key for document processing."""
+
+        return self._path_for(stored_name)
+
     async def save(self, upload: UploadFile, extension: str) -> StoredUpload:
         try:
             self.root.mkdir(parents=True, exist_ok=True)
@@ -139,6 +135,14 @@ class LocalDocumentStorage:
                     status_code=400,
                     code="empty_document",
                 )
+
+            with destination.open("rb") as stored_file:
+                if b"%PDF-" not in stored_file.read(1024):
+                    raise AppError(
+                        "The uploaded file is not a valid PDF",
+                        status_code=400,
+                        code="invalid_pdf_signature",
+                    )
         except AppError:
             destination.unlink(missing_ok=True)
             raise
