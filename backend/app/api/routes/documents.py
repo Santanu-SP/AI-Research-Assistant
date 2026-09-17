@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Query, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, Query, Request, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -19,9 +19,12 @@ DocumentStorage = Annotated[LocalDocumentStorage, Depends(get_document_storage)]
 async def upload_document(
     session: DatabaseSession,
     storage: DocumentStorage,
+    request: Request,
     file: Annotated[UploadFile, File()],
 ) -> DocumentResponse:
-    return await document_service.create_document(session, file, storage)
+    return await document_service.create_document(
+        session, file, storage, request.app.state.settings
+    )
 
 
 @router.get("", response_model=DocumentListResponse)

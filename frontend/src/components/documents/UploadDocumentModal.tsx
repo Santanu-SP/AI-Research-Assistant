@@ -59,11 +59,11 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
   };
 
   const validateAndSetFile = (file: File) => {
-    const validExtensions = ['pdf', 'docx', 'txt'];
+    const validExtensions = ['pdf'];
     const ext = file.name.split('.').pop()?.toLowerCase();
 
     if (!ext || !validExtensions.includes(ext)) {
-      setUploadError('Unsupported file type. Please select a PDF, DOCX, or TXT document.');
+      setUploadError('Unsupported file type. Please select a PDF document.');
       setSelectedFile(null);
       return;
     }
@@ -123,7 +123,7 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
           <input
             ref={fileInputRef}
             type="file"
-            accept=".pdf,.docx,.txt"
+            accept=".pdf"
             onChange={handleFileChange}
             className="hidden"
           />
@@ -142,7 +142,7 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
             }}
             role="button"
             tabIndex={0}
-            aria-label="Choose a PDF, DOCX, or TXT document"
+            aria-label="Choose a PDF document"
             className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-150 ${
               dragOver
                 ? 'border-[#163328] bg-[#f1f6f3]/60 scale-[1.01]'
@@ -180,7 +180,7 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
                   Click to browse or drag and drop document
                 </span>
                 <p className="text-xs text-[#929792] max-w-xs">
-                  Supported formats: PDF, DOCX, TXT
+                  Supported format: PDF
                 </p>
               </div>
             )}

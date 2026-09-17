@@ -3,6 +3,8 @@ import React from 'react';
 export type BadgeStatus =
   | 'completed'
   | 'ready'
+  | 'uploaded'
+  | 'indexed'
   | 'researching'
   | 'processing'
   | 'draft'
@@ -26,10 +28,14 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
   let showPulse = false;
   let defaultLabel = 'Draft';
 
-  if (normalized === 'completed' || normalized === 'ready') {
+  if (normalized === 'completed' || normalized === 'ready' || normalized === 'indexed') {
     bgClass = 'bg-[#f1f6f3] text-[#173d31] border-[#d8e5df]';
     dotClass = 'bg-[#173d31]';
-    defaultLabel = normalized === 'completed' ? 'Completed' : 'Ready';
+    defaultLabel = normalized === 'completed' ? 'Completed' : normalized === 'indexed' ? 'Indexed' : 'Ready';
+  } else if (normalized === 'uploaded') {
+    bgClass = 'bg-[#f3f4f6] text-[#6b706c] border-[#e5e7e4]';
+    dotClass = 'bg-[#929792]';
+    defaultLabel = 'Uploaded';
   } else if (normalized === 'researching' || normalized === 'processing') {
     bgClass = 'bg-[#fef3c7] text-[#b45309] border-[#fde68a]';
     dotClass = 'bg-[#b45309]';

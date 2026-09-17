@@ -126,8 +126,9 @@ export const DocumentsPage: React.FC = () => {
                 className="bg-[#fafaf8] border border-[#e5e7e4] text-[#6b706c] hover:text-[#181a18] text-xs rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#163328]"
               >
                 <option value="all">All statuses</option>
-                <option value="ready">Ready</option>
+                <option value="uploaded">Uploaded</option>
                 <option value="processing">Processing</option>
+                <option value="indexed">Indexed</option>
                 <option value="failed">Failed</option>
               </select>
             </div>

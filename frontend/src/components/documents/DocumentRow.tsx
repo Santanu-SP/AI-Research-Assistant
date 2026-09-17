@@ -61,7 +61,7 @@ export const DocumentRow: React.FC<DocumentRowProps> = ({
         <StatusBadge status={document.status} />
 
         <div className="flex items-center gap-2">
-          {document.status === 'ready' && onUseInResearch && (
+          {document.status === 'indexed' && onUseInResearch && (
             <button
               type="button"
               onClick={() => onUseInResearch(document)}

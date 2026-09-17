@@ -1,4 +1,4 @@
-export type DocumentStatus = 'ready' | 'processing' | 'failed';
+export type DocumentStatus = 'uploaded' | 'processing' | 'indexed' | 'failed';
 export type DocumentFormat = 'pdf' | 'docx' | 'txt';
 
 export interface Document {

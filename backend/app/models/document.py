@@ -1,9 +1,24 @@
+from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import BigInteger, Enum, String, Uuid
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import (
+    BigInteger,
+    CheckConstraint,
+    Enum,
+    ForeignKey,
+    Integer,
+    JSON,
+    String,
+    Text,
+    UniqueConstraint,
+    Uuid,
+    func,
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.time import utc_now
 from app.db.base import Base, TimestampMixin
+from app.db.types import UTCDateTime
 from app.domain.documents import DocumentStatus, DocumentType
 
 
@@ -49,8 +64,55 @@ class Document(TimestampMixin, Base):
     size: Mapped[int] = mapped_column(BigInteger, nullable=False)
     status: Mapped[DocumentStatus] = mapped_column(
         document_status_enum,
-        default=DocumentStatus.READY,
-        server_default=DocumentStatus.READY.value,
+        default=DocumentStatus.UPLOADED,
+        server_default=DocumentStatus.UPLOADED.value,
         nullable=False,
         index=True,
     )
+    title: Mapped[str | None] = mapped_column(String(1000))
+    authors: Mapped[list[str] | None] = mapped_column(JSON)
+    doi: Mapped[str | None] = mapped_column(String(255), index=True)
+    page_count: Mapped[int | None] = mapped_column(Integer)
+    uploaded_at: Mapped[datetime] = mapped_column(
+        UTCDateTime(), default=utc_now, server_default=func.now(), nullable=False
+    )
+    processing_error: Mapped[str | None] = mapped_column(Text)
+
+    chunks: Mapped[list["DocumentChunk"]] = relationship(
+        back_populates="document",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="DocumentChunk.chunk_index",
+    )
+
+    @property
+    def chunk_count(self) -> int:
+        return len(self.chunks)
+
+
+class DocumentChunk(TimestampMixin, Base):
+    """Page-aware text ready for embedding during the next pipeline phase."""
+
+    __tablename__ = "document_chunks"
+    __table_args__ = (
+        CheckConstraint("page >= 1", name="ck_document_chunks_page_positive"),
+        CheckConstraint(
+            "chunk_index >= 0", name="ck_document_chunks_index_nonnegative"
+        ),
+        UniqueConstraint(
+            "document_id", "chunk_index", name="uq_document_chunks_document_index"
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid4
+    )
+    document_id: Mapped[UUID] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    page: Mapped[int] = mapped_column(Integer, nullable=False)
+    section: Mapped[str | None] = mapped_column(String(500))
+    chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    document: Mapped[Document] = relationship(back_populates="chunks")
