@@ -4,6 +4,7 @@ import { TopBar } from '../components/layout/TopBar';
 import { DocumentRow } from '../components/documents/DocumentRow';
 import { UploadDocumentModal } from '../components/documents/UploadDocumentModal';
 import { EmptyState } from '../components/common/EmptyState';
+import { ErrorState } from '../components/common/ErrorState';
 import { PrimaryButton } from '../components/common/PrimaryButton';
 import { CenteredLoadingState } from '../components/common/LoadingState';
 import { documentsService } from '../services/documents.service';
@@ -19,15 +20,19 @@ export const DocumentsPage: React.FC = () => {
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
 
   useEffect(() => {
     const timer = setTimeout(() => {
       loadDocuments();
     }, 300);
     return () => clearTimeout(timer);
-  }, [searchQuery, selectedFormat, selectedStatus]);
+  }, [searchQuery, selectedFormat, selectedStatus, retryKey]);
 
   const loadDocuments = async () => {
+    setIsLoading(true);
+    setLoadError(null);
     try {
       const response = await documentsService.getDocuments({
         search: searchQuery || undefined,
@@ -36,6 +41,10 @@ export const DocumentsPage: React.FC = () => {
       });
       setDocuments(response.items);
       setTotalDocuments(response.total);
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : 'Failed to load documents');
+      setDocuments([]);
+      setTotalDocuments(0);
     } finally {
       setIsLoading(false);
     }
@@ -137,6 +146,24 @@ export const DocumentsPage: React.FC = () => {
           {/* Document Rows List */}
           {isLoading ? (
             <CenteredLoadingState label="Loading workspace documents…" />
+          ) : loadError ? (
+            <ErrorState
+              title="Failed to load documents"
+              message={loadError}
+              onRetry={() => setRetryKey((prev) => prev + 1)}
+            />
+          ) : documents.length === 0 && (searchQuery || selectedFormat !== 'all' || selectedStatus !== 'all') ? (
+            <EmptyState
+              icon={FolderUp}
+              title="No documents found"
+              description="Adjust your filters or search query to find documents."
+              primaryActionLabel="Clear filters"
+              onPrimaryAction={() => {
+                setSearchQuery('');
+                setSelectedFormat('all');
+                setSelectedStatus('all');
+              }}
+            />
           ) : documents.length === 0 ? (
             <EmptyState
               icon={FolderUp}
