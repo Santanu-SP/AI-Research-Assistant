@@ -8,6 +8,7 @@ class DocumentType(StrEnum):
 
 
 class DocumentStatus(StrEnum):
-    READY = "ready"
+    UPLOADED = "uploaded"
     PROCESSING = "processing"
+    INDEXED = "indexed"
     FAILED = "failed"

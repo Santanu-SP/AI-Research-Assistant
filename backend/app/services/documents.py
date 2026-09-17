@@ -1,14 +1,22 @@
+import logging
 from uuid import UUID
 
 from fastapi import UploadFile
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.core.config import Settings
 from app.core.errors import AppError
 from app.domain.documents import DocumentStatus, DocumentType
-from app.models.document import Document
+from app.models.document import Document, DocumentChunk
+from app.services.pdf_extraction import PdfExtractionError, extract_pdf
 from app.services.storage import LocalDocumentStorage
+from app.services.text_processing import chunk_pages
+
+
+logger = logging.getLogger(__name__)
 
 
 def _commit(session: Session, error_message: str) -> None:
@@ -27,6 +35,7 @@ async def create_document(
     session: Session,
     upload: UploadFile,
     storage: LocalDocumentStorage,
+    settings: Settings,
 ) -> Document:
     metadata = storage.validate(upload)
     stored = await storage.save(upload, metadata.extension)
@@ -36,7 +45,7 @@ async def create_document(
         file_type=metadata.file_type,
         mime_type=metadata.mime_type,
         size=stored.size,
-        status=DocumentStatus.READY,
+        status=DocumentStatus.UPLOADED,
     )
     session.add(document)
 
@@ -54,7 +63,66 @@ async def create_document(
             ) from cleanup_error
         raise
 
-    return document
+    document.status = DocumentStatus.PROCESSING
+    _commit(session, "The document processing status could not be saved")
+
+    try:
+        extracted = await run_in_threadpool(
+            extract_pdf, storage.path_for(document.stored_name)
+        )
+        prepared_chunks = chunk_pages(
+            document.id,
+            extracted.pages,
+            chunk_size=settings.document_chunk_size,
+            overlap=settings.document_chunk_overlap,
+        )
+        if not prepared_chunks:
+            raise PdfExtractionError("The PDF contains no extractable text")
+
+        document.title = extracted.title
+        document.authors = extracted.authors
+        document.doi = extracted.doi
+        document.page_count = extracted.page_count
+        document.processing_error = None
+        document.chunks = [
+            DocumentChunk(
+                id=chunk.id,
+                document_id=chunk.document_id,
+                text=chunk.text,
+                page=chunk.page,
+                section=chunk.section,
+                chunk_index=chunk.chunk_index,
+            )
+            for chunk in prepared_chunks
+        ]
+        document.status = DocumentStatus.INDEXED
+        _commit(session, "The processed document could not be saved")
+        session.refresh(document)
+        logger.info(
+            "Indexed document %s with %d pages and %d chunks",
+            document.id,
+            extracted.page_count,
+            len(prepared_chunks),
+        )
+        return document
+    except PdfExtractionError as exc:
+        session.rollback()
+        failed_document = session.get(Document, document.id)
+        if failed_document is None:
+            raise AppError(
+                "The document processing failure could not be recorded",
+                status_code=500,
+                code="document_persistence_error",
+            ) from exc
+        failed_document.status = DocumentStatus.FAILED
+        failed_document.processing_error = str(exc)
+        _commit(session, "The document processing failure could not be saved")
+        logger.warning("Document %s failed processing: %s", document.id, exc)
+        raise AppError(
+            str(exc),
+            status_code=422,
+            code="pdf_processing_failed",
+        ) from exc
 
 
 def list_documents(
