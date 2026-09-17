@@ -37,11 +37,11 @@ This repository currently contains:
 - SQLAlchemy 2.x database and session infrastructure
 - Alembic migration infrastructure
 - persistent research CRUD with filtering, pagination, and soft archiving
-- safe local document upload and metadata management
+- safe PDF upload, metadata extraction, normalization, and page-aware chunk storage
 - the main project, paper, and answer states from the PRD
 - a small test suite for the initial API contract
 
-Document content processing, research execution, search, retrieval, model providers, and authentication are not implemented yet.
+Research execution, semantic retrieval, model providers, and authentication are not implemented yet. Document chunks intentionally do not contain embeddings until the retrieval phase.
 
 ## Local setup
 
@@ -77,12 +77,12 @@ Example response:
 
 ### Document management
 
-- `POST /api/v1/documents` validates and stores one PDF, DOCX, or TXT upload.
+- `POST /api/v1/documents` validates, stores, extracts, normalizes, and chunks one PDF upload.
 - `GET /api/v1/documents` lists document metadata with search, status, type, and pagination filters.
 - `GET /api/v1/documents/{document_id}` retrieves document metadata without exposing its storage path.
 - `DELETE /api/v1/documents/{document_id}` removes the stored file and metadata.
 
-Uploaded files are stored under `DOCUMENT_UPLOAD_DIR` and are ignored by Git. The default maximum upload size is 25 MiB. This phase does not parse, extract, index, or otherwise process document content.
+Uploaded files are stored under `DOCUMENT_UPLOAD_DIR` and are ignored by Git. The default maximum upload size is 25 MiB. Page-aware chunks and available PDF metadata are persisted; missing metadata remains null. Chunk size and overlap are controlled by `DOCUMENT_CHUNK_SIZE` and `DOCUMENT_CHUNK_OVERLAP`.
 
 ## Product principles
 
