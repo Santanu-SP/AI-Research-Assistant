@@ -14,12 +14,14 @@ interface StatusBadgeProps {
   status: BadgeStatus | string;
   label?: string;
   size?: 'sm' | 'md';
+  title?: string;
 }
 
 export const StatusBadge: React.FC<StatusBadgeProps> = ({
   status,
   label,
   size = 'md',
+  title,
 }) => {
   const normalized = status.toLowerCase();
 
@@ -52,6 +54,7 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
 
   return (
     <span
+      title={title}
       className={`inline-flex items-center gap-1.5 font-medium rounded-full border ${bgClass} ${paddingClass} tracking-normal`}
     >
       <span

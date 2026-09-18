@@ -30,9 +30,11 @@ export const DocumentsPage: React.FC = () => {
     return () => clearTimeout(timer);
   }, [searchQuery, selectedFormat, selectedStatus, retryKey]);
 
-  const loadDocuments = async () => {
-    setIsLoading(true);
-    setLoadError(null);
+  const loadDocuments = async (silent = false) => {
+    if (!silent) {
+      setIsLoading(true);
+      setLoadError(null);
+    }
     try {
       const response = await documentsService.getDocuments({
         search: searchQuery || undefined,
@@ -42,13 +44,32 @@ export const DocumentsPage: React.FC = () => {
       setDocuments(response.items);
       setTotalDocuments(response.total);
     } catch (error) {
-      setLoadError(error instanceof Error ? error.message : 'Failed to load documents');
-      setDocuments([]);
-      setTotalDocuments(0);
+      if (!silent) {
+        setLoadError(error instanceof Error ? error.message : 'Failed to load documents');
+        setDocuments([]);
+        setTotalDocuments(0);
+      }
     } finally {
-      setIsLoading(false);
+      if (!silent) {
+        setIsLoading(false);
+      }
     }
   };
+
+  // Poll for status updates if any document is processing
+  useEffect(() => {
+    const hasProcessingDocs = documents.some(
+      (doc) => doc.status === 'uploaded' || doc.status === 'processing'
+    );
+
+    if (!hasProcessingDocs) return;
+
+    const intervalId = setInterval(() => {
+      loadDocuments(true);
+    }, 4000);
+
+    return () => clearInterval(intervalId);
+  }, [documents, searchQuery, selectedFormat, selectedStatus]);
 
   const handleUploadFile = async (file: File) => {
     await documentsService.uploadDocument(file);
@@ -56,8 +77,18 @@ export const DocumentsPage: React.FC = () => {
   };
 
   const handleDeleteDocument = async (id: string) => {
-    await documentsService.deleteDocument(id);
-    await loadDocuments();
+    if (!window.confirm('Are you sure you want to delete this document? This action cannot be undone.')) {
+      return;
+    }
+    
+    setIsLoading(true);
+    try {
+      await documentsService.deleteDocument(id);
+      await loadDocuments();
+    } catch (error) {
+      alert('Failed to delete document. Please try again.');
+      setIsLoading(false);
+    }
   };
 
   const handleUseInResearch = () => {

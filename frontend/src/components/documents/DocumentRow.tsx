@@ -41,24 +41,58 @@ export const DocumentRow: React.FC<DocumentRowProps> = ({
           <FileText className="w-5 h-5 stroke-[1.75]" />
         </div>
 
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h4 className="text-[13.5px] font-semibold text-[#181a18] truncate leading-tight group-hover:text-[#163328] transition-colors">
-            {document.name}
+            {document.title || document.name}
           </h4>
+          
+          {document.title && document.title !== document.name && (
+            <div className="text-[11px] text-[#929792] truncate mt-0.5">
+              {document.name}
+            </div>
+          )}
 
-          <div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-[#6b706c]">
+          <div className="flex flex-wrap items-center gap-1.5 mt-1.5 text-xs text-[#6b706c]">
             <span className="font-medium text-[#181a18] uppercase">{document.type}</span>
             <span className="text-[#929792]">·</span>
-            <span>Size: {formatSize(document.size)}</span>
+            <span>{formatSize(document.size)}</span>
             <span className="text-[#929792]">·</span>
-            <span>{new Date(document.created_at).toLocaleDateString()}</span>
+            <span>{new Date(document.uploaded_at || document.created_at).toLocaleDateString()}</span>
+            
+            {document.page_count ? (
+              <>
+                <span className="text-[#929792]">·</span>
+                <span>{document.page_count} pages</span>
+              </>
+            ) : null}
+            
+            {document.authors && document.authors.length > 0 ? (
+              <>
+                <span className="text-[#929792]">·</span>
+                <span className="truncate max-w-[180px]" title={document.authors.join(', ')}>
+                  By {document.authors.join(', ')}
+                </span>
+              </>
+            ) : null}
+
+            {document.doi ? (
+              <>
+                <span className="text-[#929792]">·</span>
+                <span className="truncate max-w-[120px]" title={document.doi}>
+                  DOI: {document.doi}
+                </span>
+              </>
+            ) : null}
           </div>
         </div>
       </div>
 
       {/* Status & Actions */}
       <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-[#f5f5f2]">
-        <StatusBadge status={document.status} />
+        <StatusBadge 
+          status={document.status} 
+          title={document.status === 'failed' && document.processing_error ? document.processing_error : undefined}
+        />
 
         <div className="flex items-center gap-2">
           {document.status === 'indexed' && onUseInResearch && (
