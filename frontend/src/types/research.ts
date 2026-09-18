@@ -100,3 +100,33 @@ export interface ResearchProgress {
   ingestingQueueCount: number;
 }
 
+// Week 2: Research API Types
+
+export interface ResearchQueryRequest {
+  query: string;
+  document_ids?: string[];
+  options?: Record<string, any>;
+}
+
+export interface Citation {
+  citation_id: string;
+  document_id: string;
+  paper_title: string;
+  doi?: string;
+  page?: number;
+  section?: string;
+  excerpt: string;
+}
+
+export interface EvidenceSource {
+  document_id: string;
+  title: string;
+  authors?: string[];
+  relevance_score?: number;
+}
+
+export interface ResearchQueryResponse {
+  answer: string;
+  citations: Citation[];
+  evidence_sources: EvidenceSource[];
+}
