@@ -63,8 +63,9 @@ def _commit(session: Session) -> None:
         ) from exc
 
 
-def create_research(session: Session, payload: ResearchCreate) -> Research:
+def create_research(session: Session, payload: ResearchCreate, user_id: UUID | None = None) -> Research:
     research = Research(
+        user_id=user_id,
         question=payload.question,
         title=payload.title or build_fallback_title(payload.question),
         domain=payload.domain,
@@ -87,8 +88,11 @@ def list_research(
     limit: int,
     offset: int,
     include_archived: bool,
+    user_id: UUID | None = None,
 ) -> tuple[list[Research], int]:
     filters = []
+    if user_id is not None:
+        filters.append(Research.user_id == user_id)
     normalized_search = search.strip() if search else None
     normalized_domain = domain.strip() if domain else None
 
@@ -120,12 +124,12 @@ def list_research(
     return items, total or 0
 
 
-def get_research(session: Session, research_id: UUID) -> Research:
+def get_research(session: Session, research_id: UUID, user_id: UUID | None = None) -> Research:
+    filters = [Research.id == research_id, Research.archived_at.is_(None)]
+    if user_id is not None:
+        filters.append(Research.user_id == user_id)
     research = session.scalar(
-        select(Research).where(
-            Research.id == research_id,
-            Research.archived_at.is_(None),
-        )
+        select(Research).where(*filters)
     )
     if research is None:
         raise AppError(
@@ -192,8 +196,9 @@ def _build_progress_steps(research: Research) -> list[ResearchProgressStep]:
 def get_research_progress(
     session: Session,
     research_id: UUID,
+    user_id: UUID | None = None,
 ) -> ResearchProgressResponse:
-    research = get_research(session, research_id)
+    research = get_research(session, research_id, user_id)
     current_step_index = (
         next(
             index
@@ -360,8 +365,9 @@ def update_research(
     session: Session,
     research_id: UUID,
     payload: ResearchUpdate,
+    user_id: UUID | None = None,
 ) -> Research:
-    research = get_research(session, research_id)
+    research = get_research(session, research_id, user_id)
     updates = payload.model_dump(exclude_unset=True)
     for field, value in updates.items():
         setattr(research, field, value)
@@ -372,8 +378,8 @@ def update_research(
     return research
 
 
-def archive_research(session: Session, research_id: UUID) -> None:
-    research = get_research(session, research_id)
+def archive_research(session: Session, research_id: UUID, user_id: UUID | None = None) -> None:
+    research = get_research(session, research_id, user_id)
     archived_at = utc_now()
     research.archived_at = archived_at
     research.updated_at = archived_at

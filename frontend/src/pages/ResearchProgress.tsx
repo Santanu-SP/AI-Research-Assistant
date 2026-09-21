@@ -4,7 +4,6 @@ import { TopBar } from '../components/layout/TopBar';
 import { ProgressStepper } from '../components/research/ProgressStepper';
 import { progressService } from '../services/progress.service';
 import { ResearchProgressResponse } from '../types/progress';
-import { Ban } from 'lucide-react';
 import { CenteredLoadingState } from '../components/common/LoadingState';
 import { ErrorState } from '../components/common/ErrorState';
 import { ApiError } from '../services/api';
@@ -88,26 +87,16 @@ export const ResearchProgressPage: React.FC = () => {
               {progress.status === 'researching' && (
                 <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse" />
               )}
-              <span>{isCompleted ? 'Completed Investigation' : isFailed ? 'Failed Investigation' : 'Active Investigation'}</span>
+              <span>{isCompleted ? 'Completed Investigation' : isFailed ? 'Failed Investigation' : progress.status === 'draft' ? 'Draft Investigation' : 'Active Investigation'}</span>
             </div>
           </div>
         }
         rightActions={
           <div className="flex items-center gap-3">
-            {progress.status === 'researching' && (
-              <button
-                type="button"
-                onClick={() => navigate('/research')}
-                className="text-xs text-[#6b706c] hover:text-[#b91c1c] border border-[#e5e7e4] hover:border-[#fecaca] hover:bg-[#fee2e2]/30 px-2.5 py-1 rounded-md transition-colors flex items-center gap-1 cursor-pointer"
-              >
-                <Ban className="w-3 h-3" />
-                <span>Cancel research</span>
-              </button>
-            )}
             {isCompleted && (
               <button
                 type="button"
-                onClick={() => navigate(`/research/${progress.id}/report`)}
+                onClick={() => navigate(`/research/${progress.id}`)}
                 className="bg-[#163328] hover:bg-[#1a3d30] text-white px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
               >
                 View Report

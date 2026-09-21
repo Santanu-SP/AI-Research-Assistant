@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { X, UploadCloud, Check, AlertCircle } from 'lucide-react';
 import { PrimaryButton } from '../common/PrimaryButton';
+import { apiErrorMessage } from '../../services/api';
 
 interface UploadDocumentModalProps {
   isOpen: boolean;
@@ -80,8 +81,8 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
       setSelectedFile(null);
       setIsUploading(false);
       onClose();
-    } catch {
-      setUploadError('Failed to upload document. Please try again.');
+    } catch (error) {
+      setUploadError(apiErrorMessage(error, 'Failed to upload document. Please try again.'));
       setIsUploading(false);
     }
   };
