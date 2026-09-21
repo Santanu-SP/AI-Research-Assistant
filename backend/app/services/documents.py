@@ -36,10 +36,12 @@ async def create_document(
     upload: UploadFile,
     storage: LocalDocumentStorage,
     settings: Settings,
+    user_id: UUID,
 ) -> Document:
     metadata = storage.validate(upload)
     stored = await storage.save(upload, metadata.extension)
     document = Document(
+        user_id=user_id,
         name=metadata.original_name,
         stored_name=stored.stored_name,
         file_type=metadata.file_type,
@@ -133,8 +135,9 @@ def list_documents(
     file_type: DocumentType | None,
     limit: int,
     offset: int,
+    user_id: UUID,
 ) -> tuple[list[Document], int]:
-    filters = []
+    filters = [Document.user_id == user_id]
     normalized_search = search.strip() if search else None
     if normalized_search:
         filters.append(Document.name.icontains(normalized_search, autoescape=True))
@@ -157,8 +160,8 @@ def list_documents(
     return documents, total or 0
 
 
-def get_document(session: Session, document_id: UUID) -> Document:
-    document = session.get(Document, document_id)
+def get_document(session: Session, document_id: UUID, user_id: UUID) -> Document:
+    document = session.scalar(select(Document).where(Document.id == document_id, Document.user_id == user_id))
     if document is None:
         raise AppError(
             "Document not found",
@@ -172,8 +175,9 @@ def delete_document(
     session: Session,
     document_id: UUID,
     storage: LocalDocumentStorage,
+    user_id: UUID,
 ) -> None:
-    document = get_document(session, document_id)
+    document = get_document(session, document_id, user_id)
     storage.delete(document.stored_name)
     session.delete(document)
     _commit(session, "The document metadata could not be deleted")

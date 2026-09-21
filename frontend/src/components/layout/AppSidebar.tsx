@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   Compass,
   FolderOpen,
   FileText,
-  Settings,
+  LogOut,
 } from 'lucide-react';
 import { researchService } from '../../services/research.service';
 import { ResearchResponse } from '../../types/research';
+import { useAuth } from '../../app/AuthContext';
 
 interface AppSidebarProps {
   className?: string;
@@ -15,7 +16,11 @@ interface AppSidebarProps {
 
 export const AppSidebar: React.FC<AppSidebarProps> = ({ className = '' }) => {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user, logout } = useAuth();
   const [recentItems, setRecentItems] = useState<ResearchResponse[]>([]);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [logoutError, setLogoutError] = useState<string | null>(null);
 
   useEffect(() => {
     researchService
@@ -134,7 +139,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ className = '' }) => {
                     ? `/research/${item.id}/progress`
                     : item.status === 'completed'
                     ? `/research/${item.id}`
-                    : '/research';
+                    : `/research/${item.id}/progress`;
 
                 const tooltipText =
                   item.status === 'completed'
@@ -170,30 +175,34 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ className = '' }) => {
 
       {/* Bottom Profile & Settings */}
       <div className="border-t border-[#e5e7e4] p-2">
-        <button
-          type="button"
-          onClick={() => {}}
-          className="w-full text-[#6b706c] hover:text-[#181a18] hover:bg-[#f5f5f2] px-3 py-1.5 rounded-md flex items-center gap-2.5 text-[13px] mb-1.5 transition-colors duration-150"
-        >
-          <Settings className="w-[18px] h-[18px] shrink-0 text-[#929792]" />
-          <span>Settings</span>
-        </button>
+        {profileOpen && <div className="mb-2 rounded-md border border-[#e5e7e4] bg-white p-2">
+          <p className="px-2 py-1 text-[11px] text-[#6b706c] truncate">{user?.email}</p>
+          <button type="button" onClick={() => {
+            setLogoutError(null);
+            void logout().then(() => navigate('/login', { replace: true })).catch(() => {
+              setLogoutError('Could not reach the server. Please try again.');
+            });
+          }} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs text-[#181a18] hover:bg-[#f5f5f2]">
+            <LogOut className="w-4 h-4" /> Logout
+          </button>
+          {logoutError && <p role="alert" className="text-xs text-[#b91c1c] px-2">{logoutError}</p>}
+        </div>}
 
-        <div className="flex items-center justify-between p-2 rounded-md hover:bg-[#f5f5f2] transition-colors duration-150 cursor-pointer">
+        <button type="button" aria-expanded={profileOpen} onClick={() => setProfileOpen((open) => !open)} className="w-full flex items-center justify-between p-2 rounded-md hover:bg-[#f5f5f2] transition-colors duration-150">
           <div className="flex items-center gap-2.5 overflow-hidden">
             <div className="w-8 h-8 rounded-full bg-[#e2e8e4] text-[#163328] font-semibold text-xs flex items-center justify-center border border-[#d0d7d2] shrink-0">
-              R
+              {user?.name.slice(0, 1).toUpperCase() || 'R'}
             </div>
             <div className="flex flex-col min-w-0 text-left">
               <span className="text-[13px] font-semibold text-[#181a18] truncate leading-tight">
-                Researcher
+                {user?.name || 'Researcher'}
               </span>
               <span className="text-[11px] text-[#929792] truncate leading-tight">
-                Local workspace
+                Account
               </span>
             </div>
           </div>
-        </div>
+        </button>
       </div>
     </aside>
   );

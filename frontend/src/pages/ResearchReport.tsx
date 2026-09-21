@@ -51,10 +51,14 @@ export const ResearchReportPage: React.FC = () => {
     }
   };
 
-  const handleShare = () => {
-    navigator.clipboard.writeText(window.location.href);
-    setCopiedShare(true);
-    setTimeout(() => setCopiedShare(false), 2000);
+  const handleShare = async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setCopiedShare(true);
+      setTimeout(() => setCopiedShare(false), 2000);
+    } catch {
+      setCopiedShare(false);
+    }
   };
 
   const handleExport = () => {
@@ -81,6 +85,7 @@ export const ResearchReportPage: React.FC = () => {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   if (error) {
@@ -151,12 +156,12 @@ export const ResearchReportPage: React.FC = () => {
 
             <button
               type="button"
-              onClick={handleShare}
+              onClick={() => void handleShare()}
               className="text-xs text-[#6b706c] hover:text-[#181a18] border border-[#e5e7e4] hover:bg-[#f5f5f2] px-2.5 py-1.5 rounded-md flex items-center gap-1 transition-colors cursor-pointer"
             >
               <Share2 className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">
-                {copiedShare ? 'Link Copied!' : 'Share'}
+                {copiedShare ? 'Link copied' : 'Copy link'}
               </span>
             </button>
 
@@ -254,6 +259,7 @@ export const ResearchReportPage: React.FC = () => {
 
         <aside className="hidden xl:block w-[400px] shrink-0 h-full">
           <SourcesPanel
+            reportId={report.id}
             sources={sources}
             selectedSourceNumber={selectedSourceNumber}
             onSelectSource={setSelectedSourceNumber}
@@ -269,6 +275,7 @@ export const ResearchReportPage: React.FC = () => {
           />
           <div className="relative ml-auto w-full max-w-sm bg-white h-full shadow-2xl z-10 animate-in slide-in-from-right duration-200">
             <SourcesPanel
+              reportId={report.id}
               sources={sources}
               selectedSourceNumber={selectedSourceNumber}
               onSelectSource={setSelectedSourceNumber}

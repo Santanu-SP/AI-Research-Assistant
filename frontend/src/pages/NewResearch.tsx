@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { TopBar } from '../components/layout/TopBar';
 import { ResearchComposer } from '../components/research/ResearchComposer';
 import { StatusBadge } from '../components/common/StatusBadge';
@@ -23,6 +23,7 @@ const formatUpdatedAt = (value: string): string =>
 
 export const NewResearch: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [selectedPrompt, setSelectedPrompt] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -30,6 +31,11 @@ export const NewResearch: React.FC = () => {
   const [recentTotal, setRecentTotal] = useState(0);
   const [isRecentLoading, setIsRecentLoading] = useState(true);
   const [recentError, setRecentError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setSelectedPrompt('');
+    setCreateError(null);
+  }, [location.key]);
 
   const loadRecentResearch = useCallback(async () => {
     setIsRecentLoading(true);
@@ -54,8 +60,6 @@ export const NewResearch: React.FC = () => {
   const handleStartResearch = async (payload: {
     question: string;
     depth: ResearchDepth;
-    includeWeb: boolean;
-    includeDocs: boolean;
   }) => {
     setIsSubmitting(true);
     setCreateError(null);
@@ -100,13 +104,14 @@ export const NewResearch: React.FC = () => {
               What would you like to investigate?
             </h1>
             <p className="text-sm sm:text-[15px] text-[#6b706c] max-w-2xl leading-relaxed">
-              Synthesize scholarly literature, market filings, and internal documents into a verified research memo with complete provenance.
+              Save a research question and organize your investigation. Automated research is coming in a later release.
             </p>
           </div>
 
           {/* Research Composer */}
           <div className="mb-10">
             <ResearchComposer
+              key={location.key}
               initialPrompt={selectedPrompt}
               onStartResearch={handleStartResearch}
               isLoading={isSubmitting}
@@ -184,7 +189,7 @@ export const NewResearch: React.FC = () => {
                     ? `/research/${item.id}/progress`
                     : item.status === 'completed'
                       ? `/research/${item.id}`
-                      : '/research';
+                      : `/research/${item.id}/progress`;
 
                 return (
                   <Link

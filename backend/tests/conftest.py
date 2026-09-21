@@ -67,4 +67,18 @@ def test_app(test_settings: Settings) -> Generator[FastAPI, None, None]:
 @pytest.fixture
 def client(test_app: FastAPI) -> Generator[TestClient, None, None]:
     with TestClient(test_app) as test_client:
+        registered = test_client.post("/api/v1/auth/register", json={
+            "name": "Test Researcher", "email": "researcher@example.com", "password": "test-password-123",
+        })
+        assert registered.status_code == 201
+        logged_in = test_client.post("/api/v1/auth/login", json={
+            "email": "researcher@example.com", "password": "test-password-123",
+        })
+        assert logged_in.status_code == 200
+        yield test_client
+
+
+@pytest.fixture
+def anonymous_client(test_app: FastAPI) -> Generator[TestClient, None, None]:
+    with TestClient(test_app) as test_client:
         yield test_client

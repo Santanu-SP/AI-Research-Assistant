@@ -5,18 +5,18 @@ export interface Document {
   id: string;
   name: string;
   type: DocumentFormat;
-  mime_type: string;
+  mimeType: string;
   size: number;
   status: DocumentStatus;
   title?: string | null;
   authors?: string[] | null;
   doi?: string | null;
-  page_count?: number | null;
-  uploaded_at: string;
-  processing_error?: string | null;
-  chunk_count?: number;
-  created_at: string;
-  updated_at: string;
+  pageCount?: number | null;
+  uploadedAt: string;
+  processingError?: string | null;
+  chunkCount?: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface DocumentListResponse {

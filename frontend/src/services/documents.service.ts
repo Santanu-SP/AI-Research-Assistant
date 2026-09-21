@@ -1,5 +1,5 @@
 import { Document, DocumentListResponse } from '../types/document';
-import { apiRequest, API_BASE_URL } from './api';
+import { apiRequest } from './api';
 
 export const documentsService = {
   /**
@@ -34,21 +34,10 @@ export const documentsService = {
     const formData = new FormData();
     formData.append('file', file);
 
-    const url = `${API_BASE_URL}/documents`;
-    const response = await fetch(url, {
+    return apiRequest<Document>('/documents', {
       method: 'POST',
       body: formData,
-      headers: {
-        'Accept': 'application/json',
-      }
     });
-
-    if (!response.ok) {
-      const errText = await response.text().catch(() => '');
-      throw new Error(`Failed to upload document: ${response.statusText} ${errText}`);
-    }
-
-    return (await response.json()) as Document;
   },
 
   /**
@@ -56,15 +45,9 @@ export const documentsService = {
    * DELETE /api/v1/documents/{id}
    */
   async deleteDocument(id: string): Promise<boolean> {
-    const url = `${API_BASE_URL}/documents/${id}`;
-    const response = await fetch(url, {
+    await apiRequest<void>(`/documents/${encodeURIComponent(id)}`, {
       method: 'DELETE',
     });
-
-    if (!response.ok) {
-      throw new Error(`Failed to delete document: ${response.statusText}`);
-    }
-    
     return true;
   }
 };

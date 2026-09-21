@@ -206,7 +206,7 @@ export const MyResearchPage: React.FC = () => {
                     ? `/research/${item.id}/progress`
                     : item.status === 'completed'
                       ? `/research/${item.id}`
-                      : '/research';
+                      : `/research/${item.id}/progress`;
 
                 return (
                   <Link
