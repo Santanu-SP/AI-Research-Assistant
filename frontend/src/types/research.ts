@@ -105,7 +105,7 @@ export interface ResearchProgress {
 export interface ResearchQueryRequest {
   query: string;
   document_ids?: string[];
-  options?: Record<string, any>;
+  options?: Record<string, unknown>;
 }
 
 export interface Citation {

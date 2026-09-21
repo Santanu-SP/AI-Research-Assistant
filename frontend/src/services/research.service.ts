@@ -1,4 +1,4 @@
-import { ApiError, API_BASE_URL, apiRequest } from './api';
+import { ApiError, apiRequest } from './api';
 import {
   CreateResearchInput,
   ResearchListParams,
@@ -6,7 +6,6 @@ import {
   ResearchResponse,
   UpdateResearchInput,
 } from '../types/research';
-import { Source } from '../types/source';
 
 const buildResearchQuery = (params: ResearchListParams = {}): string => {
   const query = new URLSearchParams();
@@ -50,26 +49,7 @@ export const updateResearch = (
   });
 
 export const archiveResearch = async (researchId: string): Promise<void> => {
-  try {
-    const response = await fetch(
-      `${API_BASE_URL}/research/${encodeURIComponent(researchId)}`,
-      { method: 'DELETE', headers: { Accept: 'application/json' } }
-    );
-
-    if (!response.ok) {
-      const data = await response.json().catch(() => undefined);
-      throw new ApiError(
-        `API request failed: ${response.status} ${response.statusText}`,
-        response.status,
-        data
-      );
-    }
-  } catch (error) {
-    if (error instanceof ApiError) throw error;
-    throw new ApiError(
-      error instanceof Error ? error.message : 'Unknown network error'
-    );
-  }
+  await apiRequest<void>(`/research/${encodeURIComponent(researchId)}`, { method: 'DELETE' });
 };
 
 export const getResearchErrorMessage = (

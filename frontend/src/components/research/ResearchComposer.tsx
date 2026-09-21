@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Check, FileText, ChevronDown, ArrowRight, Plus } from 'lucide-react';
+import { Check, ChevronDown, ArrowRight } from 'lucide-react';
 import { ResearchDepth } from '../../types/research';
 import { LoadingOrb } from '../common/LoadingOrb';
 
@@ -8,8 +8,6 @@ interface ResearchComposerProps {
   onStartResearch: (payload: {
     question: string;
     depth: ResearchDepth;
-    includeWeb: boolean;
-    includeDocs: boolean;
   }) => void;
   isLoading?: boolean;
 }
@@ -20,8 +18,6 @@ export const ResearchComposer: React.FC<ResearchComposerProps> = ({
   isLoading = false,
 }) => {
   const [prompt, setPrompt] = useState(initialPrompt);
-  const [includeWeb, setIncludeWeb] = useState(true);
-  const [includeDocs, setIncludeDocs] = useState(true);
   const [depth, setDepth] = useState<ResearchDepth>('standard');
   const [isDepthOpen, setIsDepthOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -53,8 +49,6 @@ export const ResearchComposer: React.FC<ResearchComposerProps> = ({
     onStartResearch({
       question: prompt.trim(),
       depth,
-      includeWeb,
-      includeDocs,
     });
   };
 
@@ -87,40 +81,6 @@ export const ResearchComposer: React.FC<ResearchComposerProps> = ({
       <div className="px-4 py-2.5 bg-[#fafaf8] rounded-b-[11px] border-t border-[#e5e7e4] flex flex-wrap items-center justify-between gap-3">
         {/* Left Controls: Chips & Depth Dropdown */}
         <div className="flex flex-wrap items-center gap-2 relative">
-          {/* Selectable: Web & Academic */}
-          <button
-            type="button"
-            onClick={() => setIncludeWeb(!includeWeb)}
-            aria-pressed={includeWeb}
-            className={`text-xs font-medium px-2.5 py-1.5 rounded-md flex items-center gap-1.5 transition-all duration-150 cursor-pointer active:scale-[0.98] ${
-              includeWeb
-                ? 'bg-[#f1f6f3] text-[#163328] border border-[#cbe0d5]'
-                : 'bg-white text-[#6b706c] border border-[#e5e7e4] hover:text-[#181a18]'
-            }`}
-          >
-            {includeWeb ? (
-              <Check className="w-3.5 h-3.5 text-[#163328]" />
-            ) : (
-              <Plus className="w-3.5 h-3.5 text-[#929792]" />
-            )}
-            <span>Web &amp; academic</span>
-          </button>
-
-          {/* Selectable: Uploaded Documents */}
-          <button
-            type="button"
-            onClick={() => setIncludeDocs(!includeDocs)}
-            aria-pressed={includeDocs}
-            className={`text-xs font-medium px-2.5 py-1.5 rounded-md flex items-center gap-1.5 transition-all duration-150 cursor-pointer active:scale-[0.98] ${
-              includeDocs
-                ? 'bg-[#f1f6f3] text-[#163328] border border-[#cbe0d5]'
-                : 'bg-white text-[#6b706c] border border-[#e5e7e4] hover:text-[#181a18]'
-            }`}
-          >
-            <FileText className={`w-3.5 h-3.5 ${includeDocs ? 'text-[#163328]' : 'text-[#929792]'}`} />
-            <span>Documents</span>
-          </button>
-
           {/* Research Depth Dropdown Trigger */}
           <div className="relative" ref={dropdownRef}>
             <button
@@ -198,6 +158,7 @@ export const ResearchComposer: React.FC<ResearchComposerProps> = ({
 
         {/* Right CTA Button & Helper */}
         <div className="flex items-center gap-3 ml-auto">
+          <span className="text-[11px] text-[#929792] hidden md:inline">Saves a draft</span>
           <span className="text-[11.5px] text-[#929792] hidden sm:inline select-none">
             ⌘ + Enter
           </span>

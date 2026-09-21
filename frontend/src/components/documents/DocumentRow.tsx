@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, Trash2, RotateCw } from 'lucide-react';
+import { FileText, Trash2 } from 'lucide-react';
 import { Document } from '../../types/document';
 import { StatusBadge } from '../common/StatusBadge';
 import { LoadingOrb } from '../common/LoadingOrb';
@@ -7,13 +7,13 @@ import { LoadingOrb } from '../common/LoadingOrb';
 interface DocumentRowProps {
   document: Document;
   onDelete: (id: string) => void;
-  onUseInResearch?: (document: Document) => void;
+  onOpen: (document: Document) => void;
 }
 
 export const DocumentRow: React.FC<DocumentRowProps> = ({
   document,
   onDelete,
-  onUseInResearch,
+  onOpen,
 }) => {
   const formatSize = (bytes: number): string => {
     if (bytes >= 1024 * 1024) {
@@ -57,12 +57,12 @@ export const DocumentRow: React.FC<DocumentRowProps> = ({
             <span className="text-[#929792]">·</span>
             <span>{formatSize(document.size)}</span>
             <span className="text-[#929792]">·</span>
-            <span>{new Date(document.uploaded_at || document.created_at).toLocaleDateString()}</span>
+            <span>{new Date(document.uploadedAt || document.createdAt).toLocaleDateString()}</span>
             
-            {document.page_count ? (
+            {document.pageCount ? (
               <>
                 <span className="text-[#929792]">·</span>
-                <span>{document.page_count} pages</span>
+                <span>{document.pageCount} pages</span>
               </>
             ) : null}
             
@@ -91,19 +91,17 @@ export const DocumentRow: React.FC<DocumentRowProps> = ({
       <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-[#f5f5f2]">
         <StatusBadge 
           status={document.status} 
-          title={document.status === 'failed' && document.processing_error ? document.processing_error : undefined}
+          title={document.status === 'failed' && document.processingError ? document.processingError : undefined}
         />
 
         <div className="flex items-center gap-2">
-          {document.status === 'indexed' && onUseInResearch && (
-            <button
-              type="button"
-              onClick={() => onUseInResearch(document)}
-              className="text-xs font-medium text-[#163328] bg-[#f1f6f3] hover:bg-[#e4eee7] border border-[#d8e5df] px-3 py-1.5 rounded-md transition-colors cursor-pointer"
-            >
-              Use in research
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => onOpen(document)}
+            className="text-xs font-medium text-[#163328] bg-[#f1f6f3] hover:bg-[#e4eee7] border border-[#d8e5df] px-3 py-1.5 rounded-md transition-colors cursor-pointer"
+          >
+            View details
+          </button>
 
           {document.status === 'processing' && (
             <span className="inline-flex items-center gap-1.5 text-xs text-[#b45309] font-medium px-2 py-1">

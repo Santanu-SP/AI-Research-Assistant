@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     document_max_upload_bytes: int = Field(default=25 * 1024 * 1024, gt=0)
     document_chunk_size: int = Field(default=4000, ge=256)
     document_chunk_overlap: int = Field(default=400, ge=0)
+    auth_session_days: int = Field(default=7, ge=1, le=30)
+    auth_cookie_secure: bool = False
     cors_origins: list[str] = Field(
         default_factory=lambda: [
             "http://localhost:3000",
@@ -33,6 +35,8 @@ class Settings(BaseSettings):
             raise ValueError(
                 "document_chunk_overlap must be smaller than document_chunk_size"
             )
+        if self.app_environment == "production" and not self.auth_cookie_secure:
+            raise ValueError("AUTH_COOKIE_SECURE must be true in production")
         return self
 
 
