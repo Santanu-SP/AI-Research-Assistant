@@ -3,8 +3,10 @@ import { Search, X, BookOpen, StickyNote, ChevronDown } from 'lucide-react';
 import { SourceResponse } from '../../types/report';
 import { ExpandedSource } from './ExpandedSource';
 import { SourceRow } from './SourceRow';
+import { useAuth } from '../../app/AuthContext';
 
 interface SourcesPanelProps {
+  reportId: string;
   sources: SourceResponse[];
   selectedSourceNumber: number;
   onSelectSource: (number: number) => void;
@@ -13,18 +15,25 @@ interface SourcesPanelProps {
 }
 
 export const SourcesPanel: React.FC<SourcesPanelProps> = ({
+  reportId,
   sources,
   selectedSourceNumber,
   onSelectSource,
   onCloseMobileDrawer,
   isMobileDrawer = false,
 }) => {
+  const { user } = useAuth();
+  const notesKey = `research-notes:${user?.id}:${reportId}`;
   const [activeTab, setActiveTab] = useState<'sources' | 'notes'>('sources');
   const [searchQuery, setSearchQuery] = useState('');
   const [showAllSources, setShowAllSources] = useState(false);
-  const [notes, setNotes] = useState(
-    'Key findings:\n- Velocity increase is highest in boilerplate & test scaffolding.\n- Code review latency increased by ~18%.\n- Critical attention needed on authorization boundaries in generated code.'
-  );
+  const [notes, setNotes] = useState(() => {
+    try { return window.localStorage.getItem(notesKey) || ''; } catch { return ''; }
+  });
+
+  useEffect(() => {
+    try { window.localStorage.setItem(notesKey, notes); } catch { /* Storage may be unavailable. */ }
+  }, [notes, notesKey]);
 
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -161,7 +170,7 @@ export const SourcesPanel: React.FC<SourcesPanelProps> = ({
               placeholder="Record synthesis notes, cross-cutting insights, or follow-up items..."
             />
             <div className="text-[11px] text-[#929792] mt-2 flex items-center justify-between">
-              <span>Saved automatically</span>
+              <span>Saved in this browser</span>
               <span>{notes.length} characters</span>
             </div>
           </div>

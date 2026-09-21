@@ -153,8 +153,9 @@ def _load_report(session: Session, research_id: UUID) -> ResearchReport | None:
 def get_composed_report(
     session: Session,
     research_id: UUID,
+    user_id: UUID | None = None,
 ) -> ComposedReportResponse:
-    research = get_research(session, research_id)
+    research = get_research(session, research_id, user_id)
     report = _load_report(session, research_id)
     if report is None:
         raise AppError(

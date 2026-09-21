@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { TopBar } from '../components/layout/TopBar';
 import { DocumentRow } from '../components/documents/DocumentRow';
 import { UploadDocumentModal } from '../components/documents/UploadDocumentModal';
@@ -9,10 +8,11 @@ import { PrimaryButton } from '../components/common/PrimaryButton';
 import { CenteredLoadingState } from '../components/common/LoadingState';
 import { documentsService } from '../services/documents.service';
 import { Document } from '../types/document';
+import { apiErrorMessage } from '../services/api';
+import { API_BASE_URL } from '../services/api';
 import { Search, Upload, FolderUp } from 'lucide-react';
 
 export const DocumentsPage: React.FC = () => {
-  const navigate = useNavigate();
   const [documents, setDocuments] = useState<Document[]>([]);
   const [totalDocuments, setTotalDocuments] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
@@ -22,6 +22,8 @@ export const DocumentsPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
+  const [selectedDocument, setSelectedDocument] = useState<Document | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -45,7 +47,7 @@ export const DocumentsPage: React.FC = () => {
       setTotalDocuments(response.total);
     } catch (error) {
       if (!silent) {
-        setLoadError(error instanceof Error ? error.message : 'Failed to load documents');
+        setLoadError(apiErrorMessage(error, 'Failed to load documents. Please try again.'));
         setDocuments([]);
         setTotalDocuments(0);
       }
@@ -72,8 +74,12 @@ export const DocumentsPage: React.FC = () => {
   }, [documents, searchQuery, selectedFormat, selectedStatus]);
 
   const handleUploadFile = async (file: File) => {
-    await documentsService.uploadDocument(file);
-    await loadDocuments();
+    try {
+      await documentsService.uploadDocument(file);
+      setActionError(null);
+    } finally {
+      await loadDocuments();
+    }
   };
 
   const handleDeleteDocument = async (id: string) => {
@@ -84,16 +90,12 @@ export const DocumentsPage: React.FC = () => {
     setIsLoading(true);
     try {
       await documentsService.deleteDocument(id);
+      setActionError(null);
       await loadDocuments();
     } catch (error) {
-      alert('Failed to delete document. Please try again.');
+      setActionError(apiErrorMessage(error, 'Failed to delete document. Please try again.'));
       setIsLoading(false);
     }
-  };
-
-  const handleUseInResearch = () => {
-    // Navigate to new research with document pre-selected or referenced
-    navigate('/research/new');
   };
 
   return (
@@ -155,8 +157,6 @@ export const DocumentsPage: React.FC = () => {
               >
                 <option value="all">All formats</option>
                 <option value="PDF">PDF</option>
-                <option value="DOCX">DOCX</option>
-                <option value="TXT">TXT</option>
               </select>
 
               <select
@@ -175,6 +175,7 @@ export const DocumentsPage: React.FC = () => {
           </div>
 
           {/* Document Rows List */}
+          {actionError && <p role="alert" className="mb-3 rounded-md border border-[#fecaca] bg-[#fee2e2]/50 p-3 text-xs text-[#b91c1c]">{actionError}</p>}
           {isLoading ? (
             <CenteredLoadingState label="Loading workspace documents…" />
           ) : loadError ? (
@@ -203,18 +204,6 @@ export const DocumentsPage: React.FC = () => {
               primaryActionLabel="Upload documents"
               onPrimaryAction={() => setIsUploadOpen(true)}
             />
-          ) : documents.length === 0 && (searchQuery || selectedFormat !== 'all' || selectedStatus !== 'all') ? (
-            <EmptyState
-              icon={FolderUp}
-              title="No documents found"
-              description="Adjust your filters or search query to find documents."
-              primaryActionLabel="Clear filters"
-              onPrimaryAction={() => {
-                setSearchQuery('');
-                setSelectedFormat('all');
-                setSelectedStatus('all');
-              }}
-            />
           ) : (
             <div className="flex flex-col gap-2.5">
               {documents.map((doc) => (
@@ -222,7 +211,7 @@ export const DocumentsPage: React.FC = () => {
                   key={doc.id}
                   document={doc}
                   onDelete={handleDeleteDocument}
-                  onUseInResearch={handleUseInResearch}
+                  onOpen={setSelectedDocument}
                 />
               ))}
             </div>
@@ -240,6 +229,22 @@ export const DocumentsPage: React.FC = () => {
         onClose={() => setIsUploadOpen(false)}
         onUploadFile={handleUploadFile}
       />
+      {selectedDocument && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onMouseDown={() => setSelectedDocument(null)}>
+        <div role="dialog" aria-modal="true" aria-labelledby="document-details-title" className="w-full max-w-md rounded-xl border border-[#e5e7e4] bg-white p-6 shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
+          <h2 id="document-details-title" className="font-serif text-2xl text-[#181a18]">{selectedDocument.title || selectedDocument.name}</h2>
+          <dl className="mt-4 space-y-2 text-sm text-[#6b706c]">
+            <div><dt className="inline font-medium text-[#181a18]">File: </dt><dd className="inline">{selectedDocument.name}</dd></div>
+            <div><dt className="inline font-medium text-[#181a18]">Status: </dt><dd className="inline">{selectedDocument.status}</dd></div>
+            <div><dt className="inline font-medium text-[#181a18]">Pages: </dt><dd className="inline">{selectedDocument.pageCount ?? 'Unavailable'}</dd></div>
+            <div><dt className="inline font-medium text-[#181a18]">Chunks: </dt><dd className="inline">{selectedDocument.chunkCount}</dd></div>
+            {selectedDocument.doi && <div><dt className="inline font-medium text-[#181a18]">DOI: </dt><dd className="inline">{selectedDocument.doi}</dd></div>}
+          </dl>
+          <div className="mt-6 flex items-center gap-3">
+            <a href={`${API_BASE_URL}/documents/${selectedDocument.id}/file`} target="_blank" rel="noopener noreferrer" className="rounded-md bg-[#163328] px-4 py-2 text-xs font-medium text-white">Open PDF</a>
+            <button type="button" onClick={() => setSelectedDocument(null)} className="rounded-md border border-[#e5e7e4] px-4 py-2 text-xs font-medium text-[#181a18]">Close</button>
+          </div>
+        </div>
+      </div>}
     </div>
   );
 };

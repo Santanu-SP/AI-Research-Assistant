@@ -21,7 +21,7 @@ export const PrimaryButton: React.FC<PrimaryButtonProps> = ({
   disabled,
   ...props
 }) => {
-  let baseStyles =
+  const baseStyles =
     'inline-flex items-center justify-center font-medium rounded-md transition-all duration-150 cursor-pointer select-none group focus:outline-none focus:ring-2 focus:ring-[#163328] focus:ring-offset-1';
 
   let sizeStyles = 'px-3.5 py-2 text-xs gap-1.5';

@@ -2,8 +2,11 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Query, Request, Response, UploadFile, status
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
+from app.api.dependencies import CurrentUser
+from app.core.errors import AppError
 from app.db.session import get_db
 from app.domain.documents import DocumentStatus, DocumentType
 from app.schemas.documents import DocumentListResponse, DocumentResponse
@@ -20,16 +23,18 @@ async def upload_document(
     session: DatabaseSession,
     storage: DocumentStorage,
     request: Request,
+    user: CurrentUser,
     file: Annotated[UploadFile, File()],
 ) -> DocumentResponse:
     return await document_service.create_document(
-        session, file, storage, request.app.state.settings
+        session, file, storage, request.app.state.settings, user.id
     )
 
 
 @router.get("", response_model=DocumentListResponse)
 def list_documents(
     session: DatabaseSession,
+    user: CurrentUser,
     search: Annotated[str | None, Query(max_length=255)] = None,
     document_status: Annotated[
         DocumentStatus | None,
@@ -49,6 +54,7 @@ def list_documents(
         file_type=document_type,
         limit=limit,
         offset=offset,
+        user_id=user.id,
     )
     return DocumentListResponse(
         items=items,
@@ -62,8 +68,23 @@ def list_documents(
 def get_document(
     document_id: UUID,
     session: DatabaseSession,
+    user: CurrentUser,
 ) -> DocumentResponse:
-    return document_service.get_document(session, document_id)
+    return document_service.get_document(session, document_id, user.id)
+
+
+@router.get("/{document_id}/file")
+def open_document(
+    document_id: UUID,
+    session: DatabaseSession,
+    storage: DocumentStorage,
+    user: CurrentUser,
+) -> FileResponse:
+    document = document_service.get_document(session, document_id, user.id)
+    path = storage.path_for(document.stored_name)
+    if not path.is_file():
+        raise AppError("Document file not found", status_code=404, code="document_file_not_found")
+    return FileResponse(path, media_type="application/pdf", filename=document.name, content_disposition_type="inline")
 
 
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -71,6 +92,7 @@ def delete_document(
     document_id: UUID,
     session: DatabaseSession,
     storage: DocumentStorage,
+    user: CurrentUser,
 ) -> Response:
-    document_service.delete_document(session, document_id, storage)
+    document_service.delete_document(session, document_id, storage, user.id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

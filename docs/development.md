@@ -45,6 +45,8 @@ alembic upgrade head
 uvicorn app.main:app --app-dir backend --reload
 ```
 
+Authentication uses random, database-backed session tokens in HTTP-only cookies. No static signing secret is needed. Sessions expire after `AUTH_SESSION_DAYS` (default 7). Set `AUTH_COOKIE_SECURE=true` when serving the API over HTTPS. For local development, use `localhost` for both the frontend and backend so the browser sends the session cookie. Existing document and research rows remain in the database after migration but have no owner; new accounts cannot see them.
+
 ## Frontend Setup
 The frontend is a React application built with TypeScript and Vite.
 
@@ -87,6 +89,11 @@ pytest
 From the `frontend/` directory:
 ```bash
 npm run typecheck
+```
+
+**Running Frontend Lint:**
+```bash
+npm run lint
 ```
 
 **Running Frontend Production Build:**

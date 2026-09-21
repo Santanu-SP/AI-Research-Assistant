@@ -38,10 +38,11 @@ This repository currently contains:
 - Alembic migration infrastructure
 - persistent research CRUD with filtering, pagination, and soft archiving
 - safe PDF upload, metadata extraction, normalization, and page-aware chunk storage
+- account registration, login, revocable sessions, and private research/document records
 - the main project, paper, and answer states from the PRD
 - a small test suite for the initial API contract
 
-Research execution, semantic retrieval, model providers, and authentication are not implemented yet. Document chunks intentionally do not contain embeddings until the retrieval phase.
+Research execution, semantic retrieval, and model providers are not implemented yet. Document chunks intentionally do not contain embeddings until the retrieval phase.
 
 ## Local setup
 
@@ -52,6 +53,15 @@ Please see the full developer guide in [docs/development.md](docs/development.md
 Please refer to [docs/project-structure.md](docs/project-structure.md) for a detailed overview of the current architecture and codebase layout.
 
 ## API
+
+### Authentication
+
+- `POST /api/v1/auth/register` creates an account.
+- `POST /api/v1/auth/login` starts an HTTP-only cookie session.
+- `GET /api/v1/auth/me` restores the current user.
+- `POST /api/v1/auth/logout` revokes the current session.
+
+Research and document endpoints require a session and return only the current user's records. Existing records created before authentication remain stored without an owner and are hidden from new accounts.
 
 ### Health check
 
@@ -80,6 +90,7 @@ Example response:
 - `POST /api/v1/documents` validates, stores, extracts, normalizes, and chunks one PDF upload.
 - `GET /api/v1/documents` lists document metadata with search, status, type, and pagination filters.
 - `GET /api/v1/documents/{document_id}` retrieves document metadata without exposing its storage path.
+- `GET /api/v1/documents/{document_id}/file` opens an owned PDF in the browser.
 - `DELETE /api/v1/documents/{document_id}` removes the stored file and metadata.
 
 Uploaded files are stored under `DOCUMENT_UPLOAD_DIR` and are ignored by Git. The default maximum upload size is 25 MiB. Page-aware chunks and available PDF metadata are persisted; missing metadata remains null. Chunk size and overlap are controlled by `DOCUMENT_CHUNK_SIZE` and `DOCUMENT_CHUNK_OVERLAP`.

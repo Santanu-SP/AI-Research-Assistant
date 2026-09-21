@@ -4,10 +4,12 @@ import { AppSidebar } from './AppSidebar';
 import { AnimatedResearchBackground } from './AnimatedResearchBackground';
 import { ThemeToggle } from './ThemeToggle';
 import { Menu, X } from 'lucide-react';
+import { useAuth } from '../../app/AuthContext';
 
 export const AppLayout: React.FC = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
+  const { user } = useAuth();
 
   // Close mobile drawer on route transition
   React.useEffect(() => {
@@ -49,7 +51,7 @@ export const AppLayout: React.FC = () => {
         <div className="flex items-center gap-2">
           <ThemeToggle className="inline-flex lg:hidden" />
           <div className="w-8 h-8 rounded-full bg-[#e2e8e4] text-[#163328] font-semibold text-xs flex items-center justify-center border border-[#d0d7d2]">
-            EV
+            {user?.name.slice(0, 1).toUpperCase() || 'R'}
           </div>
         </div>
       </div>
