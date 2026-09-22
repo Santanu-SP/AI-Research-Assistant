@@ -1,4 +1,4 @@
-import { apiErrorMessage, apiRequest } from './api';
+import { API_BASE_URL, apiErrorMessage, apiRequest } from './api';
 
 export interface AuthUser {
   id: string;
@@ -22,6 +22,7 @@ export const authService = {
     }),
   me: () => apiRequest<AuthUser>('/auth/me'),
   logout: () => apiRequest<void>('/auth/logout', { method: 'POST' }),
+  startGoogleLogin: () => window.location.assign(`${API_BASE_URL}/auth/google/start`),
 };
 
 export const authErrorMessage = apiErrorMessage;
