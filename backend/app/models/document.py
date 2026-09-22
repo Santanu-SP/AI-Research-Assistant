@@ -15,6 +15,7 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from pgvector.sqlalchemy import Vector
 
 from app.core.time import utc_now
 from app.db.base import Base, TimestampMixin
@@ -115,5 +116,6 @@ class DocumentChunk(TimestampMixin, Base):
     page: Mapped[int] = mapped_column(Integer, nullable=False)
     section: Mapped[str | None] = mapped_column(String(500))
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(1024), nullable=True)
 
     document: Mapped[Document] = relationship(back_populates="chunks")

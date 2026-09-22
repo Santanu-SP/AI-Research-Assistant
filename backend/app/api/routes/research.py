@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi import APIRouter, Depends, Query, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import CurrentUser
@@ -15,11 +15,25 @@ from app.schemas.research import (
     ResearchUpdate,
 )
 from app.schemas.reports import ComposedReportResponse
+from app.schemas.retrieval import RetrievalRequest, RetrievalResponse
 from app.services import research as research_service
 from app.services import reports as reports_service
+from app.services import retrieval as retrieval_service
 
 router = APIRouter(prefix="/research", tags=["research"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
+
+
+@router.post("/retrieve", response_model=RetrievalResponse)
+def retrieve_evidence(
+    payload: RetrievalRequest,
+    session: DatabaseSession,
+    user: CurrentUser,
+    request: Request,
+) -> RetrievalResponse:
+    return RetrievalResponse(
+        items=retrieval_service.retrieve(session, user.id, payload.query, request.app.state.settings)
+    )
 
 
 @router.post("", response_model=ResearchResponse, status_code=status.HTTP_201_CREATED)
