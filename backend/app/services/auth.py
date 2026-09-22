@@ -38,11 +38,17 @@ def register(session: Session, payload: RegisterRequest) -> User:
 def login(session: Session, email: str, password: str, session_days: int) -> tuple[User, str]:
     user = session.scalar(select(User).where(User.email == email.strip().lower()))
     try:
-        valid = bool(user and user.is_active and password_hasher.verify(user.password_hash, password))
+        valid = bool(user and user.is_active and user.password_hash and password_hasher.verify(user.password_hash, password))
     except (VerifyMismatchError, VerificationError):
         valid = False
     if not valid or user is None:
         raise AppError("Incorrect email or password", status_code=401, code="invalid_credentials")
+    token = create_session(session, user, session_days)
+    return user, token
+
+
+def create_session(session: Session, user: User, session_days: int) -> str:
+    """Create one opaque, revocable application session for any verified identity."""
     token = secrets.token_urlsafe(48)
     session.add(AuthSession(
         token_hash=sha256(token.encode()).hexdigest(),
@@ -50,7 +56,7 @@ def login(session: Session, email: str, password: str, session_days: int) -> tup
         expires_at=utc_now() + timedelta(days=session_days),
     ))
     session.commit()
-    return user, token
+    return token
 
 
 def current_user(session: Session, token: str | None) -> User:
