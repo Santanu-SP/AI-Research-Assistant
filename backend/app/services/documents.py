@@ -12,6 +12,7 @@ from app.core.errors import AppError
 from app.domain.documents import DocumentStatus, DocumentType
 from app.models.document import Document, DocumentChunk
 from app.services.pdf_extraction import PdfExtractionError, extract_pdf
+from app.services.embeddings import embedding_service_for
 from app.services.storage import LocalDocumentStorage
 from app.services.text_processing import chunk_pages
 
@@ -97,6 +98,14 @@ async def create_document(
             )
             for chunk in prepared_chunks
         ]
+        if settings.embedding_enabled:
+            if session.bind is None or session.bind.dialect.name != "postgresql":
+                raise AppError("Document indexing requires PostgreSQL with pgvector", status_code=503, code="embedding_backend_unavailable")
+            vectors = embedding_service_for(settings).embed_documents([chunk.text for chunk in prepared_chunks])
+            if len(vectors) != len(document.chunks):
+                raise AppError("Embedding generation returned an invalid batch", status_code=500, code="embedding_batch_mismatch")
+            for chunk, vector in zip(document.chunks, vectors, strict=True):
+                chunk.embedding = vector
         document.status = DocumentStatus.INDEXED
         _commit(session, "The processed document could not be saved")
         session.refresh(document)
@@ -107,7 +116,7 @@ async def create_document(
             len(prepared_chunks),
         )
         return document
-    except PdfExtractionError as exc:
+    except (PdfExtractionError, AppError) as exc:
         session.rollback()
         failed_document = session.get(Document, document.id)
         if failed_document is None:
@@ -121,9 +130,9 @@ async def create_document(
         _commit(session, "The document processing failure could not be saved")
         logger.warning("Document %s failed processing: %s", document.id, exc)
         raise AppError(
-            str(exc),
-            status_code=422,
-            code="pdf_processing_failed",
+            "The document could not be indexed",
+            status_code=422 if isinstance(exc, PdfExtractionError) else exc.status_code,
+            code="pdf_processing_failed" if isinstance(exc, PdfExtractionError) else exc.code,
         ) from exc
 
 

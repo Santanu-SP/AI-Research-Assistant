@@ -3,7 +3,7 @@
 from app.models.document import Document, DocumentChunk
 from app.models.report import Citation, ReportSection, ResearchReport, Source
 from app.models.research import Research
-from app.models.user import AuthSession, User
+from app.models.user import AuthSession, OAuthState, User
 
 __all__ = [
     "Citation",
@@ -15,4 +15,5 @@ __all__ = [
     "Source",
     "User",
     "AuthSession",
+    "OAuthState",
 ]
