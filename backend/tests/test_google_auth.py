@@ -21,7 +21,7 @@ def test_google_callback_creates_user_and_application_session(anonymous_client: 
     state = _start_state(anonymous_client)
     callback = anonymous_client.get(f"/api/v1/auth/google/callback?state={state}&code=verified-code", follow_redirects=False)
     assert callback.status_code == 303
-    assert callback.headers["location"].endswith("/research/new")
+    assert callback.headers["location"].endswith("/auth/google/complete")
     assert "httponly" in callback.headers["set-cookie"].lower()
     assert anonymous_client.get("/api/v1/auth/me").json()["email"] == "google@example.com"
 
@@ -29,7 +29,16 @@ def test_google_callback_creates_user_and_application_session(anonymous_client: 
 def test_google_callback_rejects_invalid_state(anonymous_client: TestClient) -> None:
     response = anonymous_client.get("/api/v1/auth/google/callback?state=wrong&code=verified", follow_redirects=False)
     assert response.status_code == 303
-    assert "oauthError=google_invalid_state" in response.headers["location"]
+    assert response.headers["location"].endswith("/auth/google/complete?oauthError=google_invalid_state")
+
+
+def test_google_callback_cancellation_returns_to_popup_completion(anonymous_client: TestClient) -> None:
+    response = anonymous_client.get(
+        "/api/v1/auth/google/callback?error=access_denied",
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"].endswith("/auth/google/complete?oauthError=cancelled")
 
 
 def test_google_login_links_existing_password_user(anonymous_client: TestClient, db_session_factory: sessionmaker[Session], monkeypatch) -> None:
