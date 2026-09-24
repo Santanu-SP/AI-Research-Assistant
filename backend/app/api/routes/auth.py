@@ -1,4 +1,5 @@
 from typing import Annotated
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Request, Response, status
 from fastapi.responses import RedirectResponse
@@ -24,7 +25,11 @@ def _set_session_cookie(response: Response, token: str, request: Request) -> Non
 
 
 def _google_error_redirect(request: Request, code: str) -> RedirectResponse:
-    return RedirectResponse(f"{request.app.state.settings.frontend_url}/login?oauthError={code}", status_code=303)
+    query = urlencode({"oauthError": code})
+    return RedirectResponse(
+        f"{request.app.state.settings.frontend_url.rstrip('/')}/auth/google/complete?{query}",
+        status_code=303,
+    )
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
@@ -65,7 +70,10 @@ def google_callback(
         token = auth_service.create_session(session, user, request.app.state.settings.auth_session_days)
     except AppError as exc:
         return _google_error_redirect(request, exc.code)
-    response = RedirectResponse(f"{request.app.state.settings.frontend_url}/research/new", status_code=303)
+    response = RedirectResponse(
+        f"{request.app.state.settings.frontend_url.rstrip('/')}/auth/google/complete",
+        status_code=303,
+    )
     _set_session_cookie(response, token, request)
     return response
 
