@@ -30,14 +30,14 @@ export const CitationChip: React.FC<CitationChipProps> = ({
         onMouseLeave={() => setIsHovered(false)}
         onFocus={() => setIsHovered(true)}
         onBlur={() => setIsHovered(false)}
-        aria-label={`Citation [${number}] - ${source?.title || 'Source reference'}`}
+        aria-label={`Citation [S${number}] - ${source?.title || 'Source reference'}`}
         className={`inline-flex items-center justify-center min-w-[20px] h-[18px] px-1 text-[11px] font-semibold rounded-[4px] border transition-all duration-150 select-none cursor-pointer ${
           isSelected
             ? 'bg-[#163328] text-white border-[#163328] ring-2 ring-[#163328]/20'
             : 'bg-[#f1f6f3] text-[#163328] border-[#d8e5df] hover:bg-[#163328] hover:text-white hover:border-[#163328]'
         }`}
       >
-        [{number}]
+        [S{number}]
       </button>
 
       {/* Compact Source Preview Tooltip on Hover */}
@@ -47,11 +47,11 @@ export const CitationChip: React.FC<CitationChipProps> = ({
           style={{ transformOrigin: 'bottom center' }}
         >
           <div className="flex items-center justify-between text-[10.5px] text-[#929792] mb-1">
-            <span className="font-semibold text-emerald-400">[{source.number}] {source.publisher}</span>
-            <span>{source.year}</span>
+            <span className="font-semibold text-emerald-400">[S{source.number}] {source.publisher || 'Uploaded source'}</span>
+            <span>{source.year || ''}</span>
           </div>
           <div className="font-medium text-white text-[12.5px] leading-snug mb-1 line-clamp-2">
-            {source.title}
+            {source.title || 'Untitled uploaded source'}
           </div>
           <div className="text-[11px] text-[#a5aaa5] truncate">
             {source.authors.join(', ')}

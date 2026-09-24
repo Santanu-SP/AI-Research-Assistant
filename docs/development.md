@@ -55,6 +55,26 @@ Retrieval requires PostgreSQL with the `vector` extension. SQLite remains suppor
 
 With `EMBEDDING_ENABLED=true`, document indexing loads `Qwen/Qwen3-Embedding-0.6B`, creates normalized 1024-dimensional vectors in batches, and only marks documents indexed when vectors persist. Set `MODEL_DEVICE=auto` for CUDA/MPS/CPU detection, or use `mps`/`cpu` explicitly. Use `POST /api/v1/research/retrieve` with `{"query":"..."}` while authenticated to inspect user-scoped hybrid candidates. It performs pgvector cosine search plus PostgreSQL full-text search, then reciprocal-rank fusion and stable chunk-ID deduplication. It does not generate an answer.
 
+## Grounded local RAG (PR 3)
+
+The final research flow keeps embeddings in the existing Python service, loads `Qwen/Qwen3-Reranker-0.6B` once through SentenceTransformers, and sends only the selected evidence to the local Ollama model `qwen3.5:9b`. The FastAPI process never loads the 9B generation model directly.
+
+Install and start Ollama, then verify the required model:
+
+```bash
+ollama pull qwen3.5:9b
+ollama list
+```
+
+Run the real model smoke tests separately from the ordinary unit suite:
+
+```bash
+python backend/scripts/test_reranker.py
+python backend/scripts/test_generation_model.py
+```
+
+The authenticated `POST /api/v1/research/query` endpoint accepts `{"query":"...","researchDepth":"standard"}`. It retrieves user-owned chunks, reranks them, applies the evidence-sufficiency gate, generates a grounded answer when appropriate, removes unknown citation IDs, and persists the completed report and source metadata. An insufficient-evidence answer is a successful, persisted result and deliberately skips Ollama.
+
 ## Frontend Setup
 The frontend is a React application built with TypeScript and Vite.
 

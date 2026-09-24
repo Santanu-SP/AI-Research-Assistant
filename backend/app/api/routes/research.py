@@ -14,11 +14,13 @@ from app.schemas.research import (
     ResearchResponse,
     ResearchUpdate,
 )
+from app.schemas.rag import ResearchQueryRequest, ResearchQueryResponse
 from app.schemas.reports import ComposedReportResponse
 from app.schemas.retrieval import RetrievalRequest, RetrievalResponse
 from app.services import research as research_service
 from app.services import reports as reports_service
 from app.services import retrieval as retrieval_service
+from app.services import rag as rag_service
 
 router = APIRouter(prefix="/research", tags=["research"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
@@ -33,6 +35,21 @@ def retrieve_evidence(
 ) -> RetrievalResponse:
     return RetrievalResponse(
         items=retrieval_service.retrieve(session, user.id, payload.query, request.app.state.settings)
+    )
+
+
+@router.post("/query", response_model=ResearchQueryResponse, status_code=status.HTTP_201_CREATED)
+def query_research(
+    payload: ResearchQueryRequest,
+    session: DatabaseSession,
+    user: CurrentUser,
+    request: Request,
+) -> ResearchQueryResponse:
+    return rag_service.run_query(
+        session,
+        user.id,
+        payload,
+        request.app.state.settings,
     )
 
 

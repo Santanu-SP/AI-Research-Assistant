@@ -10,5 +10,13 @@ htmlcov/
 *.sqlite
 *.sqlite3
 /backend/data/uploads/
+*.safetensors
+*.gguf
+*.dump
+*.sql
+*.pdf
+.cache/
+.huggingface/
+.ollama/
 .idea/
 .vscode/

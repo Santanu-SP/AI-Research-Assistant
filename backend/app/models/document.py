@@ -6,6 +6,7 @@ from sqlalchemy import (
     CheckConstraint,
     Enum,
     ForeignKey,
+    Index,
     Integer,
     JSON,
     String,
@@ -103,6 +104,12 @@ class DocumentChunk(TimestampMixin, Base):
         ),
         UniqueConstraint(
             "document_id", "chunk_index", name="uq_document_chunks_document_index"
+        ),
+        Index(
+            "ix_document_chunks_embedding_hnsw",
+            "embedding",
+            postgresql_using="hnsw",
+            postgresql_ops={"embedding": "vector_cosine_ops"},
         ),
     )
 
