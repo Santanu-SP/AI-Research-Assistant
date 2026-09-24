@@ -11,6 +11,8 @@ import { LoginPage } from '../pages/Login';
 import { RegisterPage } from '../pages/Register';
 import { useAuth } from './AuthContext';
 import { CenteredLoadingState } from '../components/common/LoadingState';
+import { LandingPage } from '../pages/Landing';
+import { GoogleAuthCompletePage } from '../pages/GoogleAuthComplete';
 
 const ProtectedLayout: React.FC = () => {
   const { user, loading } = useAuth();
@@ -21,10 +23,11 @@ const ProtectedLayout: React.FC = () => {
 export const AppRouter: React.FC = () => {
   return (
     <Routes>
+      <Route path="/" element={<LandingPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
+      <Route path="/auth/google/complete" element={<GoogleAuthCompletePage />} />
       <Route element={<ProtectedLayout />}>
-        <Route path="/" element={<Navigate to="/research/new" replace />} />
         <Route path="/research/new" element={<NewResearch />} />
         <Route path="/research/:id/progress" element={<ResearchProgressPage />} />
         <Route path="/research" element={<MyResearchPage />} />
