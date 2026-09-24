@@ -10,15 +10,8 @@ export const ExpandedSource: React.FC<ExpandedSourceProps> = ({ source }) => {
   const [isCopied, setIsCopied] = useState(false);
 
   const handleCopyBibtex = () => {
-    const bibtex =
-      source.bibtex ||
-      `@article{source_${source.number},
-  title={${source.title}},
-  author={${source.authors.join(' and ')}},
-  journal={${source.publisher}},
-  year={${source.year}}
-}`;
-    navigator.clipboard.writeText(bibtex);
+    if (!source.bibtex) return;
+    navigator.clipboard.writeText(source.bibtex);
     setIsCopied(true);
     setTimeout(() => setIsCopied(false), 2000);
   };
@@ -31,10 +24,10 @@ export const ExpandedSource: React.FC<ExpandedSourceProps> = ({ source }) => {
       {/* Top Metadata Row */}
       <div className="flex items-center justify-between gap-2 mb-1.5 text-xs">
         <div className="flex items-center gap-1.5 font-medium text-[#163328]">
-          <span className="font-bold">[{source.number}]</span>
-          <span>{source.publisher}</span>
-          <span className="text-[#929792]">·</span>
-          <span>{source.year}</span>
+          <span className="font-bold">[S{source.number}]</span>
+          {source.publisher && <span>{source.publisher}</span>}
+          {source.publisher && source.year && <span className="text-[#929792]">·</span>}
+          {source.year && <span>{source.year}</span>}
         </div>
 
         <span className="text-[10px] font-medium uppercase tracking-wider bg-[#f1f6f3] text-[#173d31] border border-[#d8e5df] px-2 py-0.5 rounded-full">
@@ -44,13 +37,21 @@ export const ExpandedSource: React.FC<ExpandedSourceProps> = ({ source }) => {
 
       {/* Title */}
       <h4 className="text-[13.5px] font-semibold text-[#181a18] leading-snug mb-1">
-        {source.title}
+        {source.title || 'Untitled uploaded source'}
       </h4>
 
       {/* Authors */}
-      <p className="text-xs text-[#6b706c] mb-3">
-        {source.authors.join(', ')}
-      </p>
+      {source.authors.length > 0 && (
+        <p className="text-xs text-[#6b706c] mb-3">
+          {source.authors.join(', ')}
+        </p>
+      )}
+
+      <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-[#6b706c] mb-3">
+        {source.page && <span>Page {source.page}</span>}
+        {source.section && <span>Section: {source.section}</span>}
+        {source.doi && <span>DOI: {source.doi}</span>}
+      </div>
 
       {/* Relevant Excerpt */}
       {source.relevantExcerpt && (
@@ -79,7 +80,7 @@ export const ExpandedSource: React.FC<ExpandedSourceProps> = ({ source }) => {
             </span>
           )}
 
-          <button
+          {source.bibtex && <button
             type="button"
             onClick={handleCopyBibtex}
             className="text-[#6b706c] hover:text-[#181a18] font-medium inline-flex items-center gap-1 transition-colors cursor-pointer"
@@ -95,7 +96,7 @@ export const ExpandedSource: React.FC<ExpandedSourceProps> = ({ source }) => {
                 <span>Copy BibTeX</span>
               </>
             )}
-          </button>
+          </button>}
         </div>
 
         {source.citationCount !== undefined && source.citationCount > 0 && (

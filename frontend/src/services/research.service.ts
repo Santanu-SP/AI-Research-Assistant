@@ -3,6 +3,8 @@ import {
   CreateResearchInput,
   ResearchListParams,
   ResearchListResponse,
+  ResearchQueryRequest,
+  ResearchQueryResponse,
   ResearchResponse,
   UpdateResearchInput,
 } from '../types/research';
@@ -25,6 +27,15 @@ const buildResearchQuery = (params: ResearchListParams = {}): string => {
 
 export const createResearch = (payload: CreateResearchInput): Promise<ResearchResponse> =>
   apiRequest<ResearchResponse>('/research', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+export const queryResearch = (
+  payload: ResearchQueryRequest
+): Promise<ResearchQueryResponse> =>
+  apiRequest<ResearchQueryResponse>('/research/query', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -74,11 +85,17 @@ export const getResearchErrorMessage = (
     }
   }
 
+  if (typeof data === 'object' && data !== null && 'error' in data) {
+    const apiError = (data as { error?: { message?: unknown } }).error;
+    if (typeof apiError?.message === 'string') return apiError.message;
+  }
+
   return error.status === 404 ? 'Research not found.' : fallback;
 };
 
 export const researchService = {
   createResearch,
+  queryResearch,
   listResearch,
   getResearch,
   updateResearch,

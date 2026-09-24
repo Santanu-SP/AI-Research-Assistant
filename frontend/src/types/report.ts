@@ -24,16 +24,21 @@ export interface ReportSectionResponse {
 export interface SourceResponse {
   id: string;
   number: number;
-  title: string;
-  publisher: string;
+  title: string | null;
+  publisher: string | null;
   authors: string[];
-  year: number;
+  year: number | null;
   url: string | null;
   sourceType: SourceType;
   relevantExcerpt: string | null;
   citationCount: number;
   doi: string | null;
   bibtex: string | null;
+  documentId: string | null;
+  chunkId: string | null;
+  page: number | null;
+  section: string | null;
+  rerankScore: number | null;
   createdAt: string;
   updatedAt: string;
 }

@@ -104,29 +104,26 @@ export interface ResearchProgress {
 
 export interface ResearchQueryRequest {
   query: string;
-  document_ids?: string[];
-  options?: Record<string, unknown>;
+  researchDepth?: ResearchDepth;
 }
 
 export interface Citation {
-  citation_id: string;
-  document_id: string;
-  paper_title: string;
-  doi?: string;
-  page?: number;
-  section?: string;
+  citationId: string;
+  documentId: string;
+  chunkId: string;
+  paperTitle: string | null;
+  authors: string[] | null;
+  doi: string | null;
+  page: number;
+  section: string | null;
   excerpt: string;
 }
 
-export interface EvidenceSource {
-  document_id: string;
-  title: string;
-  authors?: string[];
-  relevance_score?: number;
-}
-
 export interface ResearchQueryResponse {
+  researchId: string;
   answer: string;
   citations: Citation[];
-  evidence_sources: EvidenceSource[];
+  hybridCandidateCount: number;
+  evidenceCount: number;
+  insufficientEvidence: boolean;
 }

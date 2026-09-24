@@ -53,10 +53,10 @@ class SourceCreate(ApiSchema):
 
     id: UUID = Field(default_factory=uuid4)
     number: int = Field(ge=1)
-    title: LongTitle
-    publisher: ShortText
-    authors: list[ShortText] = Field(min_length=1, max_length=100)
-    year: int = Field(ge=1000, le=9999)
+    title: LongTitle | None = None
+    publisher: ShortText | None = None
+    authors: list[ShortText] = Field(default_factory=list, max_length=100)
+    year: int | None = Field(default=None, ge=1000, le=9999)
     url: (
         Annotated[str, StringConstraints(strip_whitespace=True, max_length=2048)] | None
     ) = None
@@ -69,6 +69,11 @@ class SourceCreate(ApiSchema):
         | None
     ) = None
     bibtex: OptionalText | None = None
+    document_id: UUID | None = None
+    chunk_id: UUID | None = None
+    page: int | None = Field(default=None, ge=1)
+    section: LongTitle | None = None
+    rerank_score: float | None = None
 
 
 class ResearchReportCreate(ApiSchema):
@@ -110,16 +115,21 @@ class ReportSectionResponse(ApiSchema):
 class SourceResponse(ApiSchema):
     id: UUID
     number: int = Field(ge=1)
-    title: str
-    publisher: str
+    title: str | None
+    publisher: str | None
     authors: list[str]
-    year: int
+    year: int | None
     url: str | None
     source_type: SourceType
     relevant_excerpt: str | None
     citation_count: int = Field(ge=0)
     doi: str | None
     bibtex: str | None
+    document_id: UUID | None
+    chunk_id: UUID | None
+    page: int | None
+    section: str | None
+    rerank_score: float | None
     created_at: datetime
     updated_at: datetime
 

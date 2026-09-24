@@ -64,14 +64,14 @@ export const NewResearch: React.FC = () => {
     setIsSubmitting(true);
     setCreateError(null);
     try {
-      await researchService.createResearch({
-        question: payload.question,
+      const result = await researchService.queryResearch({
+        query: payload.question,
         researchDepth: payload.depth,
       });
-      navigate('/research');
+      navigate(`/research/${result.researchId}`);
     } catch (error) {
       setCreateError(
-        getResearchErrorMessage(error, 'Research could not be created. Please try again.')
+        getResearchErrorMessage(error, 'Research could not be completed. Please try again.')
       );
     } finally {
       setIsSubmitting(false);
@@ -104,7 +104,7 @@ export const NewResearch: React.FC = () => {
               What would you like to investigate?
             </h1>
             <p className="text-sm sm:text-[15px] text-[#6b706c] max-w-2xl leading-relaxed">
-              Save a research question and organize your investigation. Automated research is coming in a later release.
+              Search your indexed papers and generate a locally grounded answer with validated citations.
             </p>
           </div>
 
@@ -119,7 +119,7 @@ export const NewResearch: React.FC = () => {
             {createError ? (
               <div className="mt-3">
                 <ErrorState
-                  title="Research was not created"
+                  title="Research could not be completed"
                   message={createError}
                 />
               </div>

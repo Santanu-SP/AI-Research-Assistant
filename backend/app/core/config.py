@@ -30,6 +30,17 @@ class Settings(BaseSettings):
     keyword_top_k: int = Field(default=24, ge=1, le=100)
     hybrid_candidate_k: int = Field(default=24, ge=1, le=30)
     embedding_enabled: bool = True
+    reranker_model_name: str = "Qwen/Qwen3-Reranker-0.6B"
+    reranker_batch_size: int = Field(default=8, ge=1, le=64)
+    final_context_k: int = Field(default=8, ge=1, le=12)
+    minimum_evidence_count: int = Field(default=1, ge=1, le=8)
+    reranker_min_score: float = 0.0
+    generation_runtime: str = "ollama"
+    generation_model_name: str = "qwen3.5:9b"
+    ollama_base_url: str = "http://localhost:11434"
+    generation_max_new_tokens: int = Field(default=768, ge=64, le=4096)
+    generation_temperature: float = Field(default=0.1, ge=0.0, le=1.0)
+    generation_timeout_seconds: float = Field(default=120.0, gt=0.0, le=600.0)
     cors_origins: list[str] = Field(
         default_factory=lambda: [
             "http://localhost:3000",
@@ -54,6 +65,8 @@ class Settings(BaseSettings):
             raise ValueError("AUTH_COOKIE_SECURE must be true in production")
         if (self.google_client_id is None) != (self.google_client_secret is None):
             raise ValueError("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set together")
+        if self.generation_runtime != "ollama":
+            raise ValueError("GENERATION_RUNTIME must be ollama")
         return self
 
 

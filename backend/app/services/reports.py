@@ -101,6 +101,11 @@ def persist_report(
             relevant_excerpt=source_payload.relevant_excerpt,
             doi=source_payload.doi,
             bibtex=source_payload.bibtex,
+            document_id=source_payload.document_id,
+            chunk_id=source_payload.chunk_id,
+            page=source_payload.page,
+            section=source_payload.section,
+            rerank_score=source_payload.rerank_score,
         )
         source_by_id[source.id] = source
         session.add(source)
@@ -211,6 +216,11 @@ def get_composed_report(
             citation_count=len(source.citations),
             doi=source.doi,
             bibtex=source.bibtex,
+            document_id=source.document_id,
+            chunk_id=source.chunk_id,
+            page=source.page,
+            section=source.section,
+            rerank_score=source.rerank_score,
             created_at=source.created_at,
             updated_at=source.updated_at,
         )

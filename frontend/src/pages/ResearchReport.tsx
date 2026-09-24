@@ -65,7 +65,9 @@ export const ResearchReportPage: React.FC = () => {
     if (!report) return;
     let md = `# ${report.title}\n\n`;
     md += `${report.dossierRef} | ${report.readingTimeMinutes} min read\n\n`;
-    md += `## Executive Summary\n${report.summary}\n\n`;
+    if (!(report.sections.length > 0 && report.sections[0].content === report.summary)) {
+      md += `## Executive Summary\n${report.summary}\n\n`;
+    }
     report.sections.forEach((sec) => {
       md += `## ${sec.heading}\n${sec.content}\n\n`;
       if (sec.quote) {
@@ -74,7 +76,14 @@ export const ResearchReportPage: React.FC = () => {
     });
     md += `## References\n`;
     sources.forEach((s) => {
-      md += `[${s.number}] ${s.authors.join(', ')} (${s.year}). "${s.title}". ${s.publisher}.\n`;
+      const metadata = [
+        s.authors.join(', '),
+        s.year ? `(${s.year})` : '',
+        s.title ? `"${s.title}"` : '',
+        s.publisher || '',
+        s.page ? `p. ${s.page}` : '',
+      ].filter(Boolean).join(' ');
+      md += `[S${s.number}] ${metadata}\n`;
     });
 
     const blob = new Blob([md], { type: 'text/markdown;charset=utf-8;' });
@@ -120,6 +129,9 @@ export const ResearchReportPage: React.FC = () => {
   }
 
   const getSourceByNum = (n: number) => sources.find((s) => s.number === n);
+  const showSummary = !(
+    report.sections.length > 0 && report.sections[0].content === report.summary
+  );
 
   return (
     <div className="report-reading-page min-h-screen bg-[#fafaf8] flex flex-col">
@@ -212,7 +224,7 @@ export const ResearchReportPage: React.FC = () => {
 
             <article className="space-y-10">
               {/* Executive Summary */}
-              {report.summary && (
+              {report.summary && showSummary && (
                 <section>
                   <h2 className="font-serif text-2xl text-[#181a18] font-normal mb-3">
                     Executive Summary

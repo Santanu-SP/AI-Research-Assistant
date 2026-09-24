@@ -21,6 +21,7 @@ class RetrievalCandidate(ApiSchema):
     vector_score: float | None = None
     keyword_score: float | None = None
     hybrid_score: float
+    rerank_score: float | None = None
 
 
 class RetrievalResponse(ApiSchema):
