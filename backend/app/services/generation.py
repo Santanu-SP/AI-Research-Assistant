@@ -156,4 +156,3 @@ def generation_service_for(settings: Settings) -> GenerationService:
         settings.generation_temperature,
         settings.generation_timeout_seconds,
     )
-
