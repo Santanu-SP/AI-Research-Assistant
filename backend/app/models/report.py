@@ -8,6 +8,7 @@ from sqlalchemy import (
     CheckConstraint,
     Enum,
     ForeignKey,
+    Float,
     Integer,
     JSON,
     String,
@@ -127,15 +128,20 @@ class Source(TimestampMixin, Base):
         index=True,
     )
     number: Mapped[int] = mapped_column(Integer, nullable=False)
-    title: Mapped[str] = mapped_column(String(500), nullable=False)
-    publisher: Mapped[str] = mapped_column(String(200), nullable=False)
+    title: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    publisher: Mapped[str | None] = mapped_column(String(200), nullable=True)
     authors: Mapped[list[str]] = mapped_column(JSON, nullable=False)
-    year: Mapped[int] = mapped_column(Integer, nullable=False)
+    year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     url: Mapped[str | None] = mapped_column(Text)
     source_type: Mapped[SourceType] = mapped_column(source_type_enum, nullable=False)
     relevant_excerpt: Mapped[str | None] = mapped_column(Text)
     doi: Mapped[str | None] = mapped_column(String(255))
     bibtex: Mapped[str | None] = mapped_column(Text)
+    document_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    chunk_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    page: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    section: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    rerank_score: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     research: Mapped[Research] = relationship(back_populates="sources")
     citations: Mapped[list[Citation]] = relationship(

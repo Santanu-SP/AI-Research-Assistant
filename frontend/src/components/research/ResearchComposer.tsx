@@ -12,6 +12,12 @@ interface ResearchComposerProps {
   isLoading?: boolean;
 }
 
+const LOADING_MESSAGES = [
+  'Searching your papers',
+  'Ranking relevant evidence',
+  'Preparing grounded answer',
+];
+
 export const ResearchComposer: React.FC<ResearchComposerProps> = ({
   initialPrompt = '',
   onStartResearch,
@@ -22,6 +28,7 @@ export const ResearchComposer: React.FC<ResearchComposerProps> = ({
   const [isDepthOpen, setIsDepthOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
 
   useEffect(() => {
     setPrompt(initialPrompt);
@@ -36,6 +43,19 @@ export const ResearchComposer: React.FC<ResearchComposerProps> = ({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    if (!isLoading) {
+      setLoadingMessageIndex(0);
+      return;
+    }
+    const timer = window.setInterval(() => {
+      setLoadingMessageIndex((index) =>
+        Math.min(index + 1, LOADING_MESSAGES.length - 1)
+      );
+    }, 2500);
+    return () => window.clearInterval(timer);
+  }, [isLoading]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
@@ -72,6 +92,7 @@ export const ResearchComposer: React.FC<ResearchComposerProps> = ({
           onChange={(e) => setPrompt(e.target.value)}
           onKeyDown={handleKeyDown}
           rows={4}
+          disabled={isLoading}
           className="w-full min-h-[148px] bg-transparent resize-none text-[15px] text-[#181a18] placeholder:text-[#929792] focus:outline-none leading-relaxed border-0 p-0 focus:ring-0"
           placeholder="Ask a research question or describe what you want to investigate…"
         />
@@ -158,7 +179,9 @@ export const ResearchComposer: React.FC<ResearchComposerProps> = ({
 
         {/* Right CTA Button & Helper */}
         <div className="flex items-center gap-3 ml-auto">
-          <span className="text-[11px] text-[#929792] hidden md:inline">Saves a draft</span>
+          <span className="text-[11px] text-[#929792] hidden md:inline">
+            {isLoading ? LOADING_MESSAGES[loadingMessageIndex] : 'Uses your indexed papers only'}
+          </span>
           <span className="text-[11.5px] text-[#929792] hidden sm:inline select-none">
             ⌘ + Enter
           </span>
@@ -169,7 +192,7 @@ export const ResearchComposer: React.FC<ResearchComposerProps> = ({
             className="bg-[#163328] hover:bg-[#214f40] active:scale-[0.98] text-white text-xs font-medium px-4 py-2 rounded-md flex items-center gap-1.5 transition-all duration-150 shadow-none cursor-pointer group disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {isLoading ? <LoadingOrb size={16} className="loading-orb--on-solid" /> : null}
-            <span>{isLoading ? 'Creating research...' : 'Create research'}</span>
+            <span>{isLoading ? 'Researching...' : 'Start research'}</span>
             {!isLoading ? (
               <ArrowRight className="w-3.5 h-3.5 transition-transform duration-150 group-hover:translate-x-0.5" />
             ) : null}
