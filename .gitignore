@@ -1,6 +1,7 @@
 .DS_Store
 .env
 .venv/
+/backend/node_modules/
 __pycache__/
 *.py[cod]
 .pytest_cache/
@@ -10,5 +11,13 @@ htmlcov/
 *.sqlite
 *.sqlite3
 /backend/data/uploads/
+*.safetensors
+*.gguf
+*.dump
+*.sql
+*.pdf
+.cache/
+.huggingface/
+.ollama/
 .idea/
 .vscode/

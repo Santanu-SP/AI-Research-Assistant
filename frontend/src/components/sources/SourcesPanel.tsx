@@ -51,8 +51,8 @@ export const SourcesPanel: React.FC<SourcesPanelProps> = ({
     if (!searchQuery.trim()) return true;
     const query = searchQuery.toLowerCase();
     return (
-      s.title.toLowerCase().includes(query) ||
-      s.publisher.toLowerCase().includes(query) ||
+      s.title?.toLowerCase().includes(query) ||
+      s.publisher?.toLowerCase().includes(query) ||
       s.authors.some((a) => a.toLowerCase().includes(query)) ||
       s.number.toString() === query
     );
