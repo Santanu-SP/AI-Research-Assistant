@@ -12,7 +12,7 @@ from app.services.auth import SESSION_COOKIE, current_user
 def validate_origin(request: Request) -> None:
     if request.method not in {"GET", "HEAD", "OPTIONS"}:
         origin = request.headers.get("origin")
-        if origin and origin not in request.app.state.settings.cors_origins:
+        if origin and not request.app.state.settings.is_allowed_origin(origin):
             raise AppError("Origin is not allowed", status_code=403, code="origin_not_allowed")
 
 

@@ -1,11 +1,17 @@
 from functools import lru_cache
 from pathlib import Path
+import re
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
+LOCAL_NETWORK_ORIGIN_REGEX = (
+    r"^http://(?:localhost|127\.0\.0\.1|"
+    r"10(?:\.\d{1,3}){3}|192\.168(?:\.\d{1,3}){2}|"
+    r"172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2})(?::\d{1,5})?$"
+)
 
 
 class Settings(BaseSettings):
@@ -50,6 +56,8 @@ class Settings(BaseSettings):
             "http://127.0.0.1:3000",
         ]
     )
+    cors_origin_regex: str | None = None
+    cors_allow_local_network: bool = True
 
     @field_validator("google_client_id", "google_client_secret", mode="before")
     @classmethod
@@ -82,6 +90,19 @@ class Settings(BaseSettings):
         if self.generation_runtime != "ollama":
             raise ValueError("GENERATION_RUNTIME must be ollama")
         return self
+
+    @property
+    def effective_cors_origin_regex(self) -> str | None:
+        """Allow private LAN origins only for local development by default."""
+        if self.app_environment == "development" and self.cors_allow_local_network:
+            return self.cors_origin_regex or LOCAL_NETWORK_ORIGIN_REGEX
+        return self.cors_origin_regex
+
+    def is_allowed_origin(self, origin: str) -> bool:
+        if origin in self.cors_origins:
+            return True
+        pattern = self.effective_cors_origin_regex
+        return bool(pattern and re.fullmatch(pattern, origin))
 
 
 @lru_cache
