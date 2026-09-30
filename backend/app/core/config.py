@@ -1,7 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -47,6 +47,15 @@ class Settings(BaseSettings):
             "http://127.0.0.1:3000",
         ]
     )
+
+    @field_validator("google_client_id", "google_client_secret", mode="before")
+    @classmethod
+    def blank_google_values_are_unset(cls, value: str | None) -> str | None:
+        """Allow the checked-in example env file to leave OAuth disabled."""
+        if value is None:
+            return None
+        value = value.strip()
+        return value or None
 
     model_config = SettingsConfigDict(
         env_file=".env",

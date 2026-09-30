@@ -49,7 +49,7 @@ Authentication uses random, database-backed session tokens in HTTP-only cookies.
 
 ## Google OAuth and local retrieval (PR 2)
 
-Google sign-in uses the backend OAuth authorization-code callback and then creates the same local HTTP-only `ara_session` used by password login. Add `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_REDIRECT_URI` only to the root `.env`; the React app never receives the secret. The local callback URI is `http://localhost:8000/api/v1/auth/google/callback` and the authorized JavaScript origin is `http://localhost:3000`.
+Google sign-in is optional. Password registration and login work without Google credentials. To enable Google sign-in, add `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_REDIRECT_URI` only to the root `.env`; the React app never receives the secret. The local callback URI is `http://localhost:8000/api/v1/auth/google/callback` and the authorized JavaScript origin is `http://localhost:3000`. Teammates should copy `.env.example` to `.env`; they must not copy another developer's private `.env`.
 
 Retrieval requires PostgreSQL with the `vector` extension. SQLite remains supported for unit tests and non-retrieval PR 1 workflows only; it is deliberately not a vector-search substitute. Configure a PostgreSQL URL such as `DATABASE_URL=postgresql+psycopg://ara:ara@localhost:5432/ara`, create the extension as a superuser (`CREATE EXTENSION IF NOT EXISTS vector;`), then run `alembic upgrade head`.
 
