@@ -38,6 +38,11 @@ def _google_is_configured(settings: Settings) -> bool:
     return bool(settings.google_client_id and settings.google_client_secret)
 
 
+def is_configured(settings: Settings) -> bool:
+    """Return whether optional Google OAuth credentials are available."""
+    return _google_is_configured(settings)
+
+
 def start_url(session: Session, settings: Settings) -> str:
     if not _google_is_configured(settings):
         raise AppError("Google sign-in is not configured", status_code=503, code="google_not_configured")

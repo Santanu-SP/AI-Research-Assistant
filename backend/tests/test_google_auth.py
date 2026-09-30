@@ -14,6 +14,12 @@ def _start_state(client: TestClient) -> str:
     return parse_qs(urlparse(response.headers["location"]).query)["state"][0]
 
 
+def test_google_status_does_not_expose_credentials(anonymous_client: TestClient) -> None:
+    response = anonymous_client.get("/api/v1/auth/google/status")
+    assert response.status_code == 200
+    assert response.json() == {"enabled": True}
+
+
 def test_google_callback_creates_user_and_application_session(anonymous_client: TestClient, monkeypatch) -> None:
     from app.services import google_auth
 
