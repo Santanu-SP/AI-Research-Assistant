@@ -7,6 +7,7 @@ const popupStub = () => {
     closed: false,
     close: vi.fn(() => { popup.closed = true; }),
     focus: vi.fn(),
+    location: { replace: vi.fn() },
   };
   return popup;
 };
@@ -36,7 +37,13 @@ describe('Google authentication popup', () => {
     const popup = popupStub();
     vi.spyOn(window, 'open').mockReturnValue(popup as unknown as Window);
     const result = authService.startGoogleLogin();
+    expect(window.open).toHaveBeenCalledWith(
+      'about:blank',
+      'google-oauth',
+      'popup=yes,width=520,height=680,resizable=yes,scrollbars=yes',
+    );
     await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(popup.location.replace).toHaveBeenCalledWith('http://localhost:8000/api/v1/auth/google/start');
     let settled = false;
     void result.finally(() => { settled = true; });
 
@@ -47,6 +54,20 @@ describe('Google authentication popup', () => {
     dispatchGoogleMessage(popup, window.location.origin, { type: 'google-auth-success' });
     await expect(result).resolves.toBeUndefined();
     expect(popup.close).toHaveBeenCalledOnce();
+  });
+
+  it('closes the popup when Google OAuth is disabled', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ enabled: false }),
+    }));
+    const popup = popupStub();
+    vi.spyOn(window, 'open').mockReturnValue(popup as unknown as Window);
+
+    await expect(authService.startGoogleLogin()).rejects.toThrow('Google sign-in is not configured');
+    expect(popup.close).toHaveBeenCalledOnce();
+    expect(popup.location.replace).not.toHaveBeenCalled();
   });
 
   it('rejects and cleans up when the user closes the popup', async () => {
