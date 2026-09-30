@@ -95,12 +95,21 @@ Copy the frontend environment template:
 ```bash
 cp .env.example .env
 ```
-This sets `VITE_API_BASE_URL` to point to the local backend.
+Leave `VITE_API_BASE_URL` blank for ordinary local development. The app then uses the same hostname as the page with backend port `8000`—for example, `http://localhost:3000` calls `http://localhost:8000`, and `http://192.168.x.x:3000` calls `http://192.168.x.x:8000`.
 
 4. **Running the Development Server:**
 ```bash
 npm run dev
 ```
+
+For another device on the same private network, start both servers on all interfaces and open the frontend using the host computer's private IP:
+
+```bash
+uvicorn app.main:app --app-dir backend --host 0.0.0.0 --reload
+cd frontend && npm run dev -- --host 0.0.0.0
+```
+
+Development CORS accepts private-network origins. For Google sign-in, use `localhost` unless you have configured matching public HTTPS OAuth callback and frontend URLs in Google Cloud.
 
 ## Default Local URLs
 - **Backend API Documentation (Swagger)**: http://127.0.0.1:8000/docs
