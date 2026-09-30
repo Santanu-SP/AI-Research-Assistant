@@ -5,6 +5,9 @@ from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+
+
 class Settings(BaseSettings):
     app_name: str = "AI Research Assistant API"
     app_environment: str = "development"
@@ -58,7 +61,9 @@ class Settings(BaseSettings):
         return value or None
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        # Resolve the shared development env file from the repository root,
+        # not from the shell's current working directory.
+        env_file=PROJECT_ROOT / ".env",
         env_file_encoding="utf-8",
         extra="ignore",
         protected_namespaces=("settings_",),
