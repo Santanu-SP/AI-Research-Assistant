@@ -53,6 +53,12 @@ def google_start(session: DatabaseSession, request: Request) -> RedirectResponse
     return RedirectResponse(google_auth.start_url(session, request.app.state.settings), status_code=303)
 
 
+@router.get("/google/status")
+def google_status(request: Request) -> dict[str, bool]:
+    """Expose only whether optional Google OAuth is enabled; never expose credentials."""
+    return {"enabled": google_auth.is_configured(request.app.state.settings)}
+
+
 @router.get("/google/callback")
 def google_callback(
     session: DatabaseSession,
