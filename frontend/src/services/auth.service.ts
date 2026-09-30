@@ -23,17 +23,20 @@ const isGoogleAuthMessage = (value: unknown): value is GoogleAuthMessage => {
 };
 
 const startGoogleLogin = (): Promise<void> => {
+  // Open synchronously while the user's click is still active. Opening after
+  // the async status request can leave Chromium popups stuck on about:blank.
+  const popup = window.open(
+    'about:blank',
+    'google-oauth',
+    'popup=yes,width=520,height=680,resizable=yes,scrollbars=yes',
+  );
+  if (!popup) return Promise.reject(new Error('Google sign-in popup was blocked. Allow popups and try again.'));
+
   return apiRequest<{ enabled: boolean }>('/auth/google/status').then(({ enabled }) => {
     if (!enabled) {
+      popup.close();
       throw new Error('Google sign-in is not configured on this server. Use email and password instead.');
     }
-
-    const popup = window.open(
-      `${API_BASE_URL}/auth/google/start`,
-      'google-oauth',
-      'popup=yes,width=520,height=680,resizable=yes,scrollbars=yes',
-    );
-    if (!popup) throw new Error('Google sign-in popup was blocked. Allow popups and try again.');
 
     return new Promise<void>((resolve, reject) => {
       const expectedOrigin = window.location.origin;
@@ -59,7 +62,11 @@ const startGoogleLogin = (): Promise<void> => {
         if (popup.closed) finish(new Error('Google sign-in was cancelled.'));
       }, 400);
       popup.focus();
+      popup.location.replace(`${API_BASE_URL}/auth/google/start`);
     });
+  }).catch((error: unknown) => {
+    if (!popup.closed) popup.close();
+    throw error;
   });
 };
 
