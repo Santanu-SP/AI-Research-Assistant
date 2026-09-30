@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings
 from app.core.errors import AppError
 from app.core.time import utc_now
+from app.main import create_app
 
 
 def test_application_starts_and_exposes_openapi(client: TestClient) -> None:
@@ -41,6 +42,22 @@ def test_cors_does_not_allow_unconfigured_origin(client: TestClient) -> None:
     )
 
     assert "access-control-allow-origin" not in response.headers
+
+
+def test_development_cors_allows_private_lan_origin() -> None:
+    settings = Settings(app_environment="development")
+    app = create_app(settings)
+    with TestClient(app) as test_client:
+        response = test_client.options(
+            "/api/v1/health",
+            headers={
+                "Origin": "http://10.110.156.117:3000",
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://10.110.156.117:3000"
 
 
 def test_application_error_uses_shared_response_contract(

@@ -1,11 +1,23 @@
 /**
  * Central API Client configuration for FastAPI integration.
  * In production or development with a live FastAPI backend, requests
- * route to VITE_API_BASE_URL (defaults to http://localhost:8000/api/v1).
+ * route to VITE_API_BASE_URL. Without that setting, the API uses the same
+ * hostname as the page so local-network development remains same-site.
  */
 
+const pageHostname = window.location.hostname;
+const localApiBaseUrl = `${window.location.protocol}//${pageHostname}:8000/api/v1`;
+const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL;
+const isLoopbackHost = (hostname: string) => hostname === 'localhost' || hostname === '127.0.0.1';
+const configuredHost = configuredApiBaseUrl ? new URL(configuredApiBaseUrl).hostname : null;
+
+// Older local .env files point at localhost. When the page is opened through a
+// LAN IP, that creates a cross-origin request and browsers block it by CORS.
+const usePageHostname = !configuredApiBaseUrl
+  || (!isLoopbackHost(pageHostname) && configuredHost !== null && isLoopbackHost(configuredHost));
+
 export const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+  usePageHostname ? localApiBaseUrl : configuredApiBaseUrl;
 
 export class ApiError extends Error {
   constructor(
