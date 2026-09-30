@@ -45,6 +45,8 @@ alembic upgrade head
 uvicorn app.main:app --app-dir backend --reload
 ```
 
+The backend loads the repository-root `.env` even when this command is launched from a different directory. Restart the backend after changing `.env`; settings are read when the process starts.
+
 Authentication uses random, database-backed session tokens in HTTP-only cookies. No static signing secret is needed. Sessions expire after `AUTH_SESSION_DAYS` (default 7). Set `AUTH_COOKIE_SECURE=true` when serving the API over HTTPS. For local development, use `localhost` for both the frontend and backend so the browser sends the session cookie. Existing document and research rows remain in the database after migration but have no owner; new accounts cannot see them.
 
 ## Google OAuth and local retrieval (PR 2)
