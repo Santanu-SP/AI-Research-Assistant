@@ -2,11 +2,35 @@ from functools import lru_cache
 from pathlib import Path
 import re
 
+from dotenv import dotenv_values
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import URL
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
+DEFAULT_DATABASE_URL = "sqlite:///./backend/data/research_assistant.db"
+
+
+def _legacy_supabase_defaults() -> dict[str, str | None]:
+    """Read legacy lowercase database fields without colliding with OS vars.
+
+    In particular, a macOS/Linux ``USER`` environment variable overrides an
+    env-file key called ``user`` in Pydantic's normal case-insensitive lookup.
+    The explicit ``SUPABASE_DB_*`` names below are preferred. This fallback
+    lets existing local .env files keep working while they are migrated.
+    """
+    values = dotenv_values(PROJECT_ROOT / ".env")
+    return {
+        "user": values.get("user"),
+        "password": values.get("password"),
+        "host": values.get("host"),
+        "port": values.get("port"),
+        "dbname": values.get("dbname"),
+    }
+
+
+LEGACY_SUPABASE_DEFAULTS = _legacy_supabase_defaults()
 LOCAL_NETWORK_ORIGIN_REGEX = (
     r"^http://(?:localhost|127\.0\.0\.1|"
     r"10(?:\.\d{1,3}){3}|192\.168(?:\.\d{1,3}){2}|"
@@ -18,7 +42,31 @@ class Settings(BaseSettings):
     app_name: str = "AI Research Assistant API"
     app_environment: str = "development"
     api_v1_prefix: str = "/api/v1"
-    database_url: str = "sqlite:///./backend/data/research_assistant.db"
+    database_url: str = DEFAULT_DATABASE_URL
+    # These optional values support the connection details copied from the
+    # Supabase Connect dialog.  ``DATABASE_URL`` remains the preferred generic
+    # setting; when all five values are present, this app safely constructs it
+    # with the psycopg driver, URL-encoded credentials, and TLS enabled.
+    supabase_db_user: str | None = Field(
+        default=LEGACY_SUPABASE_DEFAULTS["user"],
+        validation_alias="SUPABASE_DB_USER",
+    )
+    supabase_db_password: str | None = Field(
+        default=LEGACY_SUPABASE_DEFAULTS["password"],
+        validation_alias="SUPABASE_DB_PASSWORD",
+    )
+    supabase_db_host: str | None = Field(
+        default=LEGACY_SUPABASE_DEFAULTS["host"],
+        validation_alias="SUPABASE_DB_HOST",
+    )
+    supabase_db_port: int | None = Field(
+        default=LEGACY_SUPABASE_DEFAULTS["port"],
+        validation_alias="SUPABASE_DB_PORT",
+    )
+    supabase_db_name: str | None = Field(
+        default=LEGACY_SUPABASE_DEFAULTS["dbname"],
+        validation_alias="SUPABASE_DB_NAME",
+    )
     document_upload_dir: Path = Path("backend/data/uploads")
     document_max_upload_bytes: int = Field(default=25 * 1024 * 1024, gt=0)
     document_chunk_size: int = Field(default=4000, ge=256)
@@ -79,6 +127,34 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_chunk_settings(self) -> "Settings":
+        supabase_values = (
+            self.supabase_db_user,
+            self.supabase_db_password,
+            self.supabase_db_host,
+            self.supabase_db_port,
+            self.supabase_db_name,
+        )
+        # An explicitly supplied DATABASE_URL always wins.  This keeps the
+        # generic deployment setting authoritative and lets tests select their
+        # own isolated SQLite database even when a developer's .env contains
+        # Supabase fields.
+        if (
+            any(value is not None for value in supabase_values)
+            and self.database_url == DEFAULT_DATABASE_URL
+        ):
+            if any(value is None for value in supabase_values):
+                raise ValueError(
+                    "Supabase database settings require user, password, host, port, and database name"
+                )
+            self.database_url = URL.create(
+                "postgresql+psycopg",
+                username=self.supabase_db_user,
+                password=self.supabase_db_password,
+                host=self.supabase_db_host,
+                port=self.supabase_db_port,
+                database=self.supabase_db_name,
+                query={"sslmode": "require"},
+            ).render_as_string(hide_password=False)
         if self.document_chunk_overlap >= self.document_chunk_size:
             raise ValueError(
                 "document_chunk_overlap must be smaller than document_chunk_size"
