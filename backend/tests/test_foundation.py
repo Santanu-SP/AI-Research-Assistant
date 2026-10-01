@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
 from sqlalchemy import text
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
@@ -82,6 +83,26 @@ def test_settings_accept_future_postgresql_url() -> None:
     settings = Settings(database_url="postgresql+psycopg://user:pass@db/app")
 
     assert settings.database_url.startswith("postgresql+psycopg://")
+
+
+def test_settings_builds_a_secure_supabase_url_from_connection_fields() -> None:
+    settings = Settings(
+        SUPABASE_DB_USER="postgres.example",
+        SUPABASE_DB_PASSWORD="reserved@characters?are/safe",
+        SUPABASE_DB_HOST="aws-0-example.pooler.supabase.com",
+        SUPABASE_DB_PORT=5432,
+        SUPABASE_DB_NAME="postgres",
+    )
+
+    url = make_url(settings.database_url)
+
+    assert url.drivername == "postgresql+psycopg"
+    assert url.username == "postgres.example"
+    assert url.password == "reserved@characters?are/safe"
+    assert url.host == "aws-0-example.pooler.supabase.com"
+    assert url.port == 5432
+    assert url.database == "postgres"
+    assert url.query["sslmode"] == "require"
 
 
 def test_utc_now_is_timezone_aware() -> None:
