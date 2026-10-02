@@ -45,6 +45,7 @@ class CitationValidator:
         return ValidatedCitation(
             citation_id=evidence.source_id,
             document_id=evidence.document_id,
+            project_id=evidence.project_id,
             chunk_id=evidence.chunk_id,
             paper_title=evidence.paper_title,
             authors=evidence.authors,

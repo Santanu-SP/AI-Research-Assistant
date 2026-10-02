@@ -32,3 +32,5 @@ class ResearchProject(TimestampMixin, Base):
     )
 
     user: Mapped["User"] = relationship(back_populates="projects")
+    documents: Mapped[list["Document"]] = relationship(back_populates="project")
+    research_runs: Mapped[list["Research"]] = relationship(back_populates="project")

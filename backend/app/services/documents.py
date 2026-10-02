@@ -15,6 +15,7 @@ from app.services.pdf_extraction import PdfExtractionError, extract_pdf
 from app.services.embeddings import embedding_service_for
 from app.services.storage import LocalDocumentStorage
 from app.services.text_processing import chunk_pages
+from app.services import projects as project_service
 
 
 logger = logging.getLogger(__name__)
@@ -38,11 +39,15 @@ async def create_document(
     storage: LocalDocumentStorage,
     settings: Settings,
     user_id: UUID,
+    project_id: UUID | None = None,
 ) -> Document:
+    if project_id is not None:
+        project_service.get_project(session, project_id, user_id)
     metadata = storage.validate(upload)
     stored = await storage.save(upload, metadata.extension)
     document = Document(
         user_id=user_id,
+        project_id=project_id,
         name=metadata.original_name,
         stored_name=stored.stored_name,
         file_type=metadata.file_type,
@@ -145,8 +150,12 @@ def list_documents(
     limit: int,
     offset: int,
     user_id: UUID,
+    project_id: UUID | None = None,
 ) -> tuple[list[Document], int]:
     filters = [Document.user_id == user_id]
+    if project_id is not None:
+        project_service.get_project(session, project_id, user_id)
+        filters.append(Document.project_id == project_id)
     normalized_search = search.strip() if search else None
     if normalized_search:
         filters.append(Document.name.icontains(normalized_search, autoescape=True))

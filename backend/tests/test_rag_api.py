@@ -66,10 +66,10 @@ class FakeGenerator:
 
 def install_pipeline_fakes(monkeypatch, items, *, score=5.0):
     generator = FakeGenerator()
-    captured_user_ids = []
+    captured_scopes = []
 
-    def fake_retrieve(session, user_id, query, settings):
-        captured_user_ids.append(user_id)
+    def fake_retrieve(session, user_id, query, settings, *, project_id=None):
+        captured_scopes.append((user_id, project_id))
         return items
 
     monkeypatch.setattr(rag_service.retrieval, "retrieve", fake_retrieve)
@@ -79,7 +79,7 @@ def install_pipeline_fakes(monkeypatch, items, *, score=5.0):
     monkeypatch.setattr(
         rag_service, "generation_service_for", lambda settings: generator
     )
-    return generator, captured_user_ids
+    return generator, captured_scopes
 
 
 def test_query_endpoint_persists_grounded_multi_source_report(
@@ -88,7 +88,7 @@ def test_query_endpoint_persists_grounded_multi_source_report(
     monkeypatch,
 ) -> None:
     items = candidates()
-    generator, captured_user_ids = install_pipeline_fakes(monkeypatch, items)
+    generator, captured_scopes = install_pipeline_fakes(monkeypatch, items)
 
     response = client.post(
         "/api/v1/research/query",
@@ -102,7 +102,8 @@ def test_query_endpoint_persists_grounded_multi_source_report(
     assert body["evidenceCount"] == 2
     assert [item["citationId"] for item in body["citations"]] == ["S1", "S2"]
     assert generator.calls == 1
-    assert len(captured_user_ids) == 1
+    assert len(captured_scopes) == 1
+    assert captured_scopes[0][1] is None
 
     research_id = UUID(body["researchId"])
     record = db_session.get(Research, research_id)
@@ -149,11 +150,90 @@ def test_query_endpoint_passes_only_authenticated_user_to_retrieval(
     client: TestClient,
     monkeypatch,
 ) -> None:
-    _, captured_user_ids = install_pipeline_fakes(monkeypatch, [])
+    _, captured_scopes = install_pipeline_fakes(monkeypatch, [])
     me = client.get("/api/v1/auth/me").json()
 
     response = client.post("/api/v1/research/query", json={"query": "No matches"})
 
     assert response.status_code == 201
-    assert captured_user_ids == [UUID(me["id"])]
+    assert captured_scopes == [(UUID(me["id"]), None)]
     assert response.json()["hybridCandidateCount"] == 0
+
+
+def test_query_endpoint_persists_and_retrieves_with_project_scope(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch,
+) -> None:
+    project = client.post(
+        "/api/v1/projects",
+        json={"name": "Scoped research"},
+    ).json()
+    project_id = UUID(project["id"])
+    project_items = [
+        item.model_copy(update={"project_id": project_id})
+        for item in candidates()
+    ]
+    _, captured_scopes = install_pipeline_fakes(monkeypatch, project_items)
+    me = client.get("/api/v1/auth/me").json()
+
+    response = client.post(
+        "/api/v1/research/query",
+        json={"query": "Project question", "projectId": str(project_id)},
+    )
+
+    assert response.status_code == 201, response.text
+    assert response.json()["projectId"] == str(project_id)
+    assert captured_scopes == [(UUID(me["id"]), project_id)]
+    record = db_session.get(Research, UUID(response.json()["researchId"]))
+    assert record is not None
+    assert record.project_id == project_id
+
+
+def test_query_rejects_foreign_and_archived_projects(
+    anonymous_client: TestClient,
+    monkeypatch,
+) -> None:
+    client = anonymous_client
+    for name in ("Alice", "Bob"):
+        assert client.post(
+            "/api/v1/auth/register",
+            json={
+                "name": name,
+                "email": f"{name.lower()}@example.com",
+                "password": "long-password-123",
+            },
+        ).status_code == 201
+    assert client.post(
+        "/api/v1/auth/login",
+        json={"email": "alice@example.com", "password": "long-password-123"},
+    ).status_code == 200
+    project = client.post(
+        "/api/v1/projects",
+        json={"name": "Alice project"},
+    ).json()
+    project_id = project["id"]
+    assert client.post("/api/v1/auth/logout").status_code == 204
+    assert client.post(
+        "/api/v1/auth/login",
+        json={"email": "bob@example.com", "password": "long-password-123"},
+    ).status_code == 200
+    foreign = client.post(
+        "/api/v1/research/query",
+        json={"query": "Cross-user query", "projectId": project_id},
+    )
+    assert foreign.status_code == 404
+    assert foreign.json()["error"]["code"] == "research_project_not_found"
+
+    assert client.post("/api/v1/auth/logout").status_code == 204
+    assert client.post(
+        "/api/v1/auth/login",
+        json={"email": "alice@example.com", "password": "long-password-123"},
+    ).status_code == 200
+    assert client.delete(f"/api/v1/projects/{project_id}").status_code == 204
+    archived = client.post(
+        "/api/v1/research/query",
+        json={"query": "Archived query", "projectId": project_id},
+    )
+    assert archived.status_code == 404
+    assert archived.json()["error"]["code"] == "research_project_not_found"

@@ -11,6 +11,7 @@ export interface ResearchProgressStep {
 
 export interface ResearchProgressResponse {
   id: string;
+  projectId?: string | null;
   question: string;
   status: ResearchStatus;
   researchDepth: ResearchDepth;

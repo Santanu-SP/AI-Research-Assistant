@@ -2,3 +2,7 @@
 pythonpath = ["backend"]
 testpaths = ["backend/tests"]
 addopts = "-q"
+markers = [
+    "integration: tests that require an external integration service",
+    "postgres: tests that require a dedicated PostgreSQL test database",
+]

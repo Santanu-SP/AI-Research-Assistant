@@ -9,6 +9,7 @@ from app.schemas.base import ApiSchema
 
 class DocumentResponse(ApiSchema):
     id: UUID
+    project_id: UUID | None = None
     name: str
     file_type: DocumentType = Field(serialization_alias="type")
     mime_type: str

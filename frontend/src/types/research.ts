@@ -3,6 +3,7 @@ export type ResearchDepth = 'quick' | 'standard' | 'deep';
 
 export interface Research {
   id: string;
+  projectId?: string | null;
   title: string;
   question: string;
   domain: string;
@@ -16,6 +17,7 @@ export interface Research {
 
 export interface ResearchResponse {
   id: string;
+  projectId?: string | null;
   title: string;
   question: string;
   domain: string | null;
@@ -29,6 +31,7 @@ export interface ResearchResponse {
 
 export interface CreateResearchInput {
   question: string;
+  projectId?: string;
   title?: string;
   domain?: string;
   researchDepth?: ResearchDepth;
@@ -48,6 +51,7 @@ export interface ResearchListParams {
   limit?: number;
   offset?: number;
   includeArchived?: boolean;
+  projectId?: string;
 }
 
 export interface ResearchListResponse {
@@ -104,12 +108,14 @@ export interface ResearchProgress {
 
 export interface ResearchQueryRequest {
   query: string;
+  projectId?: string;
   researchDepth?: ResearchDepth;
 }
 
 export interface Citation {
   citationId: string;
   documentId: string;
+  projectId?: string | null;
   chunkId: string;
   paperTitle: string | null;
   authors: string[] | null;
@@ -121,6 +127,7 @@ export interface Citation {
 
 export interface ResearchQueryResponse {
   researchId: string;
+  projectId?: string | null;
   answer: string;
   citations: Citation[];
   hybridCandidateCount: number;

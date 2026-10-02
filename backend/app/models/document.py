@@ -16,6 +16,7 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.dialects.postgresql import TSVECTOR
 from pgvector.sqlalchemy import Vector
 
 from app.core.time import utc_now
@@ -49,6 +50,9 @@ document_status_enum = Enum(
 
 class Document(TimestampMixin, Base):
     __tablename__ = "documents"
+    __table_args__ = (
+        Index("ix_documents_user_project", "user_id", "project_id"),
+    )
 
     id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True),
@@ -56,6 +60,11 @@ class Document(TimestampMixin, Base):
         default=uuid4,
     )
     user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    project_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("research_projects.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     stored_name: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     file_type: Mapped[DocumentType] = mapped_column(
@@ -80,6 +89,10 @@ class Document(TimestampMixin, Base):
         UTCDateTime(), default=utc_now, server_default=func.now(), nullable=False
     )
     processing_error: Mapped[str | None] = mapped_column(Text)
+
+    project: Mapped["ResearchProject | None"] = relationship(
+        back_populates="documents"
+    )
 
     chunks: Mapped[list["DocumentChunk"]] = relationship(
         back_populates="document",
@@ -111,6 +124,11 @@ class DocumentChunk(TimestampMixin, Base):
             postgresql_using="hnsw",
             postgresql_ops={"embedding": "vector_cosine_ops"},
         ),
+        Index(
+            "ix_document_chunks_search_vector_gin",
+            "search_vector",
+            postgresql_using="gin",
+        ).ddl_if(dialect="postgresql"),
     )
 
     id: Mapped[UUID] = mapped_column(
@@ -124,5 +142,9 @@ class DocumentChunk(TimestampMixin, Base):
     section: Mapped[str | None] = mapped_column(String(500))
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
     embedding: Mapped[list[float] | None] = mapped_column(Vector(1024), nullable=True)
+    search_vector: Mapped[str | None] = mapped_column(
+        TSVECTOR().with_variant(Text(), "sqlite"),
+        nullable=True,
+    )
 
     document: Mapped[Document] = relationship(back_populates="chunks")

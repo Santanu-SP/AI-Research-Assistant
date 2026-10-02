@@ -57,6 +57,7 @@ def test_draft_progress_response_is_factual_and_frontend_friendly(
 
     assert set(body) == {
         "id",
+        "projectId",
         "question",
         "status",
         "researchDepth",
@@ -73,6 +74,7 @@ def test_draft_progress_response_is_factual_and_frontend_friendly(
         "completedAt",
         "failedAt",
     }
+    assert body["projectId"] is None
     assert body["id"] == str(research_id)
     assert body["status"] == "draft"
     assert body["researchDepth"] == "standard"

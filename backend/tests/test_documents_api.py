@@ -231,3 +231,93 @@ def test_missing_document_returns_404(client: TestClient) -> None:
     response = client.get(f"/api/v1/documents/{uuid4()}")
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "document_not_found"
+
+
+def test_project_upload_and_listing_are_scoped_while_legacy_stays_available(
+    client: TestClient,
+) -> None:
+    alpha = client.post("/api/v1/projects", json={"name": "Alpha"}).json()
+    beta = client.post("/api/v1/projects", json={"name": "Beta"}).json()
+
+    alpha_upload = client.post(
+        f"/api/v1/projects/{alpha['id']}/documents",
+        files={"file": ("alpha.pdf", make_pdf("alpha evidence"), PDF_MIME)},
+    )
+    beta_upload = client.post(
+        f"/api/v1/projects/{beta['id']}/documents",
+        files={"file": ("beta.pdf", make_pdf("beta evidence"), PDF_MIME)},
+    )
+    legacy_upload = upload_document(client, filename="legacy.pdf")
+
+    assert alpha_upload.status_code == 201
+    assert alpha_upload.json()["projectId"] == alpha["id"]
+    assert beta_upload.status_code == 201
+    assert beta_upload.json()["projectId"] == beta["id"]
+    assert legacy_upload.status_code == 201
+    assert legacy_upload.json()["projectId"] is None
+    assert client.get(
+        f"/api/v1/documents/{legacy_upload.json()['id']}"
+    ).json()["projectId"] is None
+
+    alpha_list = client.get(
+        f"/api/v1/projects/{alpha['id']}/documents"
+    ).json()
+    beta_list = client.get(f"/api/v1/projects/{beta['id']}/documents").json()
+    legacy_list = client.get("/api/v1/documents").json()
+
+    assert [item["id"] for item in alpha_list["items"]] == [
+        alpha_upload.json()["id"]
+    ]
+    assert [item["id"] for item in beta_list["items"]] == [
+        beta_upload.json()["id"]
+    ]
+    assert legacy_list["total"] == 3
+
+
+def test_foreign_and_archived_projects_reject_document_operations(
+    anonymous_client: TestClient,
+) -> None:
+    client = anonymous_client
+    for name in ("Alice", "Bob"):
+        assert client.post(
+            "/api/v1/auth/register",
+            json={
+                "name": name,
+                "email": f"{name.lower()}@example.com",
+                "password": "long-password-123",
+            },
+        ).status_code == 201
+    assert client.post(
+        "/api/v1/auth/login",
+        json={"email": "alice@example.com", "password": "long-password-123"},
+    ).status_code == 200
+    project = client.post(
+        "/api/v1/projects",
+        json={"name": "Alice documents"},
+    ).json()
+    project_id = project["id"]
+    assert client.post("/api/v1/auth/logout").status_code == 204
+
+    assert client.post(
+        "/api/v1/auth/login",
+        json={"email": "bob@example.com", "password": "long-password-123"},
+    ).status_code == 200
+    foreign_upload = client.post(
+        f"/api/v1/projects/{project_id}/documents",
+        files={"file": ("foreign.pdf", make_pdf(), PDF_MIME)},
+    )
+    assert foreign_upload.status_code == 404
+    assert client.get(f"/api/v1/projects/{project_id}/documents").status_code == 404
+
+    assert client.post("/api/v1/auth/logout").status_code == 204
+    assert client.post(
+        "/api/v1/auth/login",
+        json={"email": "alice@example.com", "password": "long-password-123"},
+    ).status_code == 200
+    assert client.delete(f"/api/v1/projects/{project_id}").status_code == 204
+    archived_upload = client.post(
+        f"/api/v1/projects/{project_id}/documents",
+        files={"file": ("archived.pdf", make_pdf(), PDF_MIME)},
+    )
+    assert archived_upload.status_code == 404
+    assert client.get(f"/api/v1/projects/{project_id}/documents").status_code == 404

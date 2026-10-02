@@ -30,6 +30,7 @@ DomainText = Annotated[
 
 class ResearchCreate(ApiSchema):
     question: QuestionText
+    project_id: UUID | None = None
     title: TitleText | None = None
     domain: DomainText | None = None
     research_depth: ResearchDepth = ResearchDepth.STANDARD
@@ -61,6 +62,7 @@ class ResearchUpdate(ApiSchema):
 
 class ResearchResponse(ApiSchema):
     id: UUID
+    project_id: UUID | None = None
     title: str
     question: str
     domain: str | None
@@ -87,6 +89,7 @@ class ResearchProgressStep(ApiSchema):
 
 class ResearchProgressResponse(ApiSchema):
     id: UUID
+    project_id: UUID | None = None
     question: str
     status: ResearchStatus
     research_depth: ResearchDepth

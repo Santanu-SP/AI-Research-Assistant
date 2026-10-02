@@ -31,6 +31,7 @@ class EvidenceBuilder:
                 EvidenceItem(
                     source_id=f"S{len(evidence) + 1}",
                     document_id=candidate.document_id,
+                    project_id=candidate.project_id,
                     chunk_id=candidate.chunk_id,
                     paper_title=candidate.paper_title,
                     authors=candidate.authors,

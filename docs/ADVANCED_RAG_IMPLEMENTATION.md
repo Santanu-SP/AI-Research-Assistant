@@ -1,6 +1,6 @@
 # Advanced RAG Implementation Status
 
-Last updated: 2026-10-01  
+Last updated: 2026-10-02
 Working branch: `feature/advanced-rag-upgrade`
 
 This document is the handoff record for the advanced research assistant upgrade.
@@ -42,7 +42,9 @@ flowchart TD
 4. Text is normalized and split with configurable character overlap.
 5. `Qwen/Qwen3-Embedding-0.6B` creates normalized 1024-dimensional vectors.
 6. Document metadata, chunks, and embeddings are stored in PostgreSQL.
-7. A research query performs user-scoped vector and full-text searches.
+7. A project-aware research query performs user-and-project-scoped vector and
+   indexed full-text searches. Legacy requests without a project remain
+   user-scoped during the compatibility period.
 8. Reciprocal Rank Fusion combines the two ranked result sets.
 9. `Qwen/Qwen3-Reranker-0.6B` orders the candidates.
 10. The evidence builder selects up to the configured context limit.
@@ -85,14 +87,15 @@ flowchart TD
 | --- | --- | --- |
 | Backend | FastAPI application factory, versioned API, shared error contract and CORS | Complete baseline |
 | Authentication | Password accounts, Google OAuth, revocable cookie sessions and ownership checks | Complete baseline |
-| Projects | Private user-owned project CRUD, ownership enforcement, search, pagination and soft archiving | Phase 1 foundation complete |
+| Projects | Private project CRUD plus project-linked documents/runs and ownership-enforced operations | Phase 1 scope complete |
 | Database | SQLAlchemy 2, Alembic, PostgreSQL support and SQLite test support | Complete baseline |
 | pgvector | Migration-managed `vector` extension, `VECTOR(1024)` column and cosine HNSW index | Complete baseline |
 | Upload security | Filename validation, MIME/extension validation, PDF signature check and upload size limit | Complete for PDF |
 | PDF extraction | Page-aware text and explicit PDF metadata through `pypdf` | Working baseline |
 | Chunking | Conservative normalization, page preservation, heading detection and configurable overlap | Working baseline |
 | Embeddings | Lazy, cached Qwen3 embedding model with batching, normalized vectors and device selection | Working baseline |
-| Retrieval | User-scoped pgvector cosine search plus PostgreSQL full-text search | Working baseline |
+| Retrieval | Optional project-scoped pgvector and PostgreSQL FTS filters applied inside SQL | Phase 1 scope complete |
+| Full-text index | Trigger-maintained English `tsvector` plus PostgreSQL GIN index | Implemented in 0011 |
 | Fusion | Stable Reciprocal Rank Fusion and chunk-ID deduplication | Complete baseline |
 | Reranking | Cached Qwen3 CrossEncoder wrapper with stable ordering and explicit errors | Working baseline |
 | Evidence | Stable request-local source IDs, deduplication and configurable evidence limit | Working baseline |
@@ -106,10 +109,10 @@ flowchart TD
 
 ### Data and ingestion
 
-- A research project/workspace entity and private CRUD API now exist, but
-  documents and research runs are not linked to projects yet. Documents still
-  belong to a user globally, and a `Research` row still represents a
-  question/run rather than a reusable project.
+- Documents and research runs can now belong to a project. The relationship is
+  nullable so records created before projects remain valid. A `Research` row
+  continues to represent a question/run; it has not been conflated with the
+  reusable `ResearchProject` workspace.
 - Only PDF uploads are accepted. DOCX, PPTX, XLSX, CSV, Markdown, HTML, TXT,
   DOI, OpenAlex, Crossref and URL ingestion are not implemented.
 - Docling and LlamaIndex are not dependencies and no Document/Node ingestion
@@ -122,13 +125,14 @@ flowchart TD
 
 ### Retrieval and evidence
 
-- Retrieval is user-scoped but cannot yet be project-scoped.
-- Full-text search computes `to_tsvector` at query time and has no stored or
-  expression GIN index.
+- Explicit project research filters both vector and keyword branches by
+  authenticated user and project in SQL before top-K ranking.
+- Legacy research requests without `projectId` intentionally search all of the
+  authenticated user's indexed documents during the compatibility period.
 - Candidate objects preserve the main scores but lack node IDs, source type,
   source URL, content level, metadata, final rank and project identity.
-- Metadata filters for project, document, source type, year, author and DOI are
-  not available.
+- Project filtering is implemented. Filters for document, source type, year,
+  author and DOI are not available yet.
 - Evidence sufficiency uses count and one reranker threshold; it has not been
   calibrated against an evaluation dataset.
 
@@ -167,9 +171,9 @@ flowchart TD
 1. Preserve the custom PostgreSQL retrieval, RRF, reranking, evidence and
    citation services. Frameworks will wrap or call these services rather than
    replace them.
-2. Add a first-class research project model. Existing user-owned documents and
-   research rows will require a backward-compatible migration path before
-   project scoping becomes mandatory.
+2. Project relationships are nullable by design. Existing rows remain
+   `project_id = NULL`; the migration does not create synthetic projects or
+   assign historical records arbitrarily.
 3. Introduce canonical source and node metadata incrementally through Alembic.
    Existing `documents` and `document_chunks` tables will be extended rather
    than duplicated.
@@ -185,21 +189,20 @@ flowchart TD
 
 ## Database changes
 
-Current migration head: `0010_research_projects`.
+Current migration head: `0011_project_scope_and_fts`.
 
 Planned migration sequence:
 
 1. `0010_research_projects` adds private workspaces with user ownership,
    timestamps, archiving and supporting indexes.
-2. Add nullable project relationships to existing documents and research runs,
-   backfill safely, then enforce ownership rules at the service/API layer.
+2. `0011_project_scope_and_fts` adds nullable project foreign keys to documents
+   and research runs, individual/composite indexes, and a trigger-maintained
+   English `tsvector` with a PostgreSQL GIN index.
 3. Extend documents with source type/URI, checksum, canonical metadata,
    provenance, content level, parser and ingestion version fields.
 4. Extend chunks with project ID, node ID, page ranges, section path, token
    count and metadata JSON.
-5. Add an indexed PostgreSQL full-text representation using GIN without
-   removing the existing vector index.
-6. Add workflow/run and evaluation persistence only when their domain contracts
+5. Add workflow/run and evaluation persistence only when their domain contracts
    are implemented.
 
 No destructive schema recreation is planned.
@@ -209,6 +212,22 @@ No destructive schema recreation is planned.
 Existing `/api/v1/auth`, `/api/v1/documents`, and `/api/v1/research` contracts
 remain compatible. `/api/v1/projects` now provides authenticated create, list,
 get, update and archive operations with ownership enforced in every lookup.
+
+Project-aware additions now available:
+
+- `POST /api/v1/projects/{project_id}/documents` uploads into an owned,
+  non-archived project;
+- `GET /api/v1/projects/{project_id}/documents` lists only documents matching
+  both the authenticated user and selected project;
+- research create/query/retrieve payloads accept nullable `projectId`;
+- research listing accepts `projectId` as a query parameter;
+- document, research, progress, retrieval, evidence and citation contracts
+  preserve nullable project identity.
+
+Archived projects are hidden by the existing project lookup contract. They
+cannot receive uploads, serve project-scoped listings, or start project-scoped
+research. Existing owner-only legacy document routes remain available during
+frontend migration, including for previously linked documents.
 
 Planned additions are conceptually:
 
@@ -262,18 +281,19 @@ Baseline recorded on 2026-10-01:
 
 | Check | Result |
 | --- | --- |
-| Backend pytest | 100 passed; 2 dependency deprecation warnings |
+| Backend pytest | 105 passed, 1 skipped; 2 dependency deprecation warnings |
 | Frontend Vitest | 9 passed across 3 files |
 | Frontend TypeScript | Passed |
 | Frontend ESLint | Passed |
 | Frontend production build | Passed |
 | PostgreSQL connection | Verified against configured Supabase project |
 | pgvector extension | Installed and verified |
-| Alembic | Clean SQLite upgrade verified through `0010_research_projects`; configured PostgreSQL remains at 0009 until deployment |
+| Alembic | Empty DB and legacy-row SQLite upgrades verified through `0011_project_scope_and_fts`; PostgreSQL SQL reviewed; configured Supabase remains at 0009 until deployment |
+| PostgreSQL retrieval integration | Added and skipped unless `POSTGRES_TEST_DATABASE_URL` points to a dedicated test database |
 
 The current test suite uses SQLite for ordinary backend tests. Dedicated
 PostgreSQL integration tests for vector search, FTS indexes and project
-isolation still need to be added.
+isolation now exist and intentionally skip without a dedicated test database.
 
 ## Known limitations
 
@@ -285,6 +305,10 @@ isolation still need to be added.
 - Existing documents are stored on local disk even when metadata lives in
   Supabase; remote object storage is not part of this phase.
 - SQLite is intentionally unable to execute the real embedding/retrieval path.
+- Project-aware APIs enforce strict user/project scope. Legacy requests without
+  `projectId` still search or list across that authenticated user's records so
+  the existing frontend remains compatible; this path should be retired after
+  project UI migration.
 - The current branch is based on `fix/google-oauth-env`, whose Supabase changes
   are under pull request review and are not yet on `main`.
 
@@ -292,18 +316,16 @@ isolation still need to be added.
 
 ### Phase 1 — database and schemas
 
-1. Link documents and research runs to owned projects with a backward-compatible
-   migration and API fields.
-2. Make ingestion and retrieval accept an owned project and enforce combined
-   user/project isolation in SQL.
-3. Add canonical source/content enums and metadata fields without breaking the
-   current document API.
-4. Add and test a PostgreSQL GIN full-text index.
+1. Add canonical source/document metadata, checksum and duplicate handling.
+2. Add content-level and metadata-provenance models without breaking current
+   project document APIs.
+3. Establish the Docling/LlamaIndex ingestion boundary using the canonical
+   metadata vocabulary and controlled fixtures.
 
 ### Later phases
 
-After Phase 1 is green: harden Qwen health/status behavior; integrate Docling
-and LlamaIndex ingestion; extend hybrid retrieval and evidence contracts;
+After the remaining metadata foundation is green: harden Qwen health/status
+behavior; integrate Docling and LlamaIndex ingestion; extend hybrid retrieval and evidence contracts;
 introduce structured generation and citation repair; replace only RAG
 orchestration with LangGraph; then add frontend wiring, Ragas evaluation,
 security hardening and final documentation.

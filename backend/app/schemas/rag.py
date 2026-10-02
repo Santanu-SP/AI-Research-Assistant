@@ -10,12 +10,14 @@ from app.schemas.base import ApiSchema
 
 class ResearchQueryRequest(ApiSchema):
     query: str = Field(min_length=1, max_length=10_000)
+    project_id: UUID | None = None
     research_depth: ResearchDepth = ResearchDepth.STANDARD
 
 
 class EvidenceItem(ApiSchema):
     source_id: str
     document_id: UUID
+    project_id: UUID | None = None
     chunk_id: UUID
     paper_title: str | None
     authors: list[str] | None
@@ -29,6 +31,7 @@ class EvidenceItem(ApiSchema):
 class ValidatedCitation(ApiSchema):
     citation_id: str
     document_id: UUID
+    project_id: UUID | None = None
     chunk_id: UUID
     paper_title: str | None
     authors: list[str] | None
@@ -40,6 +43,7 @@ class ValidatedCitation(ApiSchema):
 
 class ResearchQueryResponse(ApiSchema):
     research_id: UUID
+    project_id: UUID | None = None
     answer: str
     citations: list[ValidatedCitation]
     hybrid_candidate_count: int = Field(ge=0)

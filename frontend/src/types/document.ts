@@ -3,6 +3,7 @@ export type DocumentFormat = 'pdf' | 'docx' | 'txt';
 
 export interface Document {
   id: string;
+  projectId?: string | null;
   name: string;
   type: DocumentFormat;
   mimeType: string;
