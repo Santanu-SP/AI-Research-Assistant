@@ -84,6 +84,7 @@ def _document(
     )
     document.chunks.append(
         DocumentChunk(
+            node_id=str(uuid4()),
             text=text_value,
             page=1,
             section="Test",

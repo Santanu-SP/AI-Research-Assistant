@@ -114,14 +114,19 @@ export interface ResearchQueryRequest {
 
 export interface Citation {
   citationId: string;
+  nodeId?: string | null;
   documentId: string;
   projectId?: string | null;
+  sourceType?: string | null;
+  contentLevel?: string | null;
   chunkId: string;
   paperTitle: string | null;
   authors: string[] | null;
   doi: string | null;
-  page: number;
+  page: number | null;
+  pageEnd?: number | null;
   section: string | null;
+  sectionPath?: string[] | null;
   excerpt: string;
 }
 

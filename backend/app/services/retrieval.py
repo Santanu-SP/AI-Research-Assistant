@@ -128,5 +128,25 @@ def retrieve(
     for item in candidates:
         document = item.chunk.document
         score = (1 / (RRF_K + vector_rank[item.chunk.id]) if item.chunk.id in vector_rank else 0) + (1 / (RRF_K + keyword_rank[item.chunk.id]) if item.chunk.id in keyword_rank else 0)
-        result.append(RetrievalCandidate(chunk_id=item.chunk.id, document_id=document.id, project_id=document.project_id, paper_title=document.title or document.name, authors=document.authors, doi=document.doi, page=item.chunk.page, section=item.chunk.section, text=item.chunk.text, vector_score=item.vector_score, keyword_score=item.keyword_score, hybrid_score=score))
+        result.append(
+            RetrievalCandidate(
+                chunk_id=item.chunk.id,
+                node_id=item.chunk.node_id,
+                document_id=document.id,
+                project_id=document.project_id,
+                source_type=document.source_type,
+                content_level=document.content_level,
+                paper_title=document.title or document.name,
+                authors=document.authors,
+                doi=document.doi,
+                page=item.chunk.page,
+                page_end=item.chunk.page_end,
+                section=item.chunk.section,
+                section_path=item.chunk.section_path,
+                text=item.chunk.text,
+                vector_score=item.vector_score,
+                keyword_score=item.keyword_score,
+                hybrid_score=score,
+            )
+        )
     return result

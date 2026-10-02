@@ -1,25 +1,18 @@
-import logging
 from uuid import UUID
 
 from fastapi import UploadFile
-from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.core.errors import AppError
-from app.domain.documents import DocumentStatus, DocumentType
-from app.models.document import Document, DocumentChunk
-from app.services.pdf_extraction import PdfExtractionError, extract_pdf
-from app.services.embeddings import embedding_service_for
+from app.domain.documents import ContentLevel, DocumentStatus, DocumentType, SourceType
+from app.models.document import Document
+from app.services.embeddings import EmbeddingService
+from app.services.ingestion import DocumentIngestionAdapter, ingest_document
 from app.services.storage import LocalDocumentStorage
-from app.services.text_processing import chunk_pages
 from app.services import projects as project_service
-
-
-logger = logging.getLogger(__name__)
-
 
 def _commit(session: Session, error_message: str) -> None:
     try:
@@ -40,11 +33,30 @@ async def create_document(
     settings: Settings,
     user_id: UUID,
     project_id: UUID | None = None,
+    *,
+    adapter: DocumentIngestionAdapter | None = None,
+    embeddings: EmbeddingService | None = None,
 ) -> Document:
     if project_id is not None:
         project_service.get_project(session, project_id, user_id)
     metadata = storage.validate(upload)
     stored = await storage.save(upload, metadata.extension)
+    duplicate_filters = [
+        Document.user_id == user_id,
+        Document.checksum == stored.checksum,
+    ]
+    if project_id is None:
+        duplicate_filters.append(Document.project_id.is_(None))
+    else:
+        duplicate_filters.append(Document.project_id == project_id)
+    duplicate = session.scalar(select(Document).where(*duplicate_filters))
+    if duplicate is not None:
+        storage.delete(stored.stored_name)
+        raise AppError(
+            "This document has already been uploaded in this project",
+            status_code=409,
+            code="duplicate_document",
+        )
     document = Document(
         user_id=user_id,
         project_id=project_id,
@@ -53,6 +65,9 @@ async def create_document(
         file_type=metadata.file_type,
         mime_type=metadata.mime_type,
         size=stored.size,
+        source_type=SourceType.UPLOADED_FILE,
+        content_level=ContentLevel.USER_DOCUMENT,
+        checksum=stored.checksum,
         status=DocumentStatus.UPLOADED,
     )
     session.add(document)
@@ -71,74 +86,14 @@ async def create_document(
             ) from cleanup_error
         raise
 
-    document.status = DocumentStatus.PROCESSING
-    _commit(session, "The document processing status could not be saved")
-
-    try:
-        extracted = await run_in_threadpool(
-            extract_pdf, storage.path_for(document.stored_name)
-        )
-        prepared_chunks = chunk_pages(
-            document.id,
-            extracted.pages,
-            chunk_size=settings.document_chunk_size,
-            overlap=settings.document_chunk_overlap,
-        )
-        if not prepared_chunks:
-            raise PdfExtractionError("The PDF contains no extractable text")
-
-        document.title = extracted.title
-        document.authors = extracted.authors
-        document.doi = extracted.doi
-        document.page_count = extracted.page_count
-        document.processing_error = None
-        document.chunks = [
-            DocumentChunk(
-                id=chunk.id,
-                document_id=chunk.document_id,
-                text=chunk.text,
-                page=chunk.page,
-                section=chunk.section,
-                chunk_index=chunk.chunk_index,
-            )
-            for chunk in prepared_chunks
-        ]
-        if settings.embedding_enabled:
-            if session.bind is None or session.bind.dialect.name != "postgresql":
-                raise AppError("Document indexing requires PostgreSQL with pgvector", status_code=503, code="embedding_backend_unavailable")
-            vectors = embedding_service_for(settings).embed_documents([chunk.text for chunk in prepared_chunks])
-            if len(vectors) != len(document.chunks):
-                raise AppError("Embedding generation returned an invalid batch", status_code=500, code="embedding_batch_mismatch")
-            for chunk, vector in zip(document.chunks, vectors, strict=True):
-                chunk.embedding = vector
-        document.status = DocumentStatus.INDEXED
-        _commit(session, "The processed document could not be saved")
-        session.refresh(document)
-        logger.info(
-            "Indexed document %s with %d pages and %d chunks",
-            document.id,
-            extracted.page_count,
-            len(prepared_chunks),
-        )
-        return document
-    except (PdfExtractionError, AppError) as exc:
-        session.rollback()
-        failed_document = session.get(Document, document.id)
-        if failed_document is None:
-            raise AppError(
-                "The document processing failure could not be recorded",
-                status_code=500,
-                code="document_persistence_error",
-            ) from exc
-        failed_document.status = DocumentStatus.FAILED
-        failed_document.processing_error = str(exc)
-        _commit(session, "The document processing failure could not be saved")
-        logger.warning("Document %s failed processing: %s", document.id, exc)
-        raise AppError(
-            "The document could not be indexed",
-            status_code=422 if isinstance(exc, PdfExtractionError) else exc.status_code,
-            code="pdf_processing_failed" if isinstance(exc, PdfExtractionError) else exc.code,
-        ) from exc
+    return await ingest_document(
+        session,
+        document,
+        storage.path_for(document.stored_name),
+        settings,
+        adapter=adapter,
+        embeddings=embeddings,
+    )
 
 
 def list_documents(

@@ -1,8 +1,12 @@
 alembic>=1.14,<2
 argon2-cffi>=23.1,<26
+docling>=2.132,<3
 fastapi>=0.115,<1
 google-auth>=2.0,<3
 httpx>=0.28,<1
+llama-index-core>=0.14.25,<0.15
+llama-index-node-parser-docling>=0.5,<0.6
+llama-index-readers-docling>=0.5,<0.6
 pgvector>=0.3,<1
 pydantic-settings>=2.6,<3
 psycopg[binary]>=3.2,<4

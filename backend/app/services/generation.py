@@ -14,7 +14,14 @@ from app.schemas.rag import EvidenceItem
 def build_grounding_prompt(question: str, evidence: list[EvidenceItem]) -> str:
     blocks = []
     for item in evidence:
-        metadata = [f"source={item.source_id}", f"page={item.page}"]
+        metadata = [f"source={item.source_id}"]
+        if item.page is not None:
+            page_label = (
+                f"{item.page}-{item.page_end}"
+                if item.page_end and item.page_end != item.page
+                else str(item.page)
+            )
+            metadata.append(f"page={page_label}")
         if item.paper_title:
             metadata.append(f"paper_title={item.paper_title}")
         if item.authors:
