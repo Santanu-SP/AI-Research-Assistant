@@ -83,6 +83,30 @@ class Document(TimestampMixin, Base):
             "project_id",
             "checksum",
         ),
+        Index(
+            "ix_documents_user_project_source_type",
+            "user_id",
+            "project_id",
+            "source_type",
+        ),
+        Index(
+            "ix_documents_user_project_content_level",
+            "user_id",
+            "project_id",
+            "content_level",
+        ),
+        Index(
+            "ix_documents_user_project_publication_year",
+            "user_id",
+            "project_id",
+            "publication_year",
+        ),
+        Index(
+            "ix_documents_user_project_doi",
+            "user_id",
+            "project_id",
+            "doi",
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(

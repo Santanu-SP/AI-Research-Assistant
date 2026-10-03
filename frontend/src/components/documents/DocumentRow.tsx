@@ -24,6 +24,7 @@ export const DocumentRow: React.FC<DocumentRowProps> = ({
 
   const isPdf = document.type === 'pdf';
   const isDocx = document.type === 'docx';
+  const contentLabel = document.contentLevel.replaceAll('_', ' ');
 
   return (
     <div className="p-4 bg-white border border-[#e5e7e4] rounded-lg hover:border-[#cbd0ca] hover:shadow-xs transition-all duration-150 flex flex-col sm:flex-row sm:items-center justify-between gap-3 group">
@@ -58,6 +59,12 @@ export const DocumentRow: React.FC<DocumentRowProps> = ({
             <span>{formatSize(document.size)}</span>
             <span className="text-[#929792]">·</span>
             <span>{new Date(document.uploadedAt || document.createdAt).toLocaleDateString()}</span>
+            <span className="text-[#929792]">·</span>
+            <span className="rounded bg-[#f1f6f3] px-1.5 py-0.5 font-medium capitalize text-[#285b46]">
+              {contentLabel}
+            </span>
+            <span className="text-[#929792]">·</span>
+            <span className="capitalize">{document.sourceType.replaceAll('_', ' ')}</span>
             
             {document.pageCount ? (
               <>
@@ -81,6 +88,12 @@ export const DocumentRow: React.FC<DocumentRowProps> = ({
                 <span className="truncate max-w-[120px]" title={document.doi}>
                   DOI: {document.doi}
                 </span>
+              </>
+            ) : null}
+            {document.publicationYear ? (
+              <>
+                <span className="text-[#929792]">·</span>
+                <span>{document.publicationYear}</span>
               </>
             ) : null}
           </div>

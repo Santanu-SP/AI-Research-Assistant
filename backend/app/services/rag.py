@@ -118,12 +118,15 @@ def run_query(
         research.update_research_lifecycle(
             session, record.id, ProjectStatus.PAPERS_SELECTED
         )
+        retrieval_kwargs = {"project_id": payload.project_id}
+        if payload.filters.model_dump(exclude_defaults=True):
+            retrieval_kwargs["filters"] = payload.filters
         candidates = retrieval.retrieve(
             session,
             user_id,
             normalized_query,
             settings,
-            project_id=payload.project_id,
+            **retrieval_kwargs,
         )
         research.update_progress_counts(
             session,

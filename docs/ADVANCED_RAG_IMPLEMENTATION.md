@@ -2,293 +2,336 @@
 
 Last updated: 2026-10-03
 Working branch: `feature/advanced-rag-upgrade`
+Current migration head: `0013_multi_source_ingestion`
 
-This document is the handoff record for the advanced research assistant upgrade.
-It describes the repository as implemented and must be updated when a phase
-changes the architecture, database, API, model configuration, or test status.
+This is the handoff record for the advanced research assistant. It describes
+the implemented repository rather than a proposed replacement architecture.
 
 ## Current architecture
 
-The application is a React/Vite frontend backed by FastAPI. SQLAlchemy and
-Alembic manage SQLite for ordinary tests and PostgreSQL with pgvector for real
-indexing and retrieval. The ingestion boundary now uses Docling to understand
-files and LlamaIndex to standardize Documents and Nodes. Application domain
-models separate those framework objects from persistence and retrieval.
-
 ```mermaid
 flowchart TD
-    UI[React frontend] --> API[FastAPI upload API]
-    API --> VALIDATE[PDF or DOCX validation]
-    VALIDATE --> STORE[Local file storage plus SHA-256]
-    STORE --> DEDUPE[User and project checksum check]
-    DEDUPE --> DOCLING[Docling converter]
+    PROJECT[Owned research project]
+    PROJECT --> FILE[PDF DOCX PPTX HTML Markdown]
+    PROJECT --> URL[User URL]
+    PROJECT --> DOI[DOI or provider work]
+
+    FILE --> VALIDATE[Format validation and SHA-256]
+    VALIDATE --> DOCLING[Docling]
+    URL --> SAFE[SSRF-safe fetch and redirect validation]
+    SAFE --> VALIDATE
     DOCLING --> LIDOC[LlamaIndex Document]
     LIDOC --> LINODE[DoclingNodeParser and HybridChunker]
-    LINODE --> CANON[Canonical ParsedDocument and ParsedNode]
-    CANON --> EMBED[Existing Qwen3 embedding service]
-    EMBED --> PG[(PostgreSQL + pgvector + indexed FTS)]
 
-    API --> RAG[Synchronous custom RAG orchestrator]
-    RAG --> HYBRID[Project and user scoped pgvector plus FTS]
-    PG --> HYBRID
-    HYBRID --> RRF[Reciprocal Rank Fusion]
+    DOI --> PROVIDERS[Crossref plus OpenAlex]
+    PROVIDERS --> MERGE[Canonical merge provenance and conflicts]
+    MERGE --> LEVEL{Content available}
+    LEVEL -->|Abstract| ABSTRACT[One abstract node]
+    LEVEL -->|Metadata only| META[Source record without evidence chunks]
+
+    LINODE --> CANON[Canonical ParsedDocument and ParsedNode]
+    ABSTRACT --> CANON
+    CANON --> QWEN[Existing Qwen3 embedding service]
+    QWEN --> DB[(PostgreSQL pgvector indexed FTS)]
+    META --> DB
+
+    QUESTION[Research query plus typed filters] --> RETRIEVE[SQL-scoped vector and FTS]
+    DB --> RETRIEVE
+    RETRIEVE --> RRF[Reciprocal Rank Fusion]
     RRF --> RERANK[Qwen3 reranker]
     RERANK --> EVIDENCE[Evidence builder]
     EVIDENCE --> OLLAMA[qwen3.5:9b via Ollama]
-    OLLAMA --> VALIDATE_CITATION[Citation ID validator]
-    VALIDATE_CITATION --> REPORT[Persisted report and sources]
+    OLLAMA --> REPORT[Validated IDs and persisted report]
 ```
 
-LlamaIndex does not create or own a vector index. Once nodes are persisted,
-retrieval works entirely from the application's PostgreSQL tables.
-
-### Implemented upload flow
-
-1. An authenticated user uploads a PDF or DOCX, optionally into an owned,
-   non-archived project.
-2. Storage validates the filename, extension, MIME type, size, and format
-   signature. DOCX ZIP contents are also checked for traversal, encryption,
-   macros, excessive members, and excessive expanded size.
-3. The file is stored under `backend/data/uploads`; SHA-256 is calculated in
-   the same write pass.
-4. The service checks `user_id + exact project_id + checksum`. A duplicate is
-   deleted from temporary storage and rejected with HTTP 409 and code
-   `duplicate_document`, so parsing and embedding do not run again.
-5. A new Document is committed as `UPLOADED`, then moved to `PROCESSING`.
-6. By default, Docling produces a rich JSON LlamaIndex Document. The official
-   Docling node parser and hybrid chunker produce token-aware Nodes using the
-   Qwen embedding tokenizer and Markdown table serialization.
-7. A framework-neutral adapter normalizes the document and nodes into
-   `CanonicalMetadata`, `ParsedDocument`, and `ParsedNode` contracts.
-8. The existing Qwen embedding service embeds every node in one batch.
-9. Canonical metadata, node metadata, and embeddings are persisted in one final
-   commit that changes the status to `INDEXED`.
-10. If parsing, embedding, or persistence fails, the transaction is rolled
-    back, partial chunks are cleared, the Document is marked `FAILED`, and a
-    short sanitized error is saved. Full exception details remain in logs.
-
-### Implemented research flow
-
-1. Research queries constrain both vector and full-text branches by the
-   authenticated user and, when supplied, the owned project.
-2. Reciprocal Rank Fusion combines the two result lists.
-3. The Qwen reranker orders candidates and the evidence builder selects the
-   bounded context.
-4. Ollama generates from that evidence when it is sufficient; otherwise the
-   fixed insufficient-evidence response is returned.
-5. Known citation IDs are mapped to supplied evidence and unknown IDs are
-   removed before the report is saved.
-
-## Responsibility boundaries
+Responsibility remains separated:
 
 | Component | Responsibility |
 | --- | --- |
-| Docling | File parsing, layout, pages, headings, tables, and configured OCR |
-| LlamaIndex | Document and Node abstractions, metadata propagation, and Docling-aware node parsing |
-| Canonical domain layer | Stable framework-neutral parsed document, node, and metadata contracts |
-| Qwen3 embedding | Normalized 1024-dimensional semantic vectors |
-| SQLAlchemy/PostgreSQL | Source of truth for documents, nodes, vectors, and FTS |
-| Custom retrieval | pgvector, PostgreSQL FTS, RRF, Qwen reranking, and evidence selection |
-| Ollama | Local answer generation from selected evidence |
+| Docling | Understand file layout, sections, slides, pages, and tables |
+| LlamaIndex | Standardize Documents and Nodes and run Docling-aware chunking |
+| Secure URL fetcher | Validate user URLs, DNS/IPs, redirects, types, time, and size |
+| Crossref/OpenAlex | Supply scholarly metadata; they do not download papers |
+| Canonical domain layer | Normalize sources, metadata, provenance, and conflicts |
+| Qwen embedding | Create 1024-dimensional semantic vectors |
+| PostgreSQL | Own source records, nodes, pgvector, FTS, and filter execution |
+| RRF/Qwen reranker | Rank evidence from the two retrieval branches |
+| Ollama | Generate only from selected evidence |
 
-## Canonical metadata
+No LlamaIndex vector store, additional vector database, LangGraph, Ragas,
+Redis, or Celery has been introduced.
 
-`SourceType` currently defines `uploaded_file`, `web_page`, `doi`, `openalex`,
-and `crossref`. Only `uploaded_file` is ingested in this phase; the other values
-establish a shared future source contract.
+## Source ingestion flows
 
-`ContentLevel` defines `full_text`, `abstract`, `metadata_only`, `web_page`, and
-`user_document`. Uploaded PDF and DOCX files use `user_document`, meaning the
-user supplied the document body. This prevents future abstract-only sources
-from being represented as full papers.
+### File
 
-Document metadata has dedicated fields for frequently queried values and JSON
-for flexible values. `metadata_provenance` maps each populated metadata key to
-one of `user`, `extracted`, `docling`, `openalex`, `crossref`, or `publisher`.
-Missing title, author, abstract, DOI, publication date, and external IDs remain
-null; the pipeline does not fabricate them.
+```text
+Owned project
+→ extension/MIME/signature/archive/text validation
+→ HTML active-content removal where applicable
+→ one-pass local storage and SHA-256
+→ project duplicate check
+→ Docling rich JSON
+→ LlamaIndex Document and Nodes
+→ canonical normalization
+→ batched Qwen embeddings
+→ Document/DocumentChunk persistence
+```
 
-Document-level metadata includes source URI/URL, checksum, title, authors,
-abstract, DOI, external IDs, publication details, content level, parser name
-and version, and ingestion version. Node-level metadata includes stable node
-ID, nullable page range, section and section path, token count, content kind,
-Docling labels/references, captions, and compact traceability fields. It does
-not duplicate the complete document metadata blob on every node.
+PDF, DOCX, PPTX, HTML, and Markdown are exposed. PPTX slide provenance is
+stored as `slide_start`/`slide_end` and `location_kind=slide`; it is not
+presented as PDF page provenance. HTML scripts, frames, forms, embedded active
+objects, event attributes, and unsafe links are removed before parsing.
+Markdown is parsed as document content and is never executed in a browser.
 
-## Page, section, and table preservation
+CSV and XLSX remain deferred. Docling can parse them, but the application does
+not yet have explicit row/sheet bounds and tested table-node policies. They are
+therefore not exposed merely because the library recognizes them.
 
-- PDF provenance is represented as a nullable inclusive page range. A hybrid
-  chunk may span multiple pages, such as `page=1` and `page_end=2`.
-- DOCX nodes correctly keep page values null when the format has no reliable
-  page concept. Page numbers are never invented during ingestion.
-- Docling headings become section paths; the final heading is also stored as
-  the node section.
-- Tables use Docling's Markdown table serializer. Table labels, captions,
-  references, section, page provenance, and document identity remain attached
-  to the retrievable node.
+### URL
 
-## Completed components
+```text
+Owned project
+→ scheme validation
+→ DNS resolution and all-address public-IP check
+→ bounded HTTP request without automatic redirects
+→ validate every redirect destination
+→ Content-Type and byte-limit enforcement
+→ PDF signature or UTF-8 HTML validation
+→ permanent validated local source storage
+→ SHA-256 duplicate check
+→ existing Docling/LlamaIndex/Qwen pipeline
+```
 
-| Area | Current implementation | Status |
+Only HTTP and HTTPS are accepted. Initial URL and every redirect are checked
+against loopback, private, link-local, multicast, unspecified, reserved, and
+other non-global IPv4/IPv6 ranges. Credentials in URLs are rejected. Downloads
+are streamed under explicit connect/read timeout, redirect, and decompressed
+byte limits. Accepted remote types are `text/html`, `application/xhtml+xml`,
+and `application/pdf`. Executables, archives, and unknown binary content are
+rejected.
+
+Fetched content is intentionally promoted into validated local document
+storage because the current Document source of truth requires a stored file.
+Failed validation and duplicate downloads are deleted. Successfully stored
+sources remain available for re-ingestion and user review.
+
+### DOI and scholarly providers
+
+```text
+DOI
+→ conservative normalization
+→ same-project DOI duplicate lookup
+→ one exact Crossref lookup plus one exact OpenAlex lookup
+→ provider-neutral adapters
+→ deterministic merge
+→ field provenance plus recorded conflicts
+→ ABSTRACT or METADATA_ONLY source
+```
+
+Accepted DOI forms include a bare DOI, `doi:` prefix, and `doi.org` or
+`dx.doi.org` URL. Arbitrary URLs are not treated as DOI values.
+
+Crossref uses `GET /works/{encoded-doi}` with HTTPS, an identified User-Agent,
+and `mailto` when configured. OpenAlex uses a singleton Work lookup with DOI or
+Work ID, requests selected fields only, and sends `OPENALEX_API_KEY` as the
+current `api_key` parameter when configured. Crossref 404 does not invalidate
+OpenAlex, and OpenAlex failure does not invalidate Crossref.
+
+Both clients use explicit timeouts and bounded retries for 429/5xx/timeouts.
+`Retry-After` is honored within a two-second per-retry cap. 400/401/403/404 are
+not blindly retried. A DOI is resolved, partially resolved, unresolved,
+provider unavailable, or conflicting. Provider payloads are adapted to the
+`ScholarlyWorkMetadata` contract and do not leak through application APIs.
+
+OpenAlex OA/location metadata is recorded but never used to automatically
+download an external paper. Full-text acquisition remains a separate future
+capability requiring explicit access and licensing rules.
+
+## External source semantics
+
+| Content level | Meaning | Evidence behavior |
 | --- | --- | --- |
-| Backend | FastAPI, versioned API, shared errors, and CORS | Complete baseline |
-| Authentication | Password accounts, Google OAuth, revocable cookie sessions, and ownership checks | Complete baseline |
-| Projects | Private CRUD, project-linked documents/runs, soft archive, and ownership isolation | Complete |
-| Database | SQLAlchemy 2, Alembic, SQLite test compatibility, and PostgreSQL | Complete baseline |
-| Canonical sources | Source type, content level, flexible metadata, and field-level provenance | Implemented |
-| Upload security | PDF and DOCX dispatch, signatures, bounded ZIP checks, macro rejection, and maximum size | Implemented for exposed formats |
-| Checksum/deduplication | Single-pass SHA-256 and same-user/same-project duplicate rejection | Implemented |
-| Structured ingestion | Official Docling Reader, LlamaIndex Document, DoclingNodeParser, and HybridChunker | Implemented |
-| Legacy ingestion | Controlled pypdf and character-chunk adapter | Retained as explicit fallback |
-| Embeddings | Existing cached/batched Qwen3 embedding service | Reused unchanged |
-| Retrieval | Project/user-scoped pgvector plus indexed PostgreSQL FTS | Complete baseline |
-| Ranking | Stable RRF and cached Qwen3 reranker | Complete baseline |
-| Evidence/citations | Rich node provenance propagated through evidence; citation ID allowlist validation | Partial citation baseline |
-| Generation | Local Ollama generation with timeout and grounded prompt | Working baseline |
-| Frontend | PDF/DOCX upload, auth, projects, research, progress, and reports | Working baseline |
+| `user_document` | User uploaded the actual local file | Structured nodes may support claims |
+| `full_text` | A complete remote document, currently a fetched PDF | Structured nodes may support claims |
+| `web_page` | Parsed research webpage | Nodes are identified as webpage evidence |
+| `abstract` | Provider supplied a real abstract | Exactly one abstract node, clearly labelled |
+| `metadata_only` | Bibliographic metadata without abstract/body | Listed and filterable; creates no evidence chunks |
 
-## Supported formats
+The content level propagates through persisted nodes, retrieval candidates,
+reranking, evidence, citations, generation prompts, APIs, and frontend cards.
+The prompt explicitly prevents metadata-only context from supporting detailed
+scientific claims and asks the model to distinguish abstract evidence.
 
-| Category | Formats |
-| --- | --- |
-| Implemented and exposed | PDF, DOCX |
-| Tested through official Docling/LlamaIndex path | PDF, DOCX |
-| Retained legacy fallback | PDF through pypdf only when `DOCUMENT_INGESTION_BACKEND=legacy` |
-| Library-capable but intentionally not exposed | PPTX, HTML, Markdown, spreadsheets, and other Docling formats |
-| Future source ingestion | URL, DOI, OpenAlex, Crossref, and Google Drive |
+## Scholarly metadata merge
 
-Library support alone is not treated as application support. Each later format
-needs explicit validation, security rules, fixtures, and metadata tests before
-the API accepts it.
+Canonical fields include DOI, title, authors, abstract, publication year/date,
+journal, publisher, OpenAlex/Crossref IDs, landing URL, and OA status.
 
-## Database changes
+The deterministic selection rule is an implementation choice rather than a
+claim that one provider is universally correct:
 
-Current migration head: `0012_canonical_document_metadata`.
+- Crossref-deposited values are selected first for ordinary bibliographic
+  fields when available.
+- OpenAlex fills missing fields and is selected first for OpenAlex ID and OA
+  status.
+- Every selected field records `crossref` or `openalex` provenance.
+- When both non-null values differ, a compact conflict object retains both.
+- Crossref JATS/HTML abstracts are converted to text without executing markup.
+- OpenAlex inverted-index abstracts are reconstructed in positional order.
 
-- `0010_research_projects` introduced private research workspaces.
-- `0011_project_scope_and_fts` linked documents and research runs to nullable
-  projects and added the trigger-maintained PostgreSQL `tsvector`/GIN index.
-- `0012_canonical_document_metadata` adds source, checksum, publication,
-  content-level, flexible metadata/provenance, parser, and ingestion-version
-  columns plus lookup and deduplication indexes.
-- The same revision extends chunks with unique `node_id`, nullable page and
-  `page_end`, `section_path`, `token_count`, and node metadata.
+The same DOI may exist for different users or projects. Within one exact
+user/project scope, a duplicate DOI is rejected before external API calls.
 
-Legacy rows survive unchanged. Existing documents are truthfully backfilled as
-`uploaded_file` and `user_document`; legacy PDF rows receive parser `pypdf` and
-ingestion version `legacy-pdf-v1`. Historical checksums, parser versions, DOI,
-authors, and publication values remain null because they cannot be inferred.
-Existing chunk UUIDs become their stable node IDs. Chunks continue to derive
-project identity through their parent Document, avoiding a denormalized value
-that could disagree with the parent.
+## API
 
-The checksum index is intentionally non-unique. Service-level deduplication
-handles nullable project identity consistently across SQLite and PostgreSQL and
-allows the same bytes in different projects or for different users. A future
-concurrency hardening pass may add a database-enforced null-safe uniqueness
-strategy if simultaneous duplicate uploads become a product concern.
+Existing upload and research APIs remain compatible. New owned project routes:
 
-Migration validation covers empty SQLite to head, `0011` to `0012` with legacy
-rows, and safe downgrade to `0011`. Downgrading an unpaged DOCX node must write
-the old schema's required compatibility page value `1`; current ingestion never
-invents that value. PostgreSQL migration SQL was generated and reviewed, while
-destructive execution is reserved for a dedicated test database.
+```text
+POST /api/v1/projects/{project_id}/sources/url
+POST /api/v1/projects/{project_id}/sources/doi
+POST /api/v1/projects/{project_id}/sources/openalex
+POST /api/v1/projects/{project_id}/sources/crossref
+GET  /api/v1/projects/{project_id}/sources
+```
 
-## API behavior
+Archived or foreign projects are rejected by the existing ownership lookup.
+Source listing returns source type, content level, title, authors, DOI, year,
+source URL, parser/ingestion data, status, and chunk count without returning
+provider keys or local filesystem paths.
 
-Existing PDF upload paths remain compatible. Both legacy user-owned and
-project-scoped upload paths accept `.pdf` and `.docx`. Responses now expose
-source type, content level, ingestion status, canonical metadata/provenance,
-parser details, and richer chunk grounding without exposing the checksum or a
-local filesystem path.
+Duplicate file/URL content is determined by SHA-256 within exact user/project
+scope. Duplicate scholarly sources use normalized DOI in the same scope. Both
+return HTTP 409 without re-running expensive ingestion or provider requests.
 
-A second byte-identical upload by the same user into the same exact project
-scope returns HTTP 409 with `duplicate_document`. Its newly written temporary
-file is removed and Docling/Qwen do not run. The same bytes may be independently
-ingested in another project or by another user; no existing Document is returned
-across an ownership boundary.
+## Retrieval filters
 
-## Environment variables
+`RetrievalFilters` provides validated optional filters for:
 
-New ingestion settings:
+- Document IDs
+- Source types
+- Content levels
+- Publication year range
+- Normalized DOI
 
-- `DOCUMENT_INGESTION_BACKEND=docling` selects the new default; `legacy` is the
-  controlled PDF fallback.
-- `INGESTION_VERSION=docling-llamaindex-v1` records the pipeline contract used
-  to build nodes.
-- `DOCUMENT_CHUNK_MAX_TOKENS=512` bounds hybrid chunks with the Qwen tokenizer.
-- `DOCLING_OCR_MODE=auto` uses normal Docling behavior; `disabled` turns OCR
-  off; `force` selects Docling's full-page OCR mode.
+Every filter is added to both PostgreSQL vector and FTS SQL before ordering and
+top-K limiting. RRF and the Qwen reranker remain unchanged. Author filtering is
+deferred because authors are currently a JSON array; unreliable substring
+matching has not been presented as structured author search.
 
-Existing settings still control upload size/storage, Qwen embedding dimensions
-and batching, retrieval limits, reranking, evidence, Ollama, authentication,
-and CORS.
+## Database
 
-## Dependencies
+Migration `0013_multi_source_ingestion`:
 
-Minimal explicit framework dependencies are used:
+- Expands the migration-friendly `document_type` check constraint with `pptx`,
+  `html`, `markdown`, and `metadata`.
+- Adds `(user_id, project_id, source_type)`.
+- Adds `(user_id, project_id, content_level)`.
+- Adds `(user_id, project_id, publication_year)`.
+- Adds `(user_id, project_id, doi)`.
 
-- `docling>=2.132,<3` parses supported files and preserves layout/structure.
-- `llama-index-core>=0.14.25,<0.15` supplies the Document and Node contracts.
-- `llama-index-readers-docling>=0.5,<0.6` supplies the official Docling Reader.
-- `llama-index-node-parser-docling>=0.5,<0.6` supplies the official Docling node
-  parser.
-- `python-docx>=1.2,<2` is a development-only dependency used to generate the
-  deterministic DOCX test fixture.
+SQLite migration logic explicitly preserves and restores child chunks while
+the parent Document table is recreated. Downgrade refuses to discard format
+meaning while any Phase 3 format rows exist. Empty `0012 → 0013 → 0012 → 0013`
+and legacy-row upgrades have been verified. PostgreSQL offline SQL has been
+generated and inspected.
 
-The umbrella `llama-index` package is not installed. No LlamaIndex vector store,
-local storage, or second vector database is created. Dependency validation
-reports no broken requirements in the current environment.
+## Configuration
 
-## Testing status
+New settings used by this phase:
 
-Validation recorded on 2026-10-03:
+```text
+URL_FETCH_TIMEOUT
+URL_CONNECT_TIMEOUT
+URL_MAX_BYTES
+URL_MAX_REDIRECTS
+CROSSREF_BASE_URL
+CROSSREF_MAILTO
+CROSSREF_USER_AGENT
+CROSSREF_TIMEOUT
+OPENALEX_BASE_URL
+OPENALEX_API_KEY
+OPENALEX_TIMEOUT
+PROVIDER_MAX_RETRIES
+```
+
+No secret has a checked-in value. OpenAlex casual calls can work without a key,
+while a key is recommended for normal use and higher limits.
+
+## Frontend
+
+The existing Sources/Documents page now loads owned projects and supports:
+
+- File, URL, and DOI tabs in one compact source dialog.
+- Project selection before adding external sources.
+- PDF, DOCX, PPTX, HTML, and Markdown upload validation.
+- Source type and content-level labels on every source row.
+- Year, authors, DOI, status, page/chunk details, and metadata-only distinction.
+- Server-provided safe error messages for unsafe URLs, unsupported content,
+  limits, duplicate sources, unresolved DOI, rate limits, and provider outage.
+
+## Testing and external services
+
+Normal tests generate tiny deterministic PPTX/DOCX/PDF fixtures and inline
+HTML/Markdown. Network responses, DNS, Crossref, and OpenAlex are mocked.
+Normal tests never require provider keys, Ollama, Qwen downloads, or internet.
+
+Opt-in tests:
+
+- Real Docling PDF: `RUN_DOCLING_INTEGRATION_TESTS=1`.
+- Live Crossref/OpenAlex: `RUN_PROVIDER_LIVE_TESTS=1`.
+- Destructive PostgreSQL: `POSTGRES_TEST_DATABASE_URL` pointing only to a
+  disposable database whose name includes `test`.
+
+`docker-compose.test.yml` provides a local temporary pgvector/PostgreSQL 16
+service. The suite will not use shared Supabase for destructive migrations.
+
+Verification on 2026-10-03:
 
 | Check | Result |
 | --- | --- |
-| Backend pytest | 114 passed, 2 skipped; 2 dependency deprecation warnings |
-| Real opt-in Docling PDF pipeline | 1 passed; official layout artifacts cached locally |
-| Real Docling DOCX Reader/NodeParser test | Included in ordinary backend suite and passed |
+| Backend suite | 128 passed, 3 skipped, 0 failed |
 | Frontend Vitest | 9 passed across 3 files |
-| Frontend TypeScript | Passed |
-| Dependency validation | `pip check` passed |
-| PostgreSQL retrieval integration | Skipped without `POSTGRES_TEST_DATABASE_URL` |
+| Real Docling DOCX plus PPTX/HTML/Markdown fixtures | 2 passed; the second test covers all three new formats |
+| Opt-in real Docling PDF | 1 passed |
+| PostgreSQL/pgvector integration | 1 skipped because `POSTGRES_TEST_DATABASE_URL` and local Docker were unavailable |
+| Live Crossref/OpenAlex | 1 skipped by default; `RUN_PROVIDER_LIVE_TESTS` was not enabled |
+| TypeScript | Passed |
+| ESLint | Passed |
+| Frontend production build | Passed |
+| Python compile and dependency check | Passed |
+| Alembic | Empty database to head, 0012 to head, and 0013 round trip passed on SQLite |
 
-Backend coverage includes stable IDs, metadata normalization, tables, page
-ranges, DOCX parsing, fake batched embeddings, state transitions, failure
-atomicity, duplicates within/across projects and users, ownership isolation,
-and propagation through fusion, reranking, and evidence. Ordinary tests do not
-download Qwen weights, call Ollama, or access the network.
+The three skips in the complete backend run are the explicitly opt-in real
+Docling PDF, PostgreSQL, and live provider checks. The real Docling PDF test was
+then enabled and passed separately. PostgreSQL was not claimed as executed;
+the checked-in disposable service and test remain ready for an environment
+with Docker or a dedicated test database.
 
 ## Known limitations
 
-- Ingestion and research execution remain synchronous and can hold an API
-  request while local models run.
-- First-time Docling PDF use and first-time Qwen tokenizer/model use may download
-  model artifacts; deployments should warm and cache them deliberately.
-- Files remain on local disk even when metadata lives in Supabase/PostgreSQL.
-- The application exposes PDF and DOCX only; OCR accuracy and complex layouts
-  still depend on document quality and local Docling configuration.
-- Duplicate prevention is deterministic at the service layer but does not yet
-  serialize simultaneous uploads of the same bytes.
-- Citation validation removes unknown IDs but does not yet prove every claim,
-  verify every citation semantically, or run bounded repair.
-- The report renderer still displays some generated Markdown/formula markers as
-  plain text.
-- Dedicated PostgreSQL integration tests require a disposable database. A
-  shared Supabase project is not used for destructive migration tests.
+- Ingestion and research remain synchronous.
+- Successfully fetched URLs are stored on local disk; remote object storage is
+  outside this phase.
+- DNS and redirect targets are validated before each request. HTTPX still owns
+  the final connection resolution, so deployments should also enforce outbound
+  network policy for defense in depth.
+- URL HTML and PDFs are supported; remote DOCX/PPTX are not yet accepted.
+- CSV/XLSX are deferred pending bounded sheet/row chunk semantics.
+- Metadata-only sources are filterable/listed but do not participate in semantic
+  evidence retrieval because they intentionally have no chunks.
+- Citation coverage, database ownership revalidation, semantic entailment, and
+  bounded repair remain incomplete.
 
-## Remaining work
+## Next phase
 
-The next implementation slice is multi-format and remote-source ingestion:
+The next slice is intentionally limited to:
 
-1. Add explicitly validated PPTX/HTML and other selected local formats with
-   focused fixtures before exposing them.
-2. Add hardened URL retrieval with SSRF protection, redirect/size/time limits,
-   safe content dispatch, and canonical URLs.
-3. Add DOI, OpenAlex, and Crossref readers that normalize metadata and preserve
-   the correct `content_level` and provenance.
-4. Add metadata filters and a dedicated PostgreSQL test database workflow.
+```text
+typed evidence contract
++ strict structured Pydantic generation
++ citation coverage and ownership validation
++ bounded citation repair
+```
 
-LangGraph orchestration, structured generation/citation repair, Ragas, and
-background jobs remain later phases after source ingestion contracts are stable.
+LangGraph and Ragas remain later work after those contracts are stable.

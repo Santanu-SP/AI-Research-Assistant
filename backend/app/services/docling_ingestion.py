@@ -135,6 +135,20 @@ def _node_grounding(metadata: dict[str, Any]) -> tuple[
     )
 
 
+def _node_links(metadata: dict[str, Any]) -> list[str]:
+    links: list[str] = []
+    for value in metadata.get("links", []):
+        cleaned = _clean_text(value)
+        if cleaned and cleaned not in links:
+            links.append(cleaned)
+    for item in metadata.get("doc_items", []):
+        for key in ("hyperlink", "url", "href"):
+            cleaned = _clean_text(item.get(key))
+            if cleaned and cleaned not in links:
+                links.append(cleaned)
+    return links
+
+
 def canonicalize_docling_output(
     *,
     document_id: UUID,
@@ -167,6 +181,12 @@ def canonicalize_docling_output(
     if doi:
         provenance["doi"] = MetadataProvenance.EXTRACTED
 
+    origin = docling_data.get("origin") or {}
+    origin_mime_type = origin.get("mimetype")
+    is_presentation = bool(
+        isinstance(origin_mime_type, str)
+        and "presentationml" in origin_mime_type.casefold()
+    )
     parsed_nodes: list[ParsedNode] = []
     for index, llama_node in enumerate(llama_nodes):
         text = llama_node.get_content().strip()
@@ -174,6 +194,12 @@ def canonicalize_docling_output(
             continue
         metadata = dict(llama_node.metadata)
         page, page_end, headings, labels, references = _node_grounding(metadata)
+        has_page_grounding = page is not None
+        slide_start = page if is_presentation else None
+        slide_end = page_end if is_presentation else None
+        if is_presentation:
+            page = None
+            page_end = None
         captions = [
             cleaned
             for value in metadata.get("captions", [])
@@ -195,15 +221,22 @@ def canonicalize_docling_output(
                     "docling_labels": labels,
                     "docling_references": references,
                     "captions": captions,
+                    "links": _node_links(metadata),
+                    "location_kind": (
+                        "slide"
+                        if is_presentation
+                        else ("page" if has_page_grounding else None)
+                    ),
+                    "slide_start": slide_start,
+                    "slide_end": slide_end,
                 },
             )
         )
 
-    origin = docling_data.get("origin") or {}
     canonical_values = {
         "docling_schema": docling_data.get("schema_name"),
         "docling_document_version": docling_data.get("version"),
-        "origin_mime_type": origin.get("mimetype"),
+        "origin_mime_type": origin_mime_type,
         "llama_index_document_id": llama_documents[0].doc_id,
         "llama_index_core_version": _package_version("llama-index-core"),
         "llama_index_reader_version": _package_version(
@@ -313,7 +346,13 @@ def _cached_docling_adapter(
     if ocr_mode == "force":
         pdf_options.ocr_options.mode = OcrMode.FULL_PAGE
     converter = DocumentConverter(
-        allowed_formats=[InputFormat.PDF, InputFormat.DOCX],
+        allowed_formats=[
+            InputFormat.PDF,
+            InputFormat.DOCX,
+            InputFormat.PPTX,
+            InputFormat.HTML,
+            InputFormat.MD,
+        ],
         format_options={
             InputFormat.PDF: PdfFormatOption(pipeline_options=pdf_options),
         },

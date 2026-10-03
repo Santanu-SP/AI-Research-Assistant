@@ -124,6 +124,34 @@ From the root repository (with the virtual environment activated):
 pytest
 ```
 
+### Disposable PostgreSQL integration database
+
+The PostgreSQL integration suite destroys and recreates its target schema. It
+refuses databases whose name does not contain `test`. Never point it at a shared
+Supabase or production database.
+
+An optional local pgvector service is provided:
+
+```bash
+docker compose -f docker-compose.test.yml up -d --wait
+export POSTGRES_TEST_DATABASE_URL='postgresql+psycopg://ara_test:ara_test@localhost:55432/ara_test'
+pytest -m postgres backend/tests/test_postgres_retrieval_integration.py
+docker compose -f docker-compose.test.yml down
+```
+
+The container uses temporary storage, applies migrations from base to the
+current head, exercises pgvector/FTS/project/metadata filters, and downgrades to
+base when the test completes.
+
+Live Crossref/OpenAlex checks are separate from normal tests:
+
+```bash
+RUN_PROVIDER_LIVE_TESTS=1 pytest -m live backend/tests/test_provider_live.py
+```
+
+`OPENALEX_API_KEY` is optional for casual testing and recommended for regular
+API use. Normal `pytest` runs mock every network response.
+
 **Running Frontend Typecheck:**
 From the `frontend/` directory:
 ```bash

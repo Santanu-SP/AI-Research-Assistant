@@ -7,7 +7,9 @@ import { ErrorState } from '../components/common/ErrorState';
 import { PrimaryButton } from '../components/common/PrimaryButton';
 import { CenteredLoadingState } from '../components/common/LoadingState';
 import { documentsService } from '../services/documents.service';
+import { projectsService } from '../services/projects.service';
 import { Document } from '../types/document';
+import { ResearchProject } from '../types/project';
 import { apiErrorMessage } from '../services/api';
 import { API_BASE_URL } from '../services/api';
 import { Search, Upload, FolderUp } from 'lucide-react';
@@ -19,6 +21,8 @@ export const DocumentsPage: React.FC = () => {
   const [selectedFormat, setSelectedFormat] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const [projects, setProjects] = useState<ResearchProject[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
@@ -30,7 +34,14 @@ export const DocumentsPage: React.FC = () => {
       loadDocuments();
     }, 300);
     return () => clearTimeout(timer);
-  }, [searchQuery, selectedFormat, selectedStatus, retryKey]);
+  }, [searchQuery, selectedFormat, selectedStatus, selectedProjectId, retryKey]);
+
+  useEffect(() => {
+    projectsService.list().then((response) => {
+      setProjects(response.items);
+      if (response.items.length > 0) setSelectedProjectId(response.items[0].id);
+    }).catch(() => setProjects([]));
+  }, []);
 
   const loadDocuments = async (silent = false) => {
     if (!silent) {
@@ -38,11 +49,17 @@ export const DocumentsPage: React.FC = () => {
       setLoadError(null);
     }
     try {
-      const response = await documentsService.getDocuments({
-        search: searchQuery || undefined,
-        status: selectedStatus !== 'all' ? selectedStatus : undefined,
-        type: selectedFormat !== 'all' ? selectedFormat : undefined,
-      });
+      const response = selectedProjectId
+        ? await documentsService.getProjectSources(selectedProjectId, {
+            search: searchQuery || undefined,
+            status: selectedStatus,
+            type: selectedFormat,
+          })
+        : await documentsService.getDocuments({
+            search: searchQuery || undefined,
+            status: selectedStatus !== 'all' ? selectedStatus : undefined,
+            type: selectedFormat !== 'all' ? selectedFormat : undefined,
+          });
       setDocuments(response.items);
       setTotalDocuments(response.total);
     } catch (error) {
@@ -71,11 +88,32 @@ export const DocumentsPage: React.FC = () => {
     }, 4000);
 
     return () => clearInterval(intervalId);
-  }, [documents, searchQuery, selectedFormat, selectedStatus]);
+  }, [documents, searchQuery, selectedFormat, selectedStatus, selectedProjectId]);
 
   const handleUploadFile = async (file: File) => {
     try {
-      await documentsService.uploadDocument(file);
+      if (selectedProjectId) await documentsService.uploadProjectDocument(selectedProjectId, file);
+      else await documentsService.uploadDocument(file);
+      setActionError(null);
+    } finally {
+      await loadDocuments();
+    }
+  };
+
+  const handleAddUrl = async (url: string) => {
+    if (!selectedProjectId) return;
+    try {
+      await documentsService.addUrlSource(selectedProjectId, url);
+      setActionError(null);
+    } finally {
+      await loadDocuments();
+    }
+  };
+
+  const handleAddDoi = async (doi: string) => {
+    if (!selectedProjectId) return;
+    try {
+      await documentsService.addDoiSource(selectedProjectId, doi);
       setActionError(null);
     } finally {
       await loadDocuments();
@@ -118,10 +156,10 @@ export const DocumentsPage: React.FC = () => {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
             <div>
               <h1 className="font-serif text-2xl sm:text-3xl text-[#181a18] font-normal tracking-tight">
-                Documents
+                Research Sources
               </h1>
               <p className="text-xs sm:text-sm text-[#6b706c] mt-1">
-                Internal whitepapers, empirical benchmarks, and uploaded datasets available for cross-synthesis.
+                Files, webpages, and scholarly records available for project research.
               </p>
             </div>
 
@@ -130,12 +168,21 @@ export const DocumentsPage: React.FC = () => {
               className="gap-1.5"
             >
               <Upload className="w-3.5 h-3.5" />
-              <span>Upload document</span>
+              <span>Add source</span>
             </PrimaryButton>
           </div>
 
           {/* Filter / Search Bar */}
           <div className="p-3 bg-white border border-[#e5e7e4] rounded-xl mb-6 flex flex-wrap items-center justify-between gap-3 shadow-xs">
+            <select
+              aria-label="Select research project"
+              value={selectedProjectId}
+              onChange={(event) => setSelectedProjectId(event.target.value)}
+              className="bg-[#fafaf8] border border-[#e5e7e4] text-[#181a18] text-xs rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#163328]"
+            >
+              <option value="">Personal workspace</option>
+              {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+            </select>
             <div className="relative flex-1 min-w-[240px]">
               <Search className="w-4 h-4 text-[#929792] absolute left-3 top-1/2 -translate-y-1/2" />
               <input
@@ -156,7 +203,12 @@ export const DocumentsPage: React.FC = () => {
                 className="bg-[#fafaf8] border border-[#e5e7e4] text-[#6b706c] hover:text-[#181a18] text-xs rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#163328]"
               >
                 <option value="all">All formats</option>
-                <option value="PDF">PDF</option>
+                <option value="pdf">PDF</option>
+                <option value="docx">DOCX</option>
+                <option value="pptx">PPTX</option>
+                <option value="html">HTML</option>
+                <option value="markdown">Markdown</option>
+                <option value="metadata">Scholarly metadata</option>
               </select>
 
               <select
@@ -228,6 +280,9 @@ export const DocumentsPage: React.FC = () => {
         isOpen={isUploadOpen}
         onClose={() => setIsUploadOpen(false)}
         onUploadFile={handleUploadFile}
+        onAddUrl={handleAddUrl}
+        onAddDoi={handleAddDoi}
+        projectSelected={Boolean(selectedProjectId)}
       />
       {selectedDocument && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onMouseDown={() => setSelectedDocument(null)}>
         <div role="dialog" aria-modal="true" aria-labelledby="document-details-title" className="w-full max-w-md rounded-xl border border-[#e5e7e4] bg-white p-6 shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
@@ -235,12 +290,15 @@ export const DocumentsPage: React.FC = () => {
           <dl className="mt-4 space-y-2 text-sm text-[#6b706c]">
             <div><dt className="inline font-medium text-[#181a18]">File: </dt><dd className="inline">{selectedDocument.name}</dd></div>
             <div><dt className="inline font-medium text-[#181a18]">Status: </dt><dd className="inline">{selectedDocument.status}</dd></div>
+            <div><dt className="inline font-medium text-[#181a18]">Source: </dt><dd className="inline">{selectedDocument.sourceType.replaceAll('_', ' ')}</dd></div>
+            <div><dt className="inline font-medium text-[#181a18]">Content: </dt><dd className="inline">{selectedDocument.contentLevel.replaceAll('_', ' ')}</dd></div>
             <div><dt className="inline font-medium text-[#181a18]">Pages: </dt><dd className="inline">{selectedDocument.pageCount ?? 'Unavailable'}</dd></div>
             <div><dt className="inline font-medium text-[#181a18]">Chunks: </dt><dd className="inline">{selectedDocument.chunkCount}</dd></div>
             {selectedDocument.doi && <div><dt className="inline font-medium text-[#181a18]">DOI: </dt><dd className="inline">{selectedDocument.doi}</dd></div>}
+            {selectedDocument.publicationYear && <div><dt className="inline font-medium text-[#181a18]">Year: </dt><dd className="inline">{selectedDocument.publicationYear}</dd></div>}
           </dl>
           <div className="mt-6 flex items-center gap-3">
-            <a href={`${API_BASE_URL}/documents/${selectedDocument.id}/file`} target="_blank" rel="noopener noreferrer" className="rounded-md bg-[#163328] px-4 py-2 text-xs font-medium text-white">Open PDF</a>
+            {selectedDocument.type !== 'metadata' && selectedDocument.size > 0 && <a href={`${API_BASE_URL}/documents/${selectedDocument.id}/file`} target="_blank" rel="noopener noreferrer" className="rounded-md bg-[#163328] px-4 py-2 text-xs font-medium text-white">Open source</a>}
             <button type="button" onClick={() => setSelectedDocument(null)} className="rounded-md border border-[#e5e7e4] px-4 py-2 text-xs font-medium text-[#181a18]">Close</button>
           </div>
         </div>

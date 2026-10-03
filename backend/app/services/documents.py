@@ -1,7 +1,7 @@
 from uuid import UUID
 
 from fastapi import UploadFile
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -13,6 +13,7 @@ from app.services.embeddings import EmbeddingService
 from app.services.ingestion import DocumentIngestionAdapter, ingest_document
 from app.services.storage import LocalDocumentStorage
 from app.services import projects as project_service
+from app.services.doi import normalize_doi
 
 def _commit(session: Session, error_message: str) -> None:
     try:
@@ -106,6 +107,11 @@ def list_documents(
     offset: int,
     user_id: UUID,
     project_id: UUID | None = None,
+    source_types: list[SourceType] | None = None,
+    content_levels: list[ContentLevel] | None = None,
+    year_from: int | None = None,
+    year_to: int | None = None,
+    doi: str | None = None,
 ) -> tuple[list[Document], int]:
     filters = [Document.user_id == user_id]
     if project_id is not None:
@@ -113,11 +119,27 @@ def list_documents(
         filters.append(Document.project_id == project_id)
     normalized_search = search.strip() if search else None
     if normalized_search:
-        filters.append(Document.name.icontains(normalized_search, autoescape=True))
+        filters.append(
+            or_(
+                Document.name.icontains(normalized_search, autoescape=True),
+                Document.title.icontains(normalized_search, autoescape=True),
+                Document.doi.icontains(normalized_search, autoescape=True),
+            )
+        )
     if status is not None:
         filters.append(Document.status == status)
     if file_type is not None:
         filters.append(Document.file_type == file_type)
+    if source_types:
+        filters.append(Document.source_type.in_(source_types))
+    if content_levels:
+        filters.append(Document.content_level.in_(content_levels))
+    if year_from is not None:
+        filters.append(Document.publication_year >= year_from)
+    if year_to is not None:
+        filters.append(Document.publication_year <= year_to)
+    if doi:
+        filters.append(func.lower(Document.doi) == normalize_doi(doi))
 
     total = session.scalar(
         select(func.count()).select_from(Document).where(*filters)

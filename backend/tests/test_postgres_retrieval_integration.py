@@ -12,11 +12,12 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.core.errors import AppError
-from app.domain.documents import DocumentStatus, DocumentType
+from app.domain.documents import ContentLevel, DocumentStatus, DocumentType, SourceType
 from app.models.document import Document, DocumentChunk
 from app.models.project import ResearchProject
 from app.models.user import User
 from app.services.retrieval import keyword_search, retrieve, semantic_search
+from app.schemas.retrieval import RetrievalFilters
 
 pytestmark = [pytest.mark.integration, pytest.mark.postgres]
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -69,6 +70,10 @@ def _document(
     project_id,
     name: str,
     text_value: str,
+    source_type: SourceType = SourceType.UPLOADED_FILE,
+    content_level: ContentLevel = ContentLevel.USER_DOCUMENT,
+    publication_year: int | None = None,
+    doi: str | None = None,
 ) -> Document:
     document = Document(
         user_id=user_id,
@@ -80,6 +85,10 @@ def _document(
         size=100,
         status=DocumentStatus.INDEXED,
         title=name,
+        source_type=source_type,
+        content_level=content_level,
+        publication_year=publication_year,
+        doi=doi,
         page_count=1,
     )
     document.chunks.append(
@@ -110,6 +119,10 @@ def test_postgres_project_scoped_vector_fts_and_gin_index(
         project_id=alpha.id,
         name="Alpha transformer",
         text_value="transformer attention mechanism",
+        source_type=SourceType.DOI,
+        content_level=ContentLevel.ABSTRACT,
+        publication_year=2024,
+        doi="10.1000/alpha",
     )
     beta_document = _document(
         user_id=user_a.id,
@@ -162,6 +175,40 @@ def test_postgres_project_scoped_vector_fts_and_gin_index(
     )
     assert {item.document_id for item in candidates} == {alpha_document.id}
     assert {item.project_id for item in candidates} == {alpha.id}
+
+    metadata_filters = RetrievalFilters(
+        source_types=[SourceType.DOI],
+        content_levels=[ContentLevel.ABSTRACT],
+        year_from=2024,
+        year_to=2024,
+        doi="https://doi.org/10.1000/alpha",
+    )
+    filtered_vector = semantic_search(
+        postgres_session,
+        user_a.id,
+        [1.0] + [0.0] * 1023,
+        10,
+        alpha.id,
+        metadata_filters,
+    )
+    filtered_keyword = keyword_search(
+        postgres_session,
+        user_a.id,
+        "transformer attention",
+        10,
+        alpha.id,
+        metadata_filters,
+    )
+    assert [item.chunk.document_id for item in filtered_vector] == [alpha_document.id]
+    assert [item.chunk.document_id for item in filtered_keyword] == [alpha_document.id]
+    assert semantic_search(
+        postgres_session,
+        user_a.id,
+        [1.0] + [0.0] * 1023,
+        10,
+        alpha.id,
+        RetrievalFilters(year_from=2025),
+    ) == []
 
     with pytest.raises(AppError) as error:
         retrieve(
