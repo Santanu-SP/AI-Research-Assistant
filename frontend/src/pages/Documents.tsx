@@ -156,7 +156,8 @@ export const DocumentsPage: React.FC = () => {
                 className="bg-[#fafaf8] border border-[#e5e7e4] text-[#6b706c] hover:text-[#181a18] text-xs rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#163328]"
               >
                 <option value="all">All formats</option>
-                <option value="PDF">PDF</option>
+                <option value="pdf">PDF</option>
+                <option value="docx">DOCX</option>
               </select>
 
               <select
@@ -240,7 +241,7 @@ export const DocumentsPage: React.FC = () => {
             {selectedDocument.doi && <div><dt className="inline font-medium text-[#181a18]">DOI: </dt><dd className="inline">{selectedDocument.doi}</dd></div>}
           </dl>
           <div className="mt-6 flex items-center gap-3">
-            <a href={`${API_BASE_URL}/documents/${selectedDocument.id}/file`} target="_blank" rel="noopener noreferrer" className="rounded-md bg-[#163328] px-4 py-2 text-xs font-medium text-white">Open PDF</a>
+            <a href={`${API_BASE_URL}/documents/${selectedDocument.id}/file`} target="_blank" rel="noopener noreferrer" className="rounded-md bg-[#163328] px-4 py-2 text-xs font-medium text-white">Open document</a>
             <button type="button" onClick={() => setSelectedDocument(null)} className="rounded-md border border-[#e5e7e4] px-4 py-2 text-xs font-medium text-[#181a18]">Close</button>
           </div>
         </div>

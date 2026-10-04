@@ -1,8 +1,11 @@
+import type { ContentLevel, SourceType as DocumentSourceType } from './document';
+
 export type ResearchStatus = 'completed' | 'researching' | 'draft' | 'failed';
 export type ResearchDepth = 'quick' | 'standard' | 'deep';
 
 export interface Research {
   id: string;
+  projectId?: string | null;
   title: string;
   question: string;
   domain: string;
@@ -16,6 +19,7 @@ export interface Research {
 
 export interface ResearchResponse {
   id: string;
+  projectId?: string | null;
   title: string;
   question: string;
   domain: string | null;
@@ -29,6 +33,7 @@ export interface ResearchResponse {
 
 export interface CreateResearchInput {
   question: string;
+  projectId?: string;
   title?: string;
   domain?: string;
   researchDepth?: ResearchDepth;
@@ -48,6 +53,7 @@ export interface ResearchListParams {
   limit?: number;
   offset?: number;
   includeArchived?: boolean;
+  projectId?: string;
 }
 
 export interface ResearchListResponse {
@@ -104,23 +110,31 @@ export interface ResearchProgress {
 
 export interface ResearchQueryRequest {
   query: string;
+  projectId?: string;
   researchDepth?: ResearchDepth;
 }
 
 export interface Citation {
   citationId: string;
+  nodeId?: string | null;
   documentId: string;
+  projectId?: string | null;
+  sourceType?: DocumentSourceType | null;
+  contentLevel?: ContentLevel | null;
   chunkId: string;
   paperTitle: string | null;
   authors: string[] | null;
   doi: string | null;
-  page: number;
+  page: number | null;
+  pageEnd?: number | null;
   section: string | null;
+  sectionPath?: string[] | null;
   excerpt: string;
 }
 
 export interface ResearchQueryResponse {
   researchId: string;
+  projectId?: string | null;
   answer: string;
   citations: Citation[];
   hybridCandidateCount: number;

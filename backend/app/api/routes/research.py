@@ -34,7 +34,13 @@ def retrieve_evidence(
     request: Request,
 ) -> RetrievalResponse:
     return RetrievalResponse(
-        items=retrieval_service.retrieve(session, user.id, payload.query, request.app.state.settings)
+        items=retrieval_service.retrieve(
+            session,
+            user.id,
+            payload.query,
+            request.app.state.settings,
+            project_id=payload.project_id,
+        )
     )
 
 
@@ -78,6 +84,7 @@ def list_research(
         bool,
         Query(alias="includeArchived"),
     ] = False,
+    project_id: Annotated[UUID | None, Query(alias="projectId")] = None,
 ) -> ResearchListResponse:
     items, total = research_service.list_research(
         session,
@@ -88,6 +95,7 @@ def list_research(
         offset=offset,
         include_archived=include_archived,
         user_id=user.id,
+        project_id=project_id,
     )
     return ResearchListResponse(
         items=items,

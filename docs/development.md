@@ -77,6 +77,23 @@ python backend/scripts/test_generation_model.py
 
 The authenticated `POST /api/v1/research/query` endpoint accepts `{"query":"...","researchDepth":"standard"}`. It retrieves user-owned chunks, reranks them, applies the evidence-sufficiency gate, generates a grounded answer when appropriate, removes unknown citation IDs, and persists the completed report and source metadata. An insufficient-evidence answer is a successful, persisted result and deliberately skips Ollama.
 
+## Projects and structured ingestion
+
+Project APIs are available under `/api/v1/projects`. Project document uploads
+use `/api/v1/projects/{project_id}/documents`; project research passes
+`projectId` in the request. Both vector and keyword retrieval apply the
+authenticated user and exact project inside SQL before top-K selection.
+
+Docling is the default PDF/DOCX parser. LlamaIndex supplies Document and Node
+contracts plus `DoclingNodeParser`; it does not create a vector store. The
+configured Qwen tokenizer drives `HybridChunker` through
+`DOCUMENT_CHUNK_MAX_TOKENS`. Set `DOCUMENT_INGESTION_BACKEND=legacy` only for
+the explicitly logged pypdf PDF fallback.
+
+Legacy null-project records remain available through compatibility endpoints.
+A query without `projectId` searches all documents owned by that user, while a
+query with `projectId` excludes null-project and other-project documents.
+
 ## Frontend Setup
 The frontend is a React application built with TypeScript and Vite.
 
@@ -122,6 +139,23 @@ Development CORS accepts private-network origins. For Google sign-in, use `local
 From the root repository (with the virtual environment activated):
 ```bash
 pytest
+```
+
+The PostgreSQL integration suite is destructive and must use a dedicated test
+database whose name contains `test`:
+
+```bash
+export POSTGRES_TEST_DATABASE_URL='postgresql+psycopg://ara_test:ara_test@localhost:5432/ara_test'
+pytest -m postgres backend/tests/test_postgres_retrieval_integration.py
+```
+
+Never point this variable at a shared Supabase or production database. Without
+the variable, the test is intentionally reported as skipped.
+
+The real Docling PDF test is also opt-in:
+
+```bash
+RUN_DOCLING_INTEGRATION_TESTS=1 pytest -m docling backend/tests/test_docling_pdf_integration.py
 ```
 
 **Running Frontend Typecheck:**
