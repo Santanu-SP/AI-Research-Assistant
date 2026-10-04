@@ -84,7 +84,12 @@ def open_document(
     path = storage.path_for(document.stored_name)
     if not path.is_file():
         raise AppError("Document file not found", status_code=404, code="document_file_not_found")
-    return FileResponse(path, media_type="application/pdf", filename=document.name, content_disposition_type="inline")
+    return FileResponse(
+        path,
+        media_type=document.mime_type,
+        filename=document.name,
+        content_disposition_type="inline",
+    )
 
 
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)

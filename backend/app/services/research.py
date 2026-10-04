@@ -19,6 +19,7 @@ from app.schemas.research import (
     ResearchProgressStep,
     ResearchUpdate,
 )
+from app.services import projects as project_service
 
 FALLBACK_TITLE_MAX_LENGTH = 80
 PROGRESS_STAGES: tuple[tuple[ResearchProgressStage, str], ...] = (
@@ -64,8 +65,17 @@ def _commit(session: Session) -> None:
 
 
 def create_research(session: Session, payload: ResearchCreate, user_id: UUID | None = None) -> Research:
+    if payload.project_id is not None:
+        if user_id is None:
+            raise AppError(
+                "A project-scoped research run requires an authenticated user",
+                status_code=422,
+                code="research_project_user_required",
+            )
+        project_service.get_project(session, payload.project_id, user_id)
     research = Research(
         user_id=user_id,
+        project_id=payload.project_id,
         question=payload.question,
         title=payload.title or build_fallback_title(payload.question),
         domain=payload.domain,
@@ -89,10 +99,20 @@ def list_research(
     offset: int,
     include_archived: bool,
     user_id: UUID | None = None,
+    project_id: UUID | None = None,
 ) -> tuple[list[Research], int]:
     filters = []
     if user_id is not None:
         filters.append(Research.user_id == user_id)
+    if project_id is not None:
+        if user_id is None:
+            raise AppError(
+                "A project-scoped research list requires an authenticated user",
+                status_code=422,
+                code="research_project_user_required",
+            )
+        project_service.get_project(session, project_id, user_id)
+        filters.append(Research.project_id == project_id)
     normalized_search = search.strip() if search else None
     normalized_domain = domain.strip() if domain else None
 
@@ -210,6 +230,7 @@ def get_research_progress(
     )
     return ResearchProgressResponse(
         id=research.id,
+        project_id=research.project_id,
         question=research.question,
         status=research.status,
         research_depth=research.research_depth,

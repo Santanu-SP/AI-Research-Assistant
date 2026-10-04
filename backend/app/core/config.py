@@ -1,6 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 import re
+from typing import Literal
 
 from dotenv import dotenv_values
 from pydantic import Field, field_validator, model_validator
@@ -71,6 +72,10 @@ class Settings(BaseSettings):
     document_max_upload_bytes: int = Field(default=25 * 1024 * 1024, gt=0)
     document_chunk_size: int = Field(default=4000, ge=256)
     document_chunk_overlap: int = Field(default=400, ge=0)
+    document_ingestion_backend: Literal["docling", "legacy"] = "docling"
+    ingestion_version: str = Field(default="docling-llamaindex-v1", min_length=1)
+    document_chunk_max_tokens: int = Field(default=512, ge=64, le=8192)
+    docling_ocr_mode: Literal["auto", "disabled", "force"] = "auto"
     auth_session_days: int = Field(default=7, ge=1, le=30)
     auth_cookie_secure: bool = False
     frontend_url: str = "http://localhost:3000"

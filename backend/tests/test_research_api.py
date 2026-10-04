@@ -290,3 +290,36 @@ def test_include_archived_returns_archived_records(client: TestClient) -> None:
     assert included["total"] == 1
     assert included["items"][0]["id"] == created["id"]
     assert included["items"][0]["archivedAt"] is not None
+
+
+def test_research_records_can_be_scoped_and_filtered_by_project(
+    client: TestClient,
+) -> None:
+    alpha = client.post("/api/v1/projects", json={"name": "Alpha"}).json()
+    beta = client.post("/api/v1/projects", json={"name": "Beta"}).json()
+    alpha_research = client.post(
+        "/api/v1/research",
+        json={"question": "Alpha question?", "projectId": alpha["id"]},
+    )
+    beta_research = client.post(
+        "/api/v1/research",
+        json={"question": "Beta question?", "projectId": beta["id"]},
+    )
+    legacy_research = client.post(
+        "/api/v1/research",
+        json={"question": "Legacy question?"},
+    )
+
+    assert alpha_research.status_code == 201
+    assert alpha_research.json()["projectId"] == alpha["id"]
+    assert beta_research.status_code == 201
+    assert beta_research.json()["projectId"] == beta["id"]
+    assert legacy_research.status_code == 201
+    assert legacy_research.json()["projectId"] is None
+
+    alpha_list = client.get(
+        "/api/v1/research",
+        params={"projectId": alpha["id"]},
+    ).json()
+    assert alpha_list["total"] == 1
+    assert alpha_list["items"][0]["id"] == alpha_research.json()["id"]

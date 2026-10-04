@@ -20,6 +20,7 @@ const buildResearchQuery = (params: ResearchListParams = {}): string => {
   if (params.includeArchived !== undefined) {
     query.set('includeArchived', String(params.includeArchived));
   }
+  if (params.projectId) query.set('projectId', params.projectId);
 
   const serialized = query.toString();
   return serialized ? `/research?${serialized}` : '/research';

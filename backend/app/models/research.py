@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID, uuid4
 
-from sqlalchemy import CheckConstraint, Enum, ForeignKey, Integer, String, Text, Uuid
+from sqlalchemy import CheckConstraint, Enum, ForeignKey, Index, Integer, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin
@@ -71,6 +71,7 @@ class Research(TimestampMixin, Base):
             "sources_reviewed <= sources_discovered",
             name="ck_research_sources_reviewed_lte_discovered",
         ),
+        Index("ix_research_user_project", "user_id", "project_id"),
     )
 
     id: Mapped[UUID] = mapped_column(
@@ -79,6 +80,11 @@ class Research(TimestampMixin, Base):
         default=uuid4,
     )
     user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    project_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("research_projects.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     question: Mapped[str] = mapped_column(Text, nullable=False)
     domain: Mapped[str | None] = mapped_column(String(120), index=True)
@@ -134,6 +140,9 @@ class Research(TimestampMixin, Base):
     )
     completed_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
     failed_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    project: Mapped["ResearchProject | None"] = relationship(
+        back_populates="research_runs"
+    )
     report: Mapped["ResearchReport | None"] = relationship(
         back_populates="research",
         cascade="all, delete-orphan",

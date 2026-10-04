@@ -1,118 +1,120 @@
 # AI Research Assistant
 
-An evidence-first research workspace for finding, understanding, comparing, and citing academic work.
+An evidence-first workspace for searching uploaded research documents and
+producing locally generated answers with traceable source excerpts.
 
-The project is currently in its foundation stage. The first implementation is a small backend service that gives later search, paper processing, retrieval, and citation features a clear place to grow.
+## Current capabilities
 
-## Product goal
+- FastAPI backend and React/Vite frontend.
+- Password authentication, optional Google OAuth, revocable cookie sessions,
+  and user-owned data.
+- Private research projects with CRUD, ownership checks, and soft archiving.
+- PDF and DOCX validation, local storage, SHA-256 duplicate detection, Docling
+  parsing, and LlamaIndex Document/Node normalization.
+- Token-aware `HybridChunker` nodes with stable IDs, page ranges, sections,
+  tables, captions, and canonical metadata.
+- Qwen3 embeddings and reranking, PostgreSQL pgvector search, indexed full-text
+  search, and Reciprocal Rank Fusion.
+- Local grounded generation through `qwen3.5:9b` in Ollama, evidence
+  sufficiency checks, citation-ID allowlisting, and persisted reports.
 
-AI Research Assistant is intended for students, researchers, and knowledge workers who need to:
+The production retrieval path requires PostgreSQL with pgvector. SQLite is
+kept for ordinary unit tests and non-retrieval development workflows.
 
-- discover papers from approved scholarly sources
-- verify paper metadata independently from generated text
-- find legitimate open-access copies or upload PDFs they are allowed to use
-- ask questions across one or more processed papers
-- compare findings, methods, datasets, limitations, and disagreements
-- create research reports with traceable citations
-- receive `INSUFFICIENT_EVIDENCE` when the available sources do not support an answer
+## Architecture
 
-The core workflow is:
+```text
+Authenticated user and optional owned project
+  → PDF/DOCX validation and SHA-256 duplicate check
+  → Docling
+  → LlamaIndex Document + DoclingNodeParser/HybridChunker
+  → canonical document and node contracts
+  → Qwen3 embeddings
+  → PostgreSQL + pgvector + indexed FTS
+  → Reciprocal Rank Fusion
+  → Qwen3 reranker
+  → evidence selection
+  → Ollama qwen3.5:9b
+  → citation mapping and persisted report
+```
 
-`Discover -> Verify -> Analyze -> Compare -> Synthesize -> Cite`
-
-## MVP scope
-
-Phase 1 covers authentication, private research projects, paper discovery through OpenAlex, DOI verification through Crossref, legal open-access lookup, PDF upload and processing, semantic retrieval, reranking, cited answers, comparison, synthesis, research history, evaluation, and basic report export.
-
-The MVP will support up to 10 ready papers in a single question, comparison, or synthesis request. It will not bypass publisher paywalls or treat unrestricted web content as verified research evidence.
-
-## Current starter
-
-This repository currently contains:
-
-- a FastAPI application factory
-- a versioned health endpoint
-- environment-based settings
-- configurable CORS for the local frontend
-- SQLAlchemy 2.x database and session infrastructure
-- Alembic migration infrastructure
-- persistent research CRUD with filtering, pagination, and soft archiving
-- safe PDF upload, metadata extraction, normalization, and page-aware chunk storage
-- account registration, login, revocable sessions, and private research/document records
-- the main project, paper, and answer states from the PRD
-- a small test suite for the initial API contract
-
-Research execution, semantic retrieval, and model providers are not implemented yet. Document chunks intentionally do not contain embeddings until the retrieval phase.
+PostgreSQL remains the source of truth. LlamaIndex standardizes parsed
+documents and nodes; it does not create another vector store.
 
 ## Local setup
 
-Please see the full developer guide in [docs/development.md](docs/development.md) for prerequisite details, backend setup, and frontend configuration.
+See [docs/development.md](docs/development.md) for backend, database, Ollama,
+frontend, migration, and testing instructions.
 
-## Project structure
-
-Please refer to [docs/project-structure.md](docs/project-structure.md) for a detailed overview of the current architecture and codebase layout.
-
-## API
-
-### Authentication
-
-- `POST /api/v1/auth/register` creates an account.
-- `POST /api/v1/auth/login` starts an HTTP-only cookie session.
-- `GET /api/v1/auth/me` restores the current user.
-- `POST /api/v1/auth/logout` revokes the current session.
-
-Research and document endpoints require a session and return only the current user's records. Existing records created before authentication remain stored without an owner and are hidden from new accounts.
-
-### Health check
-
-`GET /api/v1/health`
-
-Example response:
-
-```json
-{
-  "status": "ok",
-  "service": "ai-research-assistant-api",
-  "environment": "development"
-}
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r backend/requirements-dev.txt
+cp .env.example .env
+alembic upgrade head
+uvicorn app.main:app --app-dir backend --reload
 ```
 
-### Research management
+In another terminal:
 
-- `POST /api/v1/research` creates a draft research record without starting an AI workflow.
-- `GET /api/v1/research` lists research with search, domain, status, pagination, and optional archived-record filters.
-- `GET /api/v1/research/{research_id}` retrieves an active research record.
-- `PATCH /api/v1/research/{research_id}` updates supported metadata or its summary status.
-- `DELETE /api/v1/research/{research_id}` soft-archives the record.
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
-### Document management
+## Main API areas
 
-- `POST /api/v1/documents` validates, stores, extracts, normalizes, and chunks one PDF upload.
-- `GET /api/v1/documents` lists document metadata with search, status, type, and pagination filters.
-- `GET /api/v1/documents/{document_id}` retrieves document metadata without exposing its storage path.
-- `GET /api/v1/documents/{document_id}/file` opens an owned PDF in the browser.
-- `DELETE /api/v1/documents/{document_id}` removes the stored file and metadata.
+- `/api/v1/auth`: registration, login, logout, session restoration, and Google
+  OAuth when configured.
+- `/api/v1/projects`: private project creation, listing, updates, and archiving.
+- `/api/v1/documents`: compatibility upload/list/read/delete operations across
+  the authenticated user's documents.
+- `/api/v1/projects/{project_id}/documents`: exact project-scoped PDF/DOCX
+  upload and listing.
+- `/api/v1/research`: research CRUD, project filters, progress, reports, hybrid
+  retrieval inspection, and grounded query execution.
 
-Uploaded files are stored under `DOCUMENT_UPLOAD_DIR` and are ignored by Git. The default maximum upload size is 25 MiB. Page-aware chunks and available PDF metadata are persisted; missing metadata remains null. Chunk size and overlap are controlled by `DOCUMENT_CHUNK_SIZE` and `DOCUMENT_CHUNK_OVERLAP`.
+Existing records with `project_id = NULL` remain supported. Project-scoped
+retrieval uses an exact project filter and excludes null-project and other
+project documents.
+
+## Supported and deferred scope
+
+Implemented file formats are PDF and DOCX. The pypdf path is an explicitly
+configured PDF-only fallback; Docling is the default parser.
+
+Deferred to later pull requests:
+
+- PPTX, HTML, Markdown, CSV, and spreadsheet ingestion
+- secure URL ingestion
+- DOI normalization and Crossref/OpenAlex integrations
+- advanced metadata retrieval filters
+- strict structured generation and stronger citation validation
+- LangGraph orchestration, Ragas evaluation, and background job infrastructure
+
+## Validation
+
+```bash
+pytest backend/tests
+cd frontend
+npm test -- --run
+npm run typecheck
+npm run lint
+npm run build
+```
+
+The PostgreSQL integration test requires a dedicated disposable database named
+with `test` through `POSTGRES_TEST_DATABASE_URL`. Never point it at shared
+Supabase or production data.
 
 ## Product principles
 
 - Evidence comes before explanation.
-- Papers, citations, and missing metadata must never be invented.
-- Important factual claims should link back to stored evidence.
-- Disagreement between sources should remain visible.
-- Research gap suggestions are hypotheses, not facts.
-- AI providers and retrieval components should remain replaceable.
-- Evaluation scores must come from real test cases and calculations.
-- The assistant supports human research judgment. It does not replace it.
-
-## Planned delivery
-
-1. Project and user foundations
-2. OpenAlex discovery and Crossref metadata verification
-3. PDF upload, extraction, chunking, and indexing
-4. Evidence retrieval, reranking, answers, and citations
-5. Comparison, synthesis, reports, and evaluation
+- Missing metadata and citations are never invented.
+- Project and user ownership is enforced in backend queries.
+- Insufficient evidence produces an explicit bounded response.
+- The assistant supports human research judgment; it does not replace it.
 
 ## License
 

@@ -44,12 +44,18 @@ class CitationValidator:
     def _citation(evidence: EvidenceItem) -> ValidatedCitation:
         return ValidatedCitation(
             citation_id=evidence.source_id,
+            node_id=evidence.node_id,
             document_id=evidence.document_id,
+            project_id=evidence.project_id,
+            source_type=evidence.source_type,
+            content_level=evidence.content_level,
             chunk_id=evidence.chunk_id,
             paper_title=evidence.paper_title,
             authors=evidence.authors,
             doi=evidence.doi,
             page=evidence.page,
+            page_end=evidence.page_end,
             section=evidence.section,
+            section_path=evidence.section_path,
             excerpt=evidence.text,
         )

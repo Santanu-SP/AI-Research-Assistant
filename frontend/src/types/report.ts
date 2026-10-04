@@ -1,6 +1,5 @@
 import { ResearchStatus } from './research';
-
-export type SourceType = 'peer-reviewed' | 'preprint' | 'institutional' | 'official-documentation' | 'web-article' | 'book' | 'other';
+import type { SourceType } from './source';
 
 export interface CitationResponse {
   id: string;

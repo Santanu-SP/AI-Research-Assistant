@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { authService } from './auth.service';
+import { API_BASE_URL } from './api';
 
 const popupStub = () => {
   const popup = {
@@ -43,7 +44,7 @@ describe('Google authentication popup', () => {
       'popup=yes,width=520,height=680,resizable=yes,scrollbars=yes',
     );
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(popup.location.replace).toHaveBeenCalledWith('http://localhost:8000/api/v1/auth/google/start');
+    expect(popup.location.replace).toHaveBeenCalledWith(`${API_BASE_URL}/auth/google/start`);
     let settled = false;
     void result.finally(() => { settled = true; });
 

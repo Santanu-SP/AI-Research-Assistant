@@ -108,6 +108,7 @@ def run_query(
         session,
         ResearchCreate(
             question=normalized_query,
+            project_id=payload.project_id,
             research_depth=payload.research_depth,
         ),
         user_id,
@@ -117,7 +118,13 @@ def run_query(
         research.update_research_lifecycle(
             session, record.id, ProjectStatus.PAPERS_SELECTED
         )
-        candidates = retrieval.retrieve(session, user_id, normalized_query, settings)
+        candidates = retrieval.retrieve(
+            session,
+            user_id,
+            normalized_query,
+            settings,
+            project_id=payload.project_id,
+        )
         research.update_progress_counts(
             session,
             record.id,
@@ -171,6 +178,7 @@ def run_query(
         research.mark_research_completed(session, record.id)
         return ResearchQueryResponse(
             research_id=record.id,
+            project_id=record.project_id,
             answer=answer,
             citations=validated.citations,
             hybrid_candidate_count=len(candidates),

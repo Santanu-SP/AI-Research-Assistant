@@ -1,42 +1,60 @@
 # Project Structure Guide
 
-## Current Project Status
-The project is currently in its foundational stage. The implemented features include:
-- **Backend Foundation**: FastAPI application factory, environment-based settings, SQLAlchemy/Alembic setup, CORS configuration, and a health endpoint.
-- **Research Management API**: Persistent CRUD operations for research records.
-- **Document Management API**: Local document upload (PDF, DOCX, TXT) and metadata management.
-- **React Frontend**: Setup with Vite, TypeScript, TailwindCSS, and basic routing.
+## Current status
 
-*Note: The following features are intentionally future work and are **not yet implemented**:*
-- Document content extraction, chunking, and indexing
-- Research execution pipeline
-- Evidence retrieval, reranking, and GenAI/RAG models
-- Answers, synthesis, and citation generations
-- Reports and evaluation metrics
-- Authentication
+The repository contains a working local RAG application with authentication,
+private projects, PDF/DOCX ingestion, PostgreSQL hybrid retrieval, Qwen models,
+Ollama generation, citations, reports, and a React frontend.
 
-## Repository Directories
+## Backend
 
-### Backend
-The backend follows a domain-driven structure located in the `backend/` directory:
+- `backend/app/api/`: authenticated FastAPI routes and dependencies.
+- `backend/app/core/`: settings, error handling, and shared time helpers.
+- `backend/app/db/`: SQLAlchemy engine, sessions, base classes, and database
+  types.
+- `backend/app/domain/`: stable enums and framework-neutral domain contracts.
+- `backend/app/models/`: SQLAlchemy users, projects, documents, research, and
+  report models.
+- `backend/app/schemas/`: Pydantic request and response contracts.
+- `backend/app/services/`: authentication, project/document lifecycle,
+  Docling/LlamaIndex ingestion, embeddings, retrieval, reranking, evidence,
+  generation, citations, and reports.
+- `backend/alembic/`: migrations through `0012_canonical_document_metadata`.
+- `backend/tests/`: unit/API tests plus opt-in Docling and PostgreSQL
+  integration tests.
+- `backend/scripts/`: manual local model smoke tests.
+- `backend/data/`: ignored local SQLite files and uploads; only `.gitkeep` is
+  versioned.
 
-- `backend/app/api/`: Contains FastAPI route definitions and endpoints (e.g., for research and documents).
-- `backend/app/core/`: Application-wide settings, configuration, and dependencies.
-- `backend/app/db/`: SQLAlchemy engine, session management, and the declarative base for models.
-- `backend/app/domain/`: Shared domain logic, enums, and product states.
-- `backend/app/models/`: SQLAlchemy ORM models representing persisted database tables.
-- `backend/app/schemas/`: Pydantic models for API request validation and response serialization.
-- `backend/app/services/`: Business logic layer connecting routes with models/database.
-- `backend/tests/`: Backend test suite using pytest.
+## Frontend
 
-*(Additional folders like `backend/alembic/` exist for database migrations, and `backend/data/` for local SQLite storage and document uploads.)*
+- `frontend/src/app/`: routing, authentication context, and application shell.
+- `frontend/src/components/`: shared UI, research, source, document, and layout
+  components.
+- `frontend/src/pages/`: authentication, document, research, progress, report,
+  and landing pages.
+- `frontend/src/services/`: typed API clients.
+- `frontend/src/types/`: backend-aligned TypeScript contracts.
+- `frontend/src/data/`: deliberate static product content such as suggested
+  research questions.
 
-### Frontend
-The frontend is located in the `frontend/` directory and follows a feature/component-based architecture:
+## Data flow
 
-- `frontend/src/app/`: Application-level routing or core shell components.
-- `frontend/src/components/`: Reusable UI components used across different pages.
-- `frontend/src/data/`: Local data constants or mock data.
-- `frontend/src/pages/`: Top-level page components representing different views in the app.
-- `frontend/src/services/`: API client functions to communicate with the backend.
-- `frontend/src/types/`: TypeScript type definitions and interfaces.
+```text
+FastAPI route
+→ ownership-aware service
+→ Docling and LlamaIndex ingestion or custom RAG orchestration
+→ SQLAlchemy
+→ PostgreSQL/pgvector/FTS
+→ typed API response
+→ React service and page
+```
+
+LlamaIndex is limited to document and node standardization. PostgreSQL remains
+the only persisted vector and keyword retrieval store.
+
+## Deferred areas
+
+Multi-format expansion beyond PDF/DOCX, web and scholarly source ingestion,
+advanced filters, strict structured generation, stronger citation validation,
+LangGraph, Ragas, and background jobs are intentionally outside this branch.

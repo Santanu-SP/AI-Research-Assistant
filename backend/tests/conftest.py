@@ -29,6 +29,7 @@ def test_settings(tmp_path: Path, upload_dir: Path) -> Settings:
         document_max_upload_bytes=1024 * 1024,
         document_chunk_size=256,
         document_chunk_overlap=32,
+        document_ingestion_backend="legacy",
         embedding_enabled=False,
         google_client_id="test-google-client",
         google_client_secret="test-google-secret",

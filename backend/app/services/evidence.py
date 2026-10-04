@@ -30,13 +30,19 @@ class EvidenceBuilder:
             evidence.append(
                 EvidenceItem(
                     source_id=f"S{len(evidence) + 1}",
+                    node_id=candidate.node_id,
                     document_id=candidate.document_id,
+                    project_id=candidate.project_id,
+                    source_type=candidate.source_type,
+                    content_level=candidate.content_level,
                     chunk_id=candidate.chunk_id,
                     paper_title=candidate.paper_title,
                     authors=candidate.authors,
                     doi=candidate.doi,
                     page=candidate.page,
+                    page_end=candidate.page_end,
                     section=candidate.section,
+                    section_path=candidate.section_path,
                     text=candidate.text,
                     rerank_score=candidate.rerank_score,
                 )
