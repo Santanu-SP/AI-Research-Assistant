@@ -10,9 +10,8 @@ from app.core.config import Settings
 from app.core.errors import AppError
 from app.domain.documents import DocumentStatus
 from app.models.document import Document, DocumentChunk
-from app.schemas.retrieval import RetrievalCandidate, RetrievalFilters
+from app.schemas.retrieval import RetrievalCandidate
 from app.services.embeddings import EmbeddingService, embedding_service_for
-from app.services.doi import normalize_doi
 from app.services import projects as project_service
 
 RRF_K = 60
@@ -31,32 +30,12 @@ def _require_postgres(session: Session) -> None:
         raise AppError("Retrieval requires PostgreSQL with pgvector", status_code=503, code="retrieval_backend_unavailable")
 
 
-def _metadata_filters(filters: RetrievalFilters | None) -> list[object]:
-    if filters is None:
-        return []
-    expressions: list[object] = []
-    if filters.document_ids:
-        expressions.append(Document.id.in_(filters.document_ids))
-    if filters.source_types:
-        expressions.append(Document.source_type.in_(filters.source_types))
-    if filters.content_levels:
-        expressions.append(Document.content_level.in_(filters.content_levels))
-    if filters.year_from is not None:
-        expressions.append(Document.publication_year >= filters.year_from)
-    if filters.year_to is not None:
-        expressions.append(Document.publication_year <= filters.year_to)
-    if filters.doi:
-        expressions.append(func.lower(Document.doi) == normalize_doi(filters.doi))
-    return expressions
-
-
 def semantic_search(
     session: Session,
     user_id: UUID,
     query_vector: list[float],
     limit: int,
     project_id: UUID | None = None,
-    retrieval_filters: RetrievalFilters | None = None,
 ) -> list[RankedChunk]:
     distance = DocumentChunk.embedding.cosine_distance(query_vector)
     filters = [
@@ -66,7 +45,6 @@ def semantic_search(
     ]
     if project_id is not None:
         filters.append(Document.project_id == project_id)
-    filters.extend(_metadata_filters(retrieval_filters))
     rows = session.execute(
         select(DocumentChunk, distance.label("distance"))
         .join(Document)
@@ -82,7 +60,6 @@ def keyword_search(
     query: str,
     limit: int,
     project_id: UUID | None = None,
-    retrieval_filters: RetrievalFilters | None = None,
 ) -> list[RankedChunk]:
     query_expression = func.websearch_to_tsquery(FTS_CONFIGURATION, query)
     rank = func.ts_rank_cd(DocumentChunk.search_vector, query_expression)
@@ -93,7 +70,6 @@ def keyword_search(
     ]
     if project_id is not None:
         filters.append(Document.project_id == project_id)
-    filters.extend(_metadata_filters(retrieval_filters))
     rows = session.execute(
         select(DocumentChunk, rank.label("rank"))
         .join(Document)
@@ -123,7 +99,6 @@ def retrieve(
     embeddings: EmbeddingService | None = None,
     *,
     project_id: UUID | None = None,
-    filters: RetrievalFilters | None = None,
 ) -> list[RetrievalCandidate]:
     normalized = query.strip()
     if not normalized:
@@ -138,7 +113,6 @@ def retrieve(
         service.embed_query(normalized),
         settings.vector_top_k,
         project_id,
-        filters,
     )
     keyword_results = keyword_search(
         session,
@@ -146,7 +120,6 @@ def retrieve(
         normalized,
         settings.keyword_top_k,
         project_id,
-        filters,
     )
     candidates = fuse(vector_results, keyword_results, settings.hybrid_candidate_k)
     vector_rank = {item.chunk.id: index for index, item in enumerate(vector_results, 1)}

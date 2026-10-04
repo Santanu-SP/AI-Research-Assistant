@@ -4,10 +4,6 @@ from enum import StrEnum
 class DocumentType(StrEnum):
     PDF = "pdf"
     DOCX = "docx"
-    PPTX = "pptx"
-    HTML = "html"
-    MARKDOWN = "markdown"
-    METADATA = "metadata"
     TXT = "txt"
 
 

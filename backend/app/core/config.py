@@ -76,18 +76,6 @@ class Settings(BaseSettings):
     ingestion_version: str = Field(default="docling-llamaindex-v1", min_length=1)
     document_chunk_max_tokens: int = Field(default=512, ge=64, le=8192)
     docling_ocr_mode: Literal["auto", "disabled", "force"] = "auto"
-    url_fetch_timeout: float = Field(default=30.0, gt=0.0, le=120.0)
-    url_connect_timeout: float = Field(default=5.0, gt=0.0, le=30.0)
-    url_max_bytes: int = Field(default=25 * 1024 * 1024, gt=0)
-    url_max_redirects: int = Field(default=3, ge=0, le=10)
-    crossref_base_url: str = "https://api.crossref.org"
-    crossref_mailto: str | None = None
-    crossref_user_agent: str = "AI-Research-Assistant/0.1"
-    crossref_timeout: float = Field(default=15.0, gt=0.0, le=60.0)
-    openalex_base_url: str = "https://api.openalex.org"
-    openalex_api_key: str | None = None
-    openalex_timeout: float = Field(default=15.0, gt=0.0, le=60.0)
-    provider_max_retries: int = Field(default=2, ge=0, le=3)
     auth_session_days: int = Field(default=7, ge=1, le=30)
     auth_cookie_secure: bool = False
     frontend_url: str = "http://localhost:3000"
@@ -124,13 +112,7 @@ class Settings(BaseSettings):
     cors_origin_regex: str | None = None
     cors_allow_local_network: bool = True
 
-    @field_validator(
-        "google_client_id",
-        "google_client_secret",
-        "crossref_mailto",
-        "openalex_api_key",
-        mode="before",
-    )
+    @field_validator("google_client_id", "google_client_secret", mode="before")
     @classmethod
     def blank_google_values_are_unset(cls, value: str | None) -> str | None:
         """Allow the checked-in example env file to leave OAuth disabled."""

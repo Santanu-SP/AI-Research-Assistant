@@ -1,6 +1,4 @@
 from dataclasses import dataclass
-from html import escape
-from html.parser import HTMLParser
 import hashlib
 from pathlib import Path
 from pathlib import PurePosixPath
@@ -25,88 +23,9 @@ SUPPORTED_DOCUMENT_TYPES: dict[str, tuple[DocumentType, frozenset[str]]] = {
             }
         ),
     ),
-    ".pptx": (
-        DocumentType.PPTX,
-        frozenset(
-            {
-                "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-            }
-        ),
-    ),
-    ".html": (DocumentType.HTML, frozenset({"text/html", "application/xhtml+xml"})),
-    ".htm": (DocumentType.HTML, frozenset({"text/html", "application/xhtml+xml"})),
-    ".md": (
-        DocumentType.MARKDOWN,
-        frozenset({"text/markdown", "text/x-markdown", "text/plain"}),
-    ),
-    ".markdown": (
-        DocumentType.MARKDOWN,
-        frozenset({"text/markdown", "text/x-markdown", "text/plain"}),
-    ),
 }
 MAX_OFFICE_ARCHIVE_MEMBERS = 10_000
 MAX_OFFICE_EXPANDED_BYTES = 250 * 1024 * 1024
-
-
-class _SafeResearchHtmlParser(HTMLParser):
-    """Remove active HTML while retaining research structure for Docling."""
-
-    blocked_containers = {
-        "script", "iframe", "object", "applet", "form", "button", "svg", "math",
-    }
-    blocked_void = {"embed", "input", "link", "meta", "base"}
-    blocked = blocked_containers | blocked_void
-    allowed_attributes = {"href", "title", "colspan", "rowspan", "scope", "lang"}
-
-    def __init__(self) -> None:
-        super().__init__(convert_charrefs=True)
-        self.parts: list[str] = []
-        self._blocked_depth = 0
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        normalized = tag.casefold()
-        if normalized in self.blocked:
-            if normalized in self.blocked_containers:
-                self._blocked_depth += 1
-            return
-        if self._blocked_depth:
-            return
-        safe_attrs: list[str] = []
-        for name, value in attrs:
-            name = name.casefold()
-            if name not in self.allowed_attributes or value is None:
-                continue
-            if name == "href" and not value.casefold().startswith(
-                ("http://", "https://", "mailto:", "#")
-            ):
-                continue
-            safe_attrs.append(f' {name}="{escape(value, quote=True)}"')
-        self.parts.append(f"<{normalized}{''.join(safe_attrs)}>")
-
-    def handle_startendtag(
-        self, tag: str, attrs: list[tuple[str, str | None]]
-    ) -> None:
-        if tag.casefold() in self.blocked or self._blocked_depth:
-            return
-        self.handle_starttag(tag, attrs)
-        self.parts.append(f"</{tag.casefold()}>")
-
-    def handle_endtag(self, tag: str) -> None:
-        normalized = tag.casefold()
-        if normalized in self.blocked_containers:
-            self._blocked_depth = max(0, self._blocked_depth - 1)
-            return
-        if normalized in self.blocked_void:
-            return
-        if not self._blocked_depth:
-            self.parts.append(f"</{normalized}>")
-
-    def handle_data(self, data: str) -> None:
-        if not self._blocked_depth:
-            self.parts.append(escape(data))
-
-    def sanitized(self) -> str:
-        return "".join(self.parts)
 
 
 @dataclass(frozen=True)
@@ -149,7 +68,7 @@ class LocalDocumentStorage:
         supported = SUPPORTED_DOCUMENT_TYPES.get(extension)
         if supported is None:
             raise AppError(
-                "Only PDF, DOCX, PPTX, HTML, and Markdown documents are supported",
+                "Only PDF and DOCX documents are supported",
                 status_code=400,
                 code="unsupported_document_type",
             )
@@ -234,11 +153,6 @@ class LocalDocumentStorage:
                 )
 
             self._validate_stored_content(destination, extension)
-            if extension in {".html", ".htm"}:
-                sanitized = self._sanitize_html(destination)
-                destination.write_bytes(sanitized)
-                size = len(sanitized)
-                digest = hashlib.sha256(sanitized)
         except AppError:
             destination.unlink(missing_ok=True)
             raise
@@ -256,44 +170,6 @@ class LocalDocumentStorage:
             checksum=digest.hexdigest(),
         )
 
-    def save_content(self, content: bytes, extension: str) -> StoredUpload:
-        """Promote one bounded remote response into validated local storage."""
-
-        if not content:
-            raise AppError("The source is empty", status_code=400, code="empty_source")
-        if len(content) > self.max_upload_bytes:
-            raise AppError(
-                "The source exceeds the configured storage limit",
-                status_code=413,
-                code="source_too_large",
-            )
-        try:
-            self.root.mkdir(parents=True, exist_ok=True)
-            stored_name = f"{uuid4().hex}{extension}"
-            destination = self._path_for(stored_name)
-            destination.write_bytes(content)
-            self._validate_stored_content(destination, extension)
-            if extension in {".html", ".htm"}:
-                content = self._sanitize_html(destination)
-                destination.write_bytes(content)
-        except AppError:
-            if "destination" in locals():
-                destination.unlink(missing_ok=True)
-            raise
-        except OSError as exc:
-            if "destination" in locals():
-                destination.unlink(missing_ok=True)
-            raise AppError(
-                "The source could not be stored",
-                status_code=500,
-                code="document_storage_error",
-            ) from exc
-        return StoredUpload(
-            stored_name=stored_name,
-            size=len(content),
-            checksum=hashlib.sha256(content).hexdigest(),
-        )
-
     def _validate_stored_content(self, path: Path, extension: str) -> None:
         if extension == ".pdf":
             with path.open("rb") as stored_file:
@@ -305,21 +181,7 @@ class LocalDocumentStorage:
                     )
             return
         if extension == ".docx":
-            self._validate_office_archive(
-                path,
-                required_part="word/document.xml",
-                label="DOCX",
-            )
-            return
-        if extension == ".pptx":
-            self._validate_office_archive(
-                path,
-                required_part="ppt/presentation.xml",
-                label="PPTX",
-            )
-            return
-        if extension in {".html", ".htm", ".md", ".markdown"}:
-            self._read_utf8_text(path)
+            self._validate_docx_archive(path)
             return
         raise AppError(
             "The uploaded document format is unsupported",
@@ -327,61 +189,16 @@ class LocalDocumentStorage:
             code="unsupported_document_type",
         )
 
-    @staticmethod
-    def _read_utf8_text(path: Path) -> str:
-        try:
-            value = path.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError) as exc:
-            raise AppError(
-                "The uploaded text document must use UTF-8 encoding",
-                status_code=400,
-                code="invalid_text_document",
-            ) from exc
-        if "\x00" in value:
-            raise AppError(
-                "The uploaded text document contains invalid content",
-                status_code=400,
-                code="invalid_text_document",
-            )
-        return value
-
-    def _sanitize_html(self, path: Path) -> bytes:
-        parser = _SafeResearchHtmlParser()
-        try:
-            parser.feed(self._read_utf8_text(path))
-            parser.close()
-        except (ValueError, AssertionError) as exc:
-            raise AppError(
-                "The uploaded HTML document could not be parsed safely",
-                status_code=400,
-                code="invalid_html_document",
-            ) from exc
-        sanitized = parser.sanitized().strip()
-        if not sanitized:
-            raise AppError(
-                "The uploaded HTML document contains no usable content",
-                status_code=400,
-                code="invalid_html_document",
-            )
-        return sanitized.encode("utf-8")
-
-    def _validate_office_archive(
-        self,
-        path: Path,
-        *,
-        required_part: str,
-        label: str,
-    ) -> None:
-        error_code = f"invalid_{label.casefold()}_archive"
+    def _validate_docx_archive(self, path: Path) -> None:
         try:
             with ZipFile(path) as archive:
                 entries = archive.infolist()
                 names = {entry.filename for entry in entries}
                 if len(entries) > MAX_OFFICE_ARCHIVE_MEMBERS:
                     raise AppError(
-                        f"The {label} archive contains too many files",
+                        "The DOCX archive contains too many files",
                         status_code=400,
-                        code=error_code,
+                        code="invalid_docx_archive",
                     )
                 expanded_limit = min(
                     MAX_OFFICE_EXPANDED_BYTES,
@@ -389,9 +206,9 @@ class LocalDocumentStorage:
                 )
                 if sum(entry.file_size for entry in entries) > expanded_limit:
                     raise AppError(
-                        f"The {label} archive expands beyond the safe size limit",
+                        "The DOCX archive expands beyond the safe size limit",
                         status_code=400,
-                        code=error_code,
+                        code="invalid_docx_archive",
                     )
                 for entry in entries:
                     normalized = entry.filename.replace("\\", "/")
@@ -402,15 +219,15 @@ class LocalDocumentStorage:
                         or entry.flag_bits & 0x1
                     ):
                         raise AppError(
-                            f"The {label} archive contains an unsafe entry",
+                            "The DOCX archive contains an unsafe entry",
                             status_code=400,
-                            code=error_code,
+                            code="invalid_docx_archive",
                         )
-                if not {"[Content_Types].xml", required_part}.issubset(names):
+                if not {"[Content_Types].xml", "word/document.xml"}.issubset(names):
                     raise AppError(
-                        f"The uploaded file is not a valid {label} document",
+                        "The uploaded file is not a valid DOCX document",
                         status_code=400,
-                        code=error_code,
+                        code="invalid_docx_archive",
                     )
                 if any(
                     name.lower().endswith("vbaproject.bin") for name in names
@@ -424,9 +241,9 @@ class LocalDocumentStorage:
             raise
         except (BadZipFile, OSError, RuntimeError) as exc:
             raise AppError(
-                f"The uploaded file is not a valid {label} document",
+                "The uploaded file is not a valid DOCX document",
                 status_code=400,
-                code=error_code,
+                code="invalid_docx_archive",
             ) from exc
 
     def delete(self, stored_name: str) -> bool:

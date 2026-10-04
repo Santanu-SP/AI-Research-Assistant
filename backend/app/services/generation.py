@@ -15,10 +15,6 @@ def build_grounding_prompt(question: str, evidence: list[EvidenceItem]) -> str:
     blocks = []
     for item in evidence:
         metadata = [f"source={item.source_id}"]
-        if item.source_type:
-            metadata.append(f"source_type={item.source_type.value}")
-        if item.content_level:
-            metadata.append(f"content_level={item.content_level.value}")
         if item.page is not None:
             page_label = (
                 f"{item.page}-{item.page_end}"
@@ -43,8 +39,6 @@ Rules:
 - Do not use outside or pretrained knowledge to fill gaps.
 - Do not invent facts, titles, authors, DOI values, pages, or sections.
 - Cite factual claims only with supplied source IDs such as [S1] or [S2].
-- Treat content_level=metadata_only as bibliographic context only; it cannot support detailed scientific claims.
-- Distinguish abstract evidence from full-text or user-document evidence when describing limitations.
 - If evidence is incomplete, say so explicitly.
 - If sources disagree, describe the disagreement.
 - Prefer concise synthesis and avoid long copied passages.

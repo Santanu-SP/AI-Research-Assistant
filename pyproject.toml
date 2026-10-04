@@ -6,6 +6,4 @@ markers = [
     "integration: tests that require an external integration service",
     "postgres: tests that require a dedicated PostgreSQL test database",
     "docling: tests that run the real Docling parsing pipeline",
-    "live: opt-in tests that call external provider APIs",
-    "network: opt-in tests that require internet access",
 ]

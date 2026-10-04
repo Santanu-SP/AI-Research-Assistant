@@ -71,6 +71,9 @@ def ingestion_adapter_for(settings: Settings) -> DocumentIngestionAdapter:
     if settings.document_ingestion_backend == "legacy":
         from app.services.legacy_ingestion import LegacyPdfIngestionAdapter
 
+        logger.warning(
+            "Using the explicitly configured legacy pypdf ingestion fallback"
+        )
         return LegacyPdfIngestionAdapter(settings)
 
     from app.services.docling_ingestion import docling_adapter_for
@@ -243,126 +246,6 @@ async def ingest_document(
                 "document_id": str(failed.id),
                 "source_type": failed.source_type.value,
                 "total_ingestion_ms": round((clock() - started) * 1000, 2),
-            },
-        )
-        raise AppError(message, status_code=status_code, code=code) from exc
-
-
-async def ingest_parsed_document(
-    session: Session,
-    document: Document,
-    parsed: ParsedDocument,
-    settings: Settings,
-    *,
-    embeddings: EmbeddingService | None = None,
-    allow_empty: bool = False,
-) -> Document:
-    """Persist a canonical non-file source without introducing another index."""
-
-    document.status = DocumentStatus.PROCESSING
-    document.processing_error = None
-    _commit(session, "The source processing status could not be saved")
-    try:
-        if parsed.document_id != document.id:
-            raise DocumentIngestionError(
-                "The source adapter returned a mismatched document identity"
-            )
-        if not parsed.nodes and not allow_empty:
-            raise DocumentIngestionError("The source contains no retrievable text")
-
-        vectors: list[list[float] | None] = [None] * len(parsed.nodes)
-        if settings.embedding_enabled and parsed.nodes:
-            if (
-                embeddings is None
-                and (session.bind is None or session.bind.dialect.name != "postgresql")
-            ):
-                raise AppError(
-                    "Source indexing requires PostgreSQL with pgvector",
-                    status_code=503,
-                    code="embedding_backend_unavailable",
-                )
-            service = embeddings or embedding_service_for(settings)
-            generated = service.embed_documents([node.text for node in parsed.nodes])
-            if len(generated) != len(parsed.nodes):
-                raise AppError(
-                    "Embedding generation returned an invalid batch",
-                    status_code=500,
-                    code="embedding_batch_mismatch",
-                )
-            vectors = generated
-
-        canonical = parsed.metadata
-        document.title = canonical.title
-        document.authors = canonical.authors
-        document.abstract = canonical.abstract
-        document.doi = canonical.doi
-        document.openalex_id = canonical.openalex_id
-        document.crossref_id = canonical.crossref_id
-        document.publication_year = canonical.publication_year
-        document.published_at = canonical.published_at
-        document.canonical_metadata = canonical.values or None
-        document.metadata_provenance = (
-            {key: value.value for key, value in canonical.provenance.items()} or None
-        )
-        document.page_count = parsed.page_count
-        document.parser_name = parsed.parser_name
-        document.parser_version = parsed.parser_version
-        document.ingestion_version = parsed.ingestion_version
-        document.chunks = []
-        for node, vector in zip(parsed.nodes, vectors, strict=True):
-            document.chunks.append(
-                DocumentChunk(
-                    id=node.node_id,
-                    node_id=str(node.node_id),
-                    document_id=document.id,
-                    text=node.text,
-                    page=node.page,
-                    page_end=node.page_end,
-                    section=node.section,
-                    section_path=node.section_path or None,
-                    chunk_index=node.chunk_index,
-                    token_count=node.token_count,
-                    node_metadata={
-                        **node.metadata,
-                        "document_id": str(document.id),
-                        "project_id": str(document.project_id)
-                        if document.project_id
-                        else None,
-                        "source_type": document.source_type.value,
-                        "content_level": document.content_level.value,
-                        "title": canonical.title or document.name,
-                        "parser_name": parsed.parser_name,
-                        "ingestion_version": parsed.ingestion_version,
-                    },
-                    embedding=vector,
-                )
-            )
-        document.status = DocumentStatus.INDEXED
-        document.processing_error = None
-        _commit(session, "The processed source could not be saved")
-        session.refresh(document)
-        return document
-    except Exception as exc:
-        session.rollback()
-        message, status_code, code = _failure_details(exc)
-        failed = session.get(Document, document.id)
-        if failed is None:
-            raise AppError(
-                "The source processing failure could not be recorded",
-                status_code=500,
-                code="document_persistence_error",
-            ) from exc
-        failed.chunks.clear()
-        failed.status = DocumentStatus.FAILED
-        failed.processing_error = message[:1000]
-        _commit(session, "The source processing failure could not be saved")
-        logger.exception(
-            "Canonical source ingestion failed",
-            extra={
-                "user_id": str(failed.user_id),
-                "project_id": str(failed.project_id),
-                "document_id": str(failed.id),
-                "source_type": failed.source_type.value,
             },
         )
         raise AppError(message, status_code=status_code, code=code) from exc

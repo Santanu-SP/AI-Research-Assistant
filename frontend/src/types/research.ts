@@ -1,3 +1,5 @@
+import type { ContentLevel, SourceType as DocumentSourceType } from './document';
+
 export type ResearchStatus = 'completed' | 'researching' | 'draft' | 'failed';
 export type ResearchDepth = 'quick' | 'standard' | 'deep';
 
@@ -117,8 +119,8 @@ export interface Citation {
   nodeId?: string | null;
   documentId: string;
   projectId?: string | null;
-  sourceType?: string | null;
-  contentLevel?: string | null;
+  sourceType?: DocumentSourceType | null;
+  contentLevel?: ContentLevel | null;
   chunkId: string;
   paperTitle: string | null;
   authors: string[] | null;

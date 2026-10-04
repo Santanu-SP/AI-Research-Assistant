@@ -7,14 +7,12 @@ from pydantic import Field
 from app.domain.documents import ContentLevel, SourceType
 from app.domain.research import ResearchDepth
 from app.schemas.base import ApiSchema
-from app.schemas.retrieval import RetrievalFilters
 
 
 class ResearchQueryRequest(ApiSchema):
     query: str = Field(min_length=1, max_length=10_000)
     project_id: UUID | None = None
     research_depth: ResearchDepth = ResearchDepth.STANDARD
-    filters: RetrievalFilters = Field(default_factory=RetrievalFilters)
 
 
 class EvidenceItem(ApiSchema):

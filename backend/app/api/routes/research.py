@@ -40,7 +40,6 @@ def retrieve_evidence(
             payload.query,
             request.app.state.settings,
             project_id=payload.project_id,
-            filters=payload.filters,
         )
     )
 

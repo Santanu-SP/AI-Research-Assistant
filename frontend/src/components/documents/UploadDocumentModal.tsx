@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { X, UploadCloud, Check, AlertCircle, Link2, BookOpen } from 'lucide-react';
+import { X, UploadCloud, Check, AlertCircle } from 'lucide-react';
 import { PrimaryButton } from '../common/PrimaryButton';
 import { apiErrorMessage } from '../../services/api';
 
@@ -7,21 +7,13 @@ interface UploadDocumentModalProps {
   isOpen: boolean;
   onClose: () => void;
   onUploadFile: (file: File) => Promise<void>;
-  onAddUrl: (url: string) => Promise<void>;
-  onAddDoi: (doi: string) => Promise<void>;
-  projectSelected: boolean;
 }
 
 export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
   isOpen,
   onClose,
   onUploadFile,
-  onAddUrl,
-  onAddDoi,
-  projectSelected,
 }) => {
-  const [mode, setMode] = useState<'file' | 'url' | 'doi'>('file');
-  const [sourceValue, setSourceValue] = useState('');
   const [dragOver, setDragOver] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -68,11 +60,11 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
   };
 
   const validateAndSetFile = (file: File) => {
-    const validExtensions = ['pdf', 'docx', 'pptx', 'html', 'htm', 'md', 'markdown'];
+    const validExtensions = ['pdf', 'docx'];
     const ext = file.name.split('.').pop()?.toLowerCase();
 
     if (!ext || !validExtensions.includes(ext)) {
-      setUploadError('Choose a PDF, DOCX, PPTX, HTML, or Markdown document.');
+      setUploadError('Unsupported file type. Please select a PDF or DOCX document.');
       setSelectedFile(null);
       return;
     }
@@ -82,16 +74,11 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
   };
 
   const handleSubmit = async () => {
-    if (isUploading) return;
-    if (mode === 'file' && !selectedFile) return;
-    if (mode !== 'file' && (!projectSelected || !sourceValue.trim())) return;
+    if (!selectedFile || isUploading) return;
     setIsUploading(true);
     try {
-      if (mode === 'file' && selectedFile) await onUploadFile(selectedFile);
-      if (mode === 'url') await onAddUrl(sourceValue.trim());
-      if (mode === 'doi') await onAddDoi(sourceValue.trim());
+      await onUploadFile(selectedFile);
       setSelectedFile(null);
-      setSourceValue('');
       setIsUploading(false);
       onClose();
     } catch (error) {
@@ -116,10 +103,10 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
         <div className="px-6 py-4 border-b border-[#e5e7e4] flex items-center justify-between">
           <div>
             <h3 id="upload-document-title" className="font-semibold text-base text-[#181a18]">
-              Add research source
+              Upload Knowledge Document
             </h3>
             <p className="text-xs text-[#6b706c] mt-0.5">
-              Add a local file, research webpage, or scholarly DOI.
+              Add internal whitepapers, memos, or empirical studies to your workspace.
             </p>
           </div>
           <button
@@ -134,27 +121,16 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
 
         {/* Modal Body */}
         <div className="p-6">
-          <div className="mb-4 grid grid-cols-3 rounded-lg border border-[#e5e7e4] bg-[#fafaf8] p-1">
-            {(['file', 'url', 'doi'] as const).map((value) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => { setMode(value); setUploadError(null); }}
-                className={`rounded-md px-3 py-2 text-xs font-medium capitalize ${mode === value ? 'bg-white text-[#163328] shadow-sm' : 'text-[#6b706c]'}`}
-              >
-                {value}
-              </button>
-            ))}
-          </div>
           <input
             ref={fileInputRef}
             type="file"
-            accept=".pdf,.docx,.pptx,.html,.htm,.md,.markdown"
+            accept=".pdf,.docx"
             onChange={handleFileChange}
             className="hidden"
           />
 
-          {mode === 'file' ? <div
+          {/* Dropzone */}
+          <div
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
@@ -167,7 +143,7 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
             }}
             role="button"
             tabIndex={0}
-            aria-label="Choose a supported research document"
+            aria-label="Choose a PDF or DOCX document"
             className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-150 ${
               dragOver
                 ? 'border-[#163328] bg-[#f1f6f3]/60 scale-[1.01]'
@@ -205,28 +181,11 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
                   Click to browse or drag and drop document
                 </span>
                 <p className="text-xs text-[#929792] max-w-xs">
-                  PDF, DOCX, PPTX, HTML, or Markdown
+                  Supported formats: PDF and DOCX
                 </p>
               </div>
             )}
-          </div> : (
-            <div className="rounded-xl border border-[#d0d7d2] bg-[#fafaf8] p-5">
-              <div className="mb-3 flex items-center gap-2 text-[#163328]">
-                {mode === 'url' ? <Link2 className="h-5 w-5" /> : <BookOpen className="h-5 w-5" />}
-                <span className="text-sm font-semibold">{mode === 'url' ? 'Research URL' : 'DOI lookup'}</span>
-              </div>
-              <input
-                type={mode === 'url' ? 'url' : 'text'}
-                value={sourceValue}
-                onChange={(event) => setSourceValue(event.target.value)}
-                disabled={!projectSelected}
-                placeholder={mode === 'url' ? 'https://example.org/research' : '10.1000/example'}
-                aria-label={mode === 'url' ? 'Research source URL' : 'Digital object identifier'}
-                className="w-full rounded-md border border-[#d0d7d2] bg-white px-3 py-2.5 text-sm text-[#181a18] focus:border-[#163328] focus:outline-none focus:ring-1 focus:ring-[#163328] disabled:bg-[#f1f1ee]"
-              />
-              {!projectSelected && <p className="mt-2 text-xs text-[#b45309]">Select a research project before adding URL or DOI sources.</p>}
-            </div>
-          )}
+          </div>
 
           {/* Error notice */}
           {uploadError && (
@@ -240,8 +199,8 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
           <div className="mt-4 p-3 bg-[#fafaf8] border border-[#e5e7e4] rounded-lg text-xs text-[#6b706c] flex items-start gap-2">
             <Check className="w-4 h-4 text-[#163328] shrink-0 mt-0.5" />
             <div>
-              <span className="font-medium text-[#181a18]">Source integrity:</span>{' '}
-              URLs are security checked and DOI records show whether evidence is full text, abstract, or metadata only.
+              <span className="font-medium text-[#181a18]">Secure upload:</span>{' '}
+              Documents are processed securely and used only for your research.
             </div>
           </div>
         </div>
@@ -258,10 +217,10 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
 
           <PrimaryButton
             onClick={handleSubmit}
-            disabled={isUploading || (mode === 'file' ? !selectedFile : !projectSelected || !sourceValue.trim())}
+            disabled={!selectedFile || isUploading}
             isLoading={isUploading}
           >
-            {isUploading ? 'Adding source…' : mode === 'file' ? 'Upload file' : mode === 'url' ? 'Add URL' : 'Resolve DOI'}
+            {isUploading ? 'Adding document…' : 'Upload document'}
           </PrimaryButton>
         </div>
       </div>

@@ -1,6 +1,7 @@
 import asyncio
 from io import BytesIO
 import json
+import logging
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import UUID, uuid4
@@ -230,6 +231,21 @@ def test_official_docling_reader_and_node_parser_process_docx(tmp_path: Path) ->
     assert "Metric" in table.text
     assert "Accuracy" in table.text
     assert table.page is None
+
+
+def test_legacy_ingestion_fallback_is_explicitly_logged(
+    test_settings: Settings,
+    caplog,
+) -> None:
+    settings = test_settings.model_copy(
+        update={"document_ingestion_backend": "legacy"}
+    )
+
+    with caplog.at_level(logging.WARNING, logger="app.services.ingestion"):
+        adapter = ingestion_service.ingestion_adapter_for(settings)
+
+    assert adapter.__class__.__name__ == "LegacyPdfIngestionAdapter"
+    assert "legacy pypdf ingestion fallback" in caplog.text
 
 
 def test_docx_upload_persists_canonical_nodes_and_duplicate_policy(
