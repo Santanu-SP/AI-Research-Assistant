@@ -5,10 +5,14 @@ import {
   FolderOpen,
   FileText,
   LogOut,
+  Layers,
 } from 'lucide-react';
 import { researchService } from '../../services/research.service';
+import { projectsService } from '../../services/projects.service';
 import { ResearchResponse } from '../../types/research';
+import { ResearchProject } from '../../types/project';
 import { useAuth } from '../../app/AuthContext';
+import { useProject } from '../../app/ProjectContext';
 
 interface AppSidebarProps {
   className?: string;
@@ -18,7 +22,9 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ className = '' }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout } = useAuth();
+  const { selectedProject } = useProject();
   const [recentItems, setRecentItems] = useState<ResearchResponse[]>([]);
+  const [recentProjects, setRecentProjects] = useState<ResearchProject[]>([]);
   const [profileOpen, setProfileOpen] = useState(false);
   const [logoutError, setLogoutError] = useState<string | null>(null);
 
@@ -28,18 +34,38 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ className = '' }) => {
       .then((res) => {
         setRecentItems(res.items);
       })
-      .catch((err) => {
-        console.error('Failed to load recent research for sidebar:', err);
+      .catch(() => {
+        // Sidebar is supplemental – silent failure is acceptable
       });
-  }, [location.pathname]); // Refresh when navigation changes
+  }, [location.pathname]);
+
+  useEffect(() => {
+    projectsService
+      .listProjects({ limit: 5 })
+      .then((res) => {
+        setRecentProjects(res.items.filter((p) => !p.archivedAt));
+      })
+      .catch(() => {
+        // Sidebar is supplemental – silent failure is acceptable
+      });
+  }, [location.pathname]);
+
+  const navLinkClass = ({ isActive }: { isActive: boolean }) =>
+    isActive
+      ? 'bg-[#f1f6f3] text-[#163328] font-medium rounded-md px-3 py-2 flex items-center gap-2.5 relative text-[13.5px] transition-colors duration-150'
+      : 'text-[#6b706c] hover:text-[#181a18] hover:bg-[#f5f5f2] px-3 py-2 rounded-md flex items-center gap-2.5 text-[13.5px] font-normal transition-colors duration-150';
+
+  const ActiveIndicator = () => (
+    <div className="absolute left-0 top-1.5 bottom-1.5 w-[2px] bg-[#163328] rounded-r-full" />
+  );
 
   return (
     <aside
       className={`app-chrome-surface fixed left-0 top-0 h-full w-[232px] z-50 flex flex-col justify-between border-r border-[#e5e7e4] select-none ${className}`}
     >
-      <div className="flex flex-col">
+      <div className="flex flex-col overflow-y-auto flex-1">
         {/* Brand / Logo Header */}
-        <div className="h-14 px-4 flex items-center gap-2.5 border-b border-[#e5e7e4]">
+        <div className="h-14 px-4 flex items-center gap-2.5 border-b border-[#e5e7e4] shrink-0">
           <div className="w-6 h-6 flex items-center justify-center shrink-0 text-[#163328]">
             <svg
               className="w-5 h-5"
@@ -62,21 +88,32 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ className = '' }) => {
 
         {/* Primary Navigation */}
         <div className="p-2 pt-3">
-          <nav className="flex flex-col gap-0.5">
-            {/* New Research */}
+          <nav aria-label="Main navigation" className="flex flex-col gap-0.5">
+            {/* Projects */}
             <NavLink
-              to="/research/new"
+              to="/projects"
               className={({ isActive }) =>
-                isActive
-                  ? 'bg-[#f1f6f3] text-[#163328] font-medium rounded-md px-3 py-2 flex items-center gap-2.5 relative text-[13.5px] transition-colors duration-150'
-                  : 'text-[#6b706c] hover:text-[#181a18] hover:bg-[#f5f5f2] px-3 py-2 rounded-md flex items-center gap-2.5 text-[13.5px] font-normal transition-colors duration-150'
+                navLinkClass({
+                  isActive: isActive || location.pathname.startsWith('/projects'),
+                })
               }
             >
               {({ isActive }) => (
                 <>
-                  {isActive && (
-                    <div className="absolute left-0 top-1.5 bottom-1.5 w-[2px] bg-[#163328] rounded-r-full" />
+                  {(isActive || location.pathname.startsWith('/projects')) && (
+                    <ActiveIndicator />
                   )}
+                  <Layers className="w-[18px] h-[18px] shrink-0" />
+                  <span>Projects</span>
+                </>
+              )}
+            </NavLink>
+
+            {/* New Research */}
+            <NavLink to="/research/new" className={navLinkClass}>
+              {({ isActive }) => (
+                <>
+                  {isActive && <ActiveIndicator />}
                   <Compass className="w-[18px] h-[18px] shrink-0" />
                   <span>New Research</span>
                 </>
@@ -84,20 +121,10 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ className = '' }) => {
             </NavLink>
 
             {/* My Research */}
-            <NavLink
-              to="/research"
-              end
-              className={({ isActive }) =>
-                isActive
-                  ? 'bg-[#f1f6f3] text-[#163328] font-medium rounded-md px-3 py-2 flex items-center gap-2.5 relative text-[13.5px] transition-colors duration-150'
-                  : 'text-[#6b706c] hover:text-[#181a18] hover:bg-[#f5f5f2] px-3 py-2 rounded-md flex items-center gap-2.5 text-[13.5px] font-normal transition-colors duration-150'
-              }
-            >
+            <NavLink to="/research" end className={navLinkClass}>
               {({ isActive }) => (
                 <>
-                  {isActive && (
-                    <div className="absolute left-0 top-1.5 bottom-1.5 w-[2px] bg-[#163328] rounded-r-full" />
-                  )}
+                  {isActive && <ActiveIndicator />}
                   <FolderOpen className="w-[18px] h-[18px] shrink-0" />
                   <span>My Research</span>
                 </>
@@ -105,19 +132,10 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ className = '' }) => {
             </NavLink>
 
             {/* Documents */}
-            <NavLink
-              to="/documents"
-              className={({ isActive }) =>
-                isActive
-                  ? 'bg-[#f1f6f3] text-[#163328] font-medium rounded-md px-3 py-2 flex items-center gap-2.5 relative text-[13.5px] transition-colors duration-150'
-                  : 'text-[#6b706c] hover:text-[#181a18] hover:bg-[#f5f5f2] px-3 py-2 rounded-md flex items-center gap-2.5 text-[13.5px] font-normal transition-colors duration-150'
-              }
-            >
+            <NavLink to="/documents" className={navLinkClass}>
               {({ isActive }) => (
                 <>
-                  {isActive && (
-                    <div className="absolute left-0 top-1.5 bottom-1.5 w-[2px] bg-[#163328] rounded-r-full" />
-                  )}
+                  {isActive && <ActiveIndicator />}
                   <FileText className="w-[18px] h-[18px] shrink-0" />
                   <span>Documents</span>
                 </>
@@ -126,13 +144,45 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ className = '' }) => {
           </nav>
         </div>
 
-        {/* Recent Research Section */}
+        {/* Recent Projects */}
+        {recentProjects.length > 0 && (
+          <div className="px-2 mt-3">
+            <div className="uppercase tracking-wider text-[10.5px] text-[#929792] font-semibold px-3 mb-1.5">
+              Recent Projects
+            </div>
+            <nav aria-label="Recent projects" className="flex flex-col gap-0.5">
+              {recentProjects.map((project) => {
+                const isCurrentProject = selectedProject?.id === project.id;
+                const isActive = location.pathname === `/projects/${project.id}`;
+                return (
+                  <div key={project.id} className="relative group/tooltip">
+                    <NavLink
+                      to={`/projects/${project.id}`}
+                      className={`text-[13px] truncate px-3 py-1.5 rounded-md transition-colors duration-150 block ${
+                        isActive || isCurrentProject
+                          ? 'bg-[#f1f6f3] text-[#163328] font-medium'
+                          : 'text-[#6b706c] hover:text-[#181a18] hover:bg-[#f5f5f2]'
+                      }`}
+                    >
+                      {project.name}
+                    </NavLink>
+                    <div className="pointer-events-none absolute left-[98%] top-1/2 -translate-y-1/2 ml-2 z-50 bg-[#181a18] text-white text-[11px] px-2.5 py-1 rounded shadow-md whitespace-nowrap opacity-0 group-hover/tooltip:opacity-100 transition-opacity duration-150">
+                      Open workspace
+                    </div>
+                  </div>
+                );
+              })}
+            </nav>
+          </div>
+        )}
+
+        {/* Recent Research */}
         {recentItems.length > 0 && (
           <div className="px-2 mt-3">
             <div className="uppercase tracking-wider text-[10.5px] text-[#929792] font-semibold px-3 mb-1.5">
               Recent Research
             </div>
-            <nav className="flex flex-col gap-0.5">
+            <nav aria-label="Recent research" className="flex flex-col gap-0.5">
               {recentItems.map((item) => {
                 const targetPath =
                   item.status === 'researching'
@@ -145,7 +195,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ className = '' }) => {
                   item.status === 'completed'
                     ? 'View Report'
                     : item.status === 'researching'
-                    ? 'Active Researching'
+                    ? 'Active Research'
                     : 'View Research';
 
                 const isActive = location.pathname === targetPath;
@@ -161,8 +211,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ className = '' }) => {
                     >
                       {item.title}
                     </NavLink>
-                    {/* Tooltip */}
-                    <div className="pointer-events-none absolute left-[98%] top-1/2 -translate-y-1/2 ml-2 z-50 bg-[#181a18] text-white text-[11px] font-normal px-2.5 py-1 rounded shadow-md whitespace-nowrap opacity-0 group-hover/tooltip:opacity-100 transition-opacity duration-150">
+                    <div className="pointer-events-none absolute left-[98%] top-1/2 -translate-y-1/2 ml-2 z-50 bg-[#181a18] text-white text-[11px] px-2.5 py-1 rounded shadow-md whitespace-nowrap opacity-0 group-hover/tooltip:opacity-100 transition-opacity duration-150">
                       {tooltipText}
                     </div>
                   </div>
@@ -174,21 +223,43 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ className = '' }) => {
       </div>
 
       {/* Bottom Profile & Settings */}
-      <div className="border-t border-[#e5e7e4] p-2">
-        {profileOpen && <div className="mb-2 rounded-md border border-[#e5e7e4] bg-white p-2">
-          <p className="px-2 py-1 text-[11px] text-[#6b706c] truncate">{user?.email}</p>
-          <button type="button" onClick={() => {
-            setLogoutError(null);
-            void logout().then(() => navigate('/login', { replace: true })).catch(() => {
-              setLogoutError('Could not reach the server. Please try again.');
-            });
-          }} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs text-[#181a18] hover:bg-[#f5f5f2]">
-            <LogOut className="w-4 h-4" /> Logout
-          </button>
-          {logoutError && <p role="alert" className="text-xs text-[#b91c1c] px-2">{logoutError}</p>}
-        </div>}
+      <div className="border-t border-[#e5e7e4] p-2 shrink-0">
+        {profileOpen && (
+          <div className="mb-2 rounded-md border border-[#e5e7e4] bg-white p-2">
+            <p className="px-2 py-1 text-[11px] text-[#6b706c] truncate">
+              {user?.email}
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setLogoutError(null);
+                void logout()
+                  .then(() => navigate('/login', { replace: true }))
+                  .catch(() => {
+                    setLogoutError(
+                      'Could not reach the server. Please try again.'
+                    );
+                  });
+              }}
+              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs text-[#181a18] hover:bg-[#f5f5f2]"
+            >
+              <LogOut className="w-4 h-4" /> Logout
+            </button>
+            {logoutError && (
+              <p role="alert" className="text-xs text-[#b91c1c] px-2">
+                {logoutError}
+              </p>
+            )}
+          </div>
+        )}
 
-        <button type="button" aria-expanded={profileOpen} onClick={() => setProfileOpen((open) => !open)} className="w-full flex items-center justify-between p-2 rounded-md hover:bg-[#f5f5f2] transition-colors duration-150">
+        <button
+          type="button"
+          aria-expanded={profileOpen}
+          aria-label="Account menu"
+          onClick={() => setProfileOpen((open) => !open)}
+          className="w-full flex items-center justify-between p-2 rounded-md hover:bg-[#f5f5f2] transition-colors duration-150"
+        >
           <div className="flex items-center gap-2.5 overflow-hidden">
             <div className="w-8 h-8 rounded-full bg-[#e2e8e4] text-[#163328] font-semibold text-xs flex items-center justify-center border border-[#d0d7d2] shrink-0">
               {user?.name.slice(0, 1).toUpperCase() || 'R'}
