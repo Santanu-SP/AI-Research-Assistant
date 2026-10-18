@@ -1,3 +1,5 @@
+"""Pydantic schemas for internal report persistence and public composed report responses."""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -94,6 +96,8 @@ class ResearchReportCreate(ApiSchema):
 
 
 class CitationResponse(ApiSchema):
+    """Public representation of a section-to-source citation link."""
+
     id: UUID
     source_id: UUID
     number: int = Field(ge=1)
@@ -101,6 +105,8 @@ class CitationResponse(ApiSchema):
 
 
 class ReportSectionResponse(ApiSchema):
+    """Public representation of a narrative section within a research report."""
+
     id: UUID
     heading: str
     content: str
@@ -113,6 +119,8 @@ class ReportSectionResponse(ApiSchema):
 
 
 class SourceResponse(ApiSchema):
+    """Public representation of an evidence source cited in a report."""
+
     id: UUID
     number: int = Field(ge=1)
     title: str | None
@@ -135,6 +143,8 @@ class SourceResponse(ApiSchema):
 
 
 class ResearchReportResponse(ApiSchema):
+    """Public representation of a grounded research report."""
+
     id: UUID
     research_id: UUID
     title: str
@@ -150,5 +160,7 @@ class ResearchReportResponse(ApiSchema):
 
 
 class ComposedReportResponse(ApiSchema):
+    """Complete report dossier combining the report sections and cited sources."""
+
     report: ResearchReportResponse
     sources: list[SourceResponse]

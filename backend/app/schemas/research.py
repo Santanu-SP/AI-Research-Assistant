@@ -1,3 +1,5 @@
+"""Pydantic request and response schemas for research runs and progress tracking."""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -29,6 +31,8 @@ DomainText = Annotated[
 
 
 class ResearchCreate(ApiSchema):
+    """Payload for creating a new research run record."""
+
     question: QuestionText
     project_id: UUID | None = None
     title: TitleText | None = None
@@ -37,6 +41,8 @@ class ResearchCreate(ApiSchema):
 
 
 class ResearchUpdate(ApiSchema):
+    """Payload for partially updating an existing research run record."""
+
     model_config = ConfigDict(extra="forbid")
 
     title: TitleText | None = None
@@ -56,11 +62,15 @@ class ResearchUpdate(ApiSchema):
             if getattr(self, field) is None
         ]
         if null_fields:
-            raise ValueError(f"Fields cannot be null: {', '.join(sorted(null_fields))}")
+            raise ValueError(
+                f"Fields cannot be null: {', '.join(sorted(null_fields))}"
+            )
         return self
 
 
 class ResearchResponse(ApiSchema):
+    """Summary representation of a research run."""
+
     id: UUID
     project_id: UUID | None = None
     title: str
@@ -75,6 +85,8 @@ class ResearchResponse(ApiSchema):
 
 
 class ResearchListResponse(ApiSchema):
+    """Paginated list of research runs."""
+
     items: list[ResearchResponse]
     total: int = Field(ge=0)
     limit: int = Field(ge=1, le=100)
@@ -82,12 +94,16 @@ class ResearchListResponse(ApiSchema):
 
 
 class ResearchProgressStep(ApiSchema):
+    """One stage in the user-visible research progress stepper."""
+
     id: ResearchProgressStage
     title: str
     status: ResearchProgressStepStatus
 
 
 class ResearchProgressResponse(ApiSchema):
+    """Detailed real-time progress snapshot for an active or completed research run."""
+
     id: UUID
     project_id: UUID | None = None
     question: str

@@ -27,7 +27,7 @@ class CanonicalMetadata(BaseModel):
 
 
 class ParsedNode(BaseModel):
-    """One retrievable node ready for embedding and SQL persistence."""
+    """One retrievable text/table node ready for embedding and SQL persistence."""
 
     node_id: UUID
     text: str = Field(min_length=1)

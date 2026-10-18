@@ -1,3 +1,5 @@
+"""Persistence and composition services for grounded research reports and citations."""
+
 from uuid import UUID
 
 from sqlalchemy import select
@@ -18,10 +20,12 @@ from app.services.research import get_research
 
 
 def _invalid_evidence(message: str) -> AppError:
+    """Create a 422 ``AppError`` for report graph integrity violations."""
     return AppError(message, status_code=422, code="invalid_report_evidence")
 
 
 def _validate_graph(payload: ResearchReportCreate) -> None:
+    """Verify uniqueness and referential integrity across sources, sections, and citations."""
     source_ids = [source.id for source in payload.sources]
     source_numbers = [source.number for source in payload.sources]
     section_ids = [section.id for section in payload.sections]
@@ -58,18 +62,12 @@ def persist_report(
     research_id: UUID,
     payload: ResearchReportCreate,
 ) -> ResearchReport:
-    """Atomically persist a future pipeline's report and evidence graph.
-
-    No report content or source data is generated here. The caller must provide
-    the complete grounded payload, including stable source numbers and links.
-    """
+    """Atomically persist a pipeline's report and evidence graph."""
     research = get_research(session, research_id)
-    if (
-        session.scalar(
-            select(ResearchReport.id).where(ResearchReport.research_id == research_id)
-        )
-        is not None
-    ):
+    existing_report_id = session.scalar(
+        select(ResearchReport.id).where(ResearchReport.research_id == research_id)
+    )
+    if existing_report_id is not None:
         raise AppError(
             "A current report already exists for this research",
             status_code=409,
@@ -86,6 +84,7 @@ def persist_report(
         reading_time_minutes=payload.reading_time_minutes,
         version=payload.version,
     )
+
     source_by_id: dict[UUID, Source] = {}
     for source_payload in payload.sources:
         source = Source(
@@ -143,6 +142,7 @@ def persist_report(
 
 
 def _load_report(session: Session, research_id: UUID) -> ResearchReport | None:
+    """Eagerly load the report, its ordered sections, citations, and linked sources."""
     return session.scalar(
         select(ResearchReport)
         .where(ResearchReport.research_id == research_id)
@@ -155,11 +155,61 @@ def _load_report(session: Session, research_id: UUID) -> ResearchReport | None:
     )
 
 
+def _serialize_section(section: ReportSection) -> ReportSectionResponse:
+    """Convert a ``ReportSection`` ORM model into a ``ReportSectionResponse``."""
+    citations = [
+        CitationResponse(
+            id=citation.id,
+            source_id=citation.source_id,
+            number=citation.source.number,
+            position=citation.position,
+        )
+        for citation in section.citations
+    ]
+    return ReportSectionResponse(
+        id=section.id,
+        heading=section.heading,
+        content=section.content,
+        quote=section.quote,
+        position=section.position,
+        citation_ids=[citation.number for citation in citations],
+        citations=citations,
+        created_at=section.created_at,
+        updated_at=section.updated_at,
+    )
+
+
+def _serialize_source(source: Source) -> SourceResponse:
+    """Convert a ``Source`` ORM model into a ``SourceResponse``."""
+    return SourceResponse(
+        id=source.id,
+        number=source.number,
+        title=source.title,
+        publisher=source.publisher,
+        authors=source.authors,
+        year=source.year,
+        url=source.url,
+        source_type=source.source_type,
+        relevant_excerpt=source.relevant_excerpt,
+        citation_count=len(source.citations),
+        doi=source.doi,
+        bibtex=source.bibtex,
+        document_id=source.document_id,
+        chunk_id=source.chunk_id,
+        page=source.page,
+        section=source.section,
+        rerank_score=source.rerank_score,
+        created_at=source.created_at,
+        updated_at=source.updated_at,
+    )
+
+
 def get_composed_report(
     session: Session,
     research_id: UUID,
     user_id: UUID | None = None,
 ) -> ComposedReportResponse:
+    """Load and assemble the full report and cited sources for ``research_id``."""
     research = get_research(session, research_id, user_id)
     report = _load_report(session, research_id)
     if report is None:
@@ -177,55 +227,9 @@ def get_composed_report(
             .order_by(Source.number)
         ).all()
     )
-    section_responses: list[ReportSectionResponse] = []
-    for section in report.sections:
-        citations = [
-            CitationResponse(
-                id=citation.id,
-                source_id=citation.source_id,
-                number=citation.source.number,
-                position=citation.position,
-            )
-            for citation in section.citations
-        ]
-        section_responses.append(
-            ReportSectionResponse(
-                id=section.id,
-                heading=section.heading,
-                content=section.content,
-                quote=section.quote,
-                position=section.position,
-                citation_ids=[citation.number for citation in citations],
-                citations=citations,
-                created_at=section.created_at,
-                updated_at=section.updated_at,
-            )
-        )
+    section_responses = [_serialize_section(section) for section in report.sections]
+    source_responses = [_serialize_source(source) for source in sources]
 
-    source_responses = [
-        SourceResponse(
-            id=source.id,
-            number=source.number,
-            title=source.title,
-            publisher=source.publisher,
-            authors=source.authors,
-            year=source.year,
-            url=source.url,
-            source_type=source.source_type,
-            relevant_excerpt=source.relevant_excerpt,
-            citation_count=len(source.citations),
-            doi=source.doi,
-            bibtex=source.bibtex,
-            document_id=source.document_id,
-            chunk_id=source.chunk_id,
-            page=source.page,
-            section=source.section,
-            rerank_score=source.rerank_score,
-            created_at=source.created_at,
-            updated_at=source.updated_at,
-        )
-        for source in sources
-    ]
     return ComposedReportResponse(
         report=ResearchReportResponse(
             id=report.id,

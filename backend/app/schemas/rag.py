@@ -1,3 +1,5 @@
+"""Pydantic schemas for grounded local RAG queries, evidence items, and validated citations."""
+
 from __future__ import annotations
 
 from uuid import UUID
@@ -10,12 +12,16 @@ from app.schemas.base import ApiSchema
 
 
 class ResearchQueryRequest(ApiSchema):
+    """Payload for executing an end-to-end grounded RAG research query."""
+
     query: str = Field(min_length=1, max_length=10_000)
     project_id: UUID | None = None
     research_depth: ResearchDepth = ResearchDepth.STANDARD
 
 
 class EvidenceItem(ApiSchema):
+    """One deduplicated, reranked evidence passage selected for prompt grounding."""
+
     source_id: str
     node_id: str | None = None
     document_id: UUID
@@ -35,6 +41,8 @@ class EvidenceItem(ApiSchema):
 
 
 class ValidatedCitation(ApiSchema):
+    """A source citation verified against the request-local evidence set."""
+
     citation_id: str
     node_id: str | None = None
     document_id: UUID
@@ -53,6 +61,8 @@ class ValidatedCitation(ApiSchema):
 
 
 class ResearchQueryResponse(ApiSchema):
+    """Result returned by a grounded RAG query, including answer and verified citations."""
+
     research_id: UUID
     project_id: UUID | None = None
     answer: str

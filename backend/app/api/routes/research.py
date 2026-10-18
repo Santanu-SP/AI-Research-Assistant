@@ -1,3 +1,5 @@
+"""API endpoints for hybrid retrieval, grounded RAG queries, and research run management."""
+
 from typing import Annotated
 from uuid import UUID
 
@@ -7,6 +9,8 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import CurrentUser
 from app.db.session import get_db
 from app.domain.research import ResearchStatus
+from app.schemas.rag import ResearchQueryRequest, ResearchQueryResponse
+from app.schemas.reports import ComposedReportResponse
 from app.schemas.research import (
     ResearchCreate,
     ResearchListResponse,
@@ -14,13 +18,11 @@ from app.schemas.research import (
     ResearchResponse,
     ResearchUpdate,
 )
-from app.schemas.rag import ResearchQueryRequest, ResearchQueryResponse
-from app.schemas.reports import ComposedReportResponse
 from app.schemas.retrieval import RetrievalRequest, RetrievalResponse
-from app.services import research as research_service
-from app.services import reports as reports_service
-from app.services import retrieval as retrieval_service
 from app.services import rag as rag_service
+from app.services import reports as reports_service
+from app.services import research as research_service
+from app.services import retrieval as retrieval_service
 
 router = APIRouter(prefix="/research", tags=["research"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
@@ -33,6 +35,7 @@ def retrieve_evidence(
     user: CurrentUser,
     request: Request,
 ) -> RetrievalResponse:
+    """Retrieve hybrid semantic + keyword candidate chunks for a query."""
     return RetrievalResponse(
         items=retrieval_service.retrieve(
             session,
@@ -44,13 +47,18 @@ def retrieve_evidence(
     )
 
 
-@router.post("/query", response_model=ResearchQueryResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/query",
+    response_model=ResearchQueryResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 def query_research(
     payload: ResearchQueryRequest,
     session: DatabaseSession,
     user: CurrentUser,
     request: Request,
 ) -> ResearchQueryResponse:
+    """Execute a full grounded RAG query and persist the generated report."""
     return rag_service.run_query(
         session,
         user.id,
@@ -65,6 +73,7 @@ def create_research(
     session: DatabaseSession,
     user: CurrentUser,
 ) -> ResearchResponse:
+    """Create a new draft research record."""
     return research_service.create_research(session, payload, user.id)
 
 
@@ -86,6 +95,7 @@ def list_research(
     ] = False,
     project_id: Annotated[UUID | None, Query(alias="projectId")] = None,
 ) -> ResearchListResponse:
+    """List research runs owned by the authenticated user."""
     items, total = research_service.list_research(
         session,
         search=search,
@@ -111,6 +121,7 @@ def get_research_progress(
     session: DatabaseSession,
     user: CurrentUser,
 ) -> ResearchProgressResponse:
+    """Retrieve progress stepper status and source counts for a research run."""
     return research_service.get_research_progress(session, research_id, user.id)
 
 
@@ -120,6 +131,7 @@ def get_research_report(
     session: DatabaseSession,
     user: CurrentUser,
 ) -> ComposedReportResponse:
+    """Retrieve the composed report and cited sources for a completed research run."""
     return reports_service.get_composed_report(session, research_id, user.id)
 
 
@@ -129,6 +141,7 @@ def get_research(
     session: DatabaseSession,
     user: CurrentUser,
 ) -> ResearchResponse:
+    """Retrieve summary metadata for a single research run."""
     return research_service.get_research(session, research_id, user.id)
 
 
@@ -139,10 +152,16 @@ def update_research(
     session: DatabaseSession,
     user: CurrentUser,
 ) -> ResearchResponse:
+    """Update a research run's title, question, domain, or depth."""
     return research_service.update_research(session, research_id, payload, user.id)
 
 
 @router.delete("/{research_id}", status_code=status.HTTP_204_NO_CONTENT)
-def archive_research(research_id: UUID, session: DatabaseSession, user: CurrentUser) -> Response:
+def archive_research(
+    research_id: UUID,
+    session: DatabaseSession,
+    user: CurrentUser,
+) -> Response:
+    """Archive a research run."""
     research_service.archive_research(session, research_id, user.id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

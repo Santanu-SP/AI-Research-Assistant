@@ -1,10 +1,11 @@
+"""Page-level PDF text and metadata extraction using pypdf."""
+
 from dataclasses import dataclass
 from pathlib import Path
 import re
 
 from pypdf import PdfReader
 from pypdf.errors import PyPdfError
-
 
 DOI_PATTERN = re.compile(r"\b10\.\d{4,9}/[-._;()/:A-Z0-9]+", re.IGNORECASE)
 
@@ -15,12 +16,16 @@ class PdfExtractionError(Exception):
 
 @dataclass(frozen=True)
 class ExtractedPage:
+    """Raw extracted text for a single 1-indexed PDF page."""
+
     page: int
     text: str
 
 
 @dataclass(frozen=True)
 class ExtractedPdf:
+    """Complete extracted pages and document-level metadata from a PDF."""
+
     pages: list[ExtractedPage]
     title: str | None
     authors: list[str] | None
@@ -29,6 +34,7 @@ class ExtractedPdf:
 
 
 def _clean_metadata_value(value: object) -> str | None:
+    """Normalize whitespace in a PDF metadata string field."""
     if not isinstance(value, str):
         return None
     cleaned = " ".join(value.split()).strip()
@@ -36,6 +42,7 @@ def _clean_metadata_value(value: object) -> str | None:
 
 
 def _extract_doi(reader: PdfReader, pages: list[ExtractedPage]) -> str | None:
+    """Search PDF metadata keys and the first two pages for a DOI."""
     metadata = reader.metadata
     candidates: list[str] = []
     if metadata:
@@ -54,7 +61,6 @@ def _extract_doi(reader: PdfReader, pages: list[ExtractedPage]) -> str | None:
 
 def extract_pdf(path: Path) -> ExtractedPdf:
     """Extract page-aware text and only metadata explicitly present in the PDF."""
-
     try:
         reader = PdfReader(path, strict=False)
         if reader.is_encrypted:

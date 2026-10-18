@@ -1,3 +1,5 @@
+"""Pydantic schemas for hybrid vector and full-text search retrieval."""
+
 from uuid import UUID
 
 from pydantic import Field
@@ -7,11 +9,15 @@ from app.schemas.base import ApiSchema
 
 
 class RetrievalRequest(ApiSchema):
+    """Payload for retrieving hybrid candidate chunks for a query."""
+
     query: str = Field(min_length=1, max_length=4000)
     project_id: UUID | None = None
 
 
 class RetrievalCandidate(ApiSchema):
+    """One candidate document chunk scored by semantic, keyword, and hybrid RRF search."""
+
     chunk_id: UUID
     node_id: str | None = None
     document_id: UUID
@@ -33,4 +39,6 @@ class RetrievalCandidate(ApiSchema):
 
 
 class RetrievalResponse(ApiSchema):
+    """List of hybrid retrieval candidates."""
+
     items: list[RetrievalCandidate]

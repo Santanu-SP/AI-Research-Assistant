@@ -26,6 +26,7 @@ class LegacyPdfIngestionAdapter:
         document_id: UUID,
         ingestion_version: str,
     ) -> ParsedDocument:
+        """Extract text from a PDF via pypdf and split into overlapping page chunks."""
         if path.suffix.lower() != ".pdf":
             raise DocumentIngestionError(
                 "The legacy ingestion fallback supports PDF documents only"
@@ -61,17 +62,20 @@ class LegacyPdfIngestionAdapter:
             )
             for chunk in chunks
         ]
-        provenance = {}
+
+        provenance: dict[str, MetadataProvenance] = {}
         if extracted.title:
             provenance["title"] = MetadataProvenance.EXTRACTED
         if extracted.authors:
             provenance["authors"] = MetadataProvenance.EXTRACTED
         if extracted.doi:
             provenance["doi"] = MetadataProvenance.EXTRACTED
+
         try:
             parser_version = version("pypdf")
         except PackageNotFoundError:
             parser_version = None
+
         return ParsedDocument(
             document_id=document_id,
             metadata=CanonicalMetadata(

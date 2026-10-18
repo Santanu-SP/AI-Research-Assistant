@@ -1,3 +1,5 @@
+"""SQLAlchemy model for user research projects (workspaces)."""
+
 from datetime import datetime
 from uuid import UUID, uuid4
 

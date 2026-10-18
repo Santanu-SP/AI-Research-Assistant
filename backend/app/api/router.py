@@ -1,10 +1,12 @@
+"""Main API v1 router aggregating all feature route modules."""
+
 from fastapi import APIRouter
 
-from app.api.routes.documents import router as documents_router
 from app.api.routes.auth import router as auth_router
+from app.api.routes.documents import router as documents_router
 from app.api.routes.health import router as health_router
-from app.api.routes.projects import router as projects_router
 from app.api.routes.project_documents import router as project_documents_router
+from app.api.routes.projects import router as projects_router
 from app.api.routes.research import router as research_router
 
 api_router = APIRouter()

@@ -1,3 +1,5 @@
+"""API endpoints for creating, listing, updating, and archiving research projects."""
+
 from typing import Annotated
 from uuid import UUID
 
@@ -28,6 +30,7 @@ def create_project(
     session: DatabaseSession,
     user: CurrentUser,
 ) -> ResearchProjectResponse:
+    """Create a new research project workspace."""
     return project_service.create_project(session, payload, user.id)
 
 
@@ -43,6 +46,7 @@ def list_projects(
         Query(alias="includeArchived"),
     ] = False,
 ) -> ResearchProjectListResponse:
+    """List research projects owned by the current user."""
     items, total = project_service.list_projects(
         session,
         user.id,
@@ -65,6 +69,7 @@ def get_project(
     session: DatabaseSession,
     user: CurrentUser,
 ) -> ResearchProjectResponse:
+    """Retrieve details for a single research project."""
     return project_service.get_project(session, project_id, user.id)
 
 
@@ -75,6 +80,7 @@ def update_project(
     session: DatabaseSession,
     user: CurrentUser,
 ) -> ResearchProjectResponse:
+    """Update a research project's name or description."""
     return project_service.update_project(session, project_id, payload, user.id)
 
 
@@ -84,5 +90,6 @@ def archive_project(
     session: DatabaseSession,
     user: CurrentUser,
 ) -> Response:
+    """Archive a research project workspace."""
     project_service.archive_project(session, project_id, user.id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

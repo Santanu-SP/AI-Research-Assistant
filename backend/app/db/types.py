@@ -1,3 +1,5 @@
+"""Custom SQLAlchemy column types for cross-dialect consistency."""
+
 from datetime import UTC, datetime
 
 from sqlalchemy import DateTime

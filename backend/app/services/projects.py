@@ -1,3 +1,5 @@
+"""CRUD and archival services for user research projects (workspaces)."""
+
 from uuid import UUID
 
 from sqlalchemy import func, or_, select
@@ -11,6 +13,7 @@ from app.schemas.projects import ResearchProjectCreate, ResearchProjectUpdate
 
 
 def _commit(session: Session) -> None:
+    """Commit the current transaction or rollback and raise a 500 ``AppError``."""
     try:
         session.commit()
     except SQLAlchemyError as exc:
@@ -27,6 +30,7 @@ def create_project(
     payload: ResearchProjectCreate,
     user_id: UUID,
 ) -> ResearchProject:
+    """Create and persist a new research project owned by ``user_id``."""
     project = ResearchProject(
         user_id=user_id,
         name=payload.name,
@@ -47,9 +51,11 @@ def list_projects(
     offset: int,
     include_archived: bool,
 ) -> tuple[list[ResearchProject], int]:
+    """List research projects owned by ``user_id`` with search and pagination."""
     filters = [ResearchProject.user_id == user_id]
     if not include_archived:
         filters.append(ResearchProject.archived_at.is_(None))
+
     normalized_search = search.strip() if search else None
     if normalized_search:
         filters.append(
@@ -83,12 +89,14 @@ def get_project(
     *,
     include_archived: bool = False,
 ) -> ResearchProject:
+    """Fetch a single research project owned by ``user_id`` or raise 404."""
     filters = [
         ResearchProject.id == project_id,
         ResearchProject.user_id == user_id,
     ]
     if not include_archived:
         filters.append(ResearchProject.archived_at.is_(None))
+
     project = session.scalar(select(ResearchProject).where(*filters))
     if project is None:
         raise AppError(
@@ -105,6 +113,7 @@ def update_project(
     payload: ResearchProjectUpdate,
     user_id: UUID,
 ) -> ResearchProject:
+    """Apply partial field updates to a research project owned by ``user_id``."""
     project = get_project(session, project_id, user_id)
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(project, field, value)
@@ -115,6 +124,7 @@ def update_project(
 
 
 def archive_project(session: Session, project_id: UUID, user_id: UUID) -> None:
+    """Soft-delete (archive) a research project owned by ``user_id``."""
     project = get_project(session, project_id, user_id)
     timestamp = utc_now()
     project.archived_at = timestamp

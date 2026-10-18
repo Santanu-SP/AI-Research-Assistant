@@ -1,6 +1,9 @@
+"""SQLAlchemy models for uploaded documents and retrievable document chunks."""
+
 from datetime import datetime
 from uuid import UUID, uuid4
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     BigInteger,
     CheckConstraint,
@@ -15,24 +18,15 @@ from sqlalchemy import (
     Uuid,
     func,
 )
-from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
-from pgvector.sqlalchemy import Vector
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.time import utc_now
-from app.db.base import Base, TimestampMixin
+from app.db.base import Base, TimestampMixin, enum_values
 from app.db.types import UTCDateTime
 from app.domain.documents import ContentLevel, DocumentStatus, DocumentType, SourceType
 
-
-def _enum_values(
-    enum_class: type[ContentLevel]
-    | type[DocumentStatus]
-    | type[DocumentType]
-    | type[SourceType],
-) -> list[str]:
-    return [member.value for member in enum_class]
-
+_enum_values = enum_values
 
 document_type_enum = Enum(
     DocumentType,
@@ -74,6 +68,8 @@ json_document_type = JSON().with_variant(JSONB(), "postgresql")
 
 
 class Document(TimestampMixin, Base):
+    """Persisted record of an uploaded or discovered research document."""
+
     __tablename__ = "documents"
     __table_args__ = (
         Index("ix_documents_user_project", "user_id", "project_id"),
@@ -90,7 +86,10 @@ class Document(TimestampMixin, Base):
         primary_key=True,
         default=uuid4,
     )
-    user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    user_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
+        index=True,
+    )
     project_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("research_projects.id", ondelete="SET NULL"),
         nullable=True,
@@ -149,14 +148,16 @@ class Document(TimestampMixin, Base):
     ingestion_version: Mapped[str | None] = mapped_column(String(100), index=True)
     page_count: Mapped[int | None] = mapped_column(Integer)
     uploaded_at: Mapped[datetime] = mapped_column(
-        UTCDateTime(), default=utc_now, server_default=func.now(), nullable=False
+        UTCDateTime(),
+        default=utc_now,
+        server_default=func.now(),
+        nullable=False,
     )
     processing_error: Mapped[str | None] = mapped_column(Text)
 
     project: Mapped["ResearchProject | None"] = relationship(
         back_populates="documents"
     )
-
     chunks: Mapped[list["DocumentChunk"]] = relationship(
         back_populates="document",
         cascade="all, delete-orphan",
@@ -166,17 +167,17 @@ class Document(TimestampMixin, Base):
 
     @property
     def chunk_count(self) -> int:
+        """Return the number of indexed text/table chunks belonging to this document."""
         return len(self.chunks)
 
     @property
     def ingestion_status(self) -> DocumentStatus:
         """Expose the existing truthful lifecycle under canonical terminology."""
-
         return self.status
 
 
 class DocumentChunk(TimestampMixin, Base):
-    """Page-aware text ready for embedding during the next pipeline phase."""
+    """Page-aware text chunk with vector embedding and full-text search vector."""
 
     __tablename__ = "document_chunks"
     __table_args__ = (
@@ -193,14 +194,17 @@ class DocumentChunk(TimestampMixin, Base):
             name="ck_document_chunks_page_range",
         ),
         CheckConstraint(
-            "chunk_index >= 0", name="ck_document_chunks_index_nonnegative"
+            "chunk_index >= 0",
+            name="ck_document_chunks_index_nonnegative",
         ),
         CheckConstraint(
             "token_count IS NULL OR token_count >= 0",
             name="ck_document_chunks_token_count_nonnegative",
         ),
         UniqueConstraint(
-            "document_id", "chunk_index", name="uq_document_chunks_document_index"
+            "document_id",
+            "chunk_index",
+            name="uq_document_chunks_document_index",
         ),
         UniqueConstraint("node_id", name="uq_document_chunks_node_id"),
         Index(
@@ -217,10 +221,14 @@ class DocumentChunk(TimestampMixin, Base):
     )
 
     id: Mapped[UUID] = mapped_column(
-        Uuid(as_uuid=True), primary_key=True, default=uuid4
+        Uuid(as_uuid=True),
+        primary_key=True,
+        default=uuid4,
     )
     document_id: Mapped[UUID] = mapped_column(
-        ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True
+        ForeignKey("documents.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     text: Mapped[str] = mapped_column(Text, nullable=False)
     node_id: Mapped[str] = mapped_column(String(64), nullable=False)

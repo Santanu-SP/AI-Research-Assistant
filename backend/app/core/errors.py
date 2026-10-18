@@ -1,3 +1,9 @@
+"""Standardized application error hierarchy and FastAPI exception handler.
+
+All expected domain and service errors raise ``AppError``, which is serialized
+into a consistent ``{"error": {"code": ..., "message": ...}}`` JSON envelope.
+"""
+
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
@@ -19,6 +25,7 @@ class AppError(Exception):
 
 
 async def app_error_handler(_: Request, exc: AppError) -> JSONResponse:
+    """Serialize an ``AppError`` into a structured HTTP JSON response."""
     return JSONResponse(
         status_code=exc.status_code,
         content={

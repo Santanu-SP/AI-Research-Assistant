@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import math
 from functools import lru_cache
+import math
 from threading import RLock
 
 from app.core.config import Settings
@@ -12,6 +12,8 @@ from app.schemas.retrieval import RetrievalCandidate
 
 
 class RerankerService:
+    """Thread-safe lazy loader and scorer for the local CrossEncoder reranker."""
+
     def __init__(
         self,
         model_name: str,
@@ -28,6 +30,7 @@ class RerankerService:
         self._lock = RLock()
 
     def _load_model(self):
+        """Lazily initialize the SentenceTransformers ``CrossEncoder`` model."""
         with self._lock:
             if self._model is not None:
                 return self._model
@@ -53,8 +56,10 @@ class RerankerService:
         query: str,
         candidates: list[RetrievalCandidate],
     ) -> list[RetrievalCandidate]:
+        """Score each (query, candidate.text) pair and sort descending by score."""
         if not candidates:
             return []
+
         with self._lock:
             model = self._load_model()
             try:
@@ -70,6 +75,7 @@ class RerankerService:
                     status_code=503,
                     code="reranker_failed",
                 ) from exc
+
         if len(scores) != len(candidates) or not all(map(math.isfinite, scores)):
             raise AppError(
                 "The local reranker returned invalid scores",
@@ -102,6 +108,7 @@ def _cached_reranker(
 
 
 def reranker_service_for(settings: Settings) -> RerankerService:
+    """Return a cached ``RerankerService`` configured for ``settings``."""
     return _cached_reranker(
         settings.reranker_model_name,
         settings.reranker_batch_size,

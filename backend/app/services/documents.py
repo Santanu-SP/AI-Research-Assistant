@@ -1,3 +1,5 @@
+"""Document upload, deduplication, listing, retrieval, and deletion services."""
+
 from uuid import UUID
 
 from fastapi import UploadFile
@@ -9,12 +11,14 @@ from app.core.config import Settings
 from app.core.errors import AppError
 from app.domain.documents import ContentLevel, DocumentStatus, DocumentType, SourceType
 from app.models.document import Document
+from app.services import projects as project_service
 from app.services.embeddings import EmbeddingService
 from app.services.ingestion import DocumentIngestionAdapter, ingest_document
 from app.services.storage import LocalDocumentStorage
-from app.services import projects as project_service
+
 
 def _commit(session: Session, error_message: str) -> None:
+    """Commit the current transaction or rollback and raise a 500 ``AppError``."""
     try:
         session.commit()
     except SQLAlchemyError as exc:
@@ -24,6 +28,25 @@ def _commit(session: Session, error_message: str) -> None:
             status_code=500,
             code="document_persistence_error",
         ) from exc
+
+
+def _find_duplicate_document(
+    session: Session,
+    *,
+    user_id: UUID,
+    project_id: UUID | None,
+    checksum: str,
+) -> Document | None:
+    """Check if a document with the same SHA-256 checksum already exists in scope."""
+    duplicate_filters = [
+        Document.user_id == user_id,
+        Document.checksum == checksum,
+    ]
+    if project_id is None:
+        duplicate_filters.append(Document.project_id.is_(None))
+    else:
+        duplicate_filters.append(Document.project_id == project_id)
+    return session.scalar(select(Document).where(*duplicate_filters))
 
 
 async def create_document(
@@ -37,19 +60,19 @@ async def create_document(
     adapter: DocumentIngestionAdapter | None = None,
     embeddings: EmbeddingService | None = None,
 ) -> Document:
+    """Validate, store, deduplicate, and ingest an uploaded document."""
     if project_id is not None:
         project_service.get_project(session, project_id, user_id)
+
     metadata = storage.validate(upload)
     stored = await storage.save(upload, metadata.extension)
-    duplicate_filters = [
-        Document.user_id == user_id,
-        Document.checksum == stored.checksum,
-    ]
-    if project_id is None:
-        duplicate_filters.append(Document.project_id.is_(None))
-    else:
-        duplicate_filters.append(Document.project_id == project_id)
-    duplicate = session.scalar(select(Document).where(*duplicate_filters))
+
+    duplicate = _find_duplicate_document(
+        session,
+        user_id=user_id,
+        project_id=project_id,
+        checksum=stored.checksum,
+    )
     if duplicate is not None:
         storage.delete(stored.stored_name)
         raise AppError(
@@ -57,6 +80,7 @@ async def create_document(
             status_code=409,
             code="duplicate_document",
         )
+
     document = Document(
         user_id=user_id,
         project_id=project_id,
@@ -107,10 +131,12 @@ def list_documents(
     user_id: UUID,
     project_id: UUID | None = None,
 ) -> tuple[list[Document], int]:
+    """List documents owned by ``user_id`` with optional filtering and pagination."""
     filters = [Document.user_id == user_id]
     if project_id is not None:
         project_service.get_project(session, project_id, user_id)
         filters.append(Document.project_id == project_id)
+
     normalized_search = search.strip() if search else None
     if normalized_search:
         filters.append(Document.name.icontains(normalized_search, autoescape=True))
@@ -134,7 +160,13 @@ def list_documents(
 
 
 def get_document(session: Session, document_id: UUID, user_id: UUID) -> Document:
-    document = session.scalar(select(Document).where(Document.id == document_id, Document.user_id == user_id))
+    """Fetch one document owned by ``user_id`` or raise a 404 ``AppError``."""
+    document = session.scalar(
+        select(Document).where(
+            Document.id == document_id,
+            Document.user_id == user_id,
+        )
+    )
     if document is None:
         raise AppError(
             "Document not found",
@@ -150,6 +182,7 @@ def delete_document(
     storage: LocalDocumentStorage,
     user_id: UUID,
 ) -> None:
+    """Delete both the underlying file on disk and the database ``Document`` record."""
     document = get_document(session, document_id, user_id)
     storage.delete(document.stored_name)
     session.delete(document)

@@ -1,3 +1,5 @@
+"""API endpoints for uploading and listing documents scoped to a specific project."""
+
 from typing import Annotated
 from uuid import UUID
 
@@ -32,6 +34,7 @@ async def upload_project_document(
     user: CurrentUser,
     file: Annotated[UploadFile, File()],
 ) -> DocumentResponse:
+    """Upload and index a document inside the specified research project."""
     return await document_service.create_document(
         session,
         file,
@@ -59,6 +62,7 @@ def list_project_documents(
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> DocumentListResponse:
+    """List documents belonging to the specified research project."""
     items, total = document_service.list_documents(
         session,
         search=search,

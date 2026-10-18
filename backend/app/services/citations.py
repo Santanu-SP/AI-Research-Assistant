@@ -2,27 +2,31 @@
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
+import re
 
 from app.schemas.rag import EvidenceItem, ValidatedCitation
-
 
 SOURCE_REFERENCE = re.compile(r"\[S(\d+)\]", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
 class CitationValidationResult:
+    """Sanitized answer text paired with ordered, verified citations."""
+
     answer: str
     citations: list[ValidatedCitation]
 
 
 class CitationValidator:
+    """Strips hallucinated source tags and maps valid [S#] references to evidence."""
+
     def validate(
         self,
         answer: str,
         evidence: list[EvidenceItem],
     ) -> CitationValidationResult:
+        """Sanitize inline [S#] markers in ``answer`` against ``evidence``."""
         evidence_by_id = {item.source_id.upper(): item for item in evidence}
         cited_ids: list[str] = []
 
@@ -37,11 +41,14 @@ class CitationValidator:
         sanitized = SOURCE_REFERENCE.sub(replace_reference, answer)
         sanitized = re.sub(r"[ \t]+([,.;:!?])", r"\1", sanitized)
         sanitized = re.sub(r" {2,}", " ", sanitized).strip()
-        citations = [self._citation(evidence_by_id[source_id]) for source_id in cited_ids]
+        citations = [
+            self._citation(evidence_by_id[source_id]) for source_id in cited_ids
+        ]
         return CitationValidationResult(answer=sanitized, citations=citations)
 
     @staticmethod
     def _citation(evidence: EvidenceItem) -> ValidatedCitation:
+        """Convert an ``EvidenceItem`` into a ``ValidatedCitation`` response object."""
         return ValidatedCitation(
             citation_id=evidence.source_id,
             node_id=evidence.node_id,

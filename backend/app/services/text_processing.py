@@ -1,9 +1,10 @@
+"""Text normalization, section heading detection, and overlapping chunk splitter."""
+
 from dataclasses import dataclass
 import re
 from uuid import UUID, uuid4
 
 from app.services.pdf_extraction import ExtractedPage
-
 
 CONTROL_CHARACTERS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 HORIZONTAL_WHITESPACE = re.compile(r"[^\S\n]+")
@@ -14,6 +15,8 @@ HEADING_NUMBER = re.compile(r"^(?:\d+(?:\.\d+)*|[IVXLC]+)[.)]?\s+\S+", re.IGNORE
 
 @dataclass(frozen=True)
 class PreparedChunk:
+    """Normalized text chunk with page and section context for legacy PDF ingestion."""
+
     id: UUID
     document_id: UUID
     text: str
@@ -24,7 +27,6 @@ class PreparedChunk:
 
 def normalize_text(text: str) -> str:
     """Remove extraction noise without rewriting scientific notation or symbols."""
-
     normalized = text.replace("\r\n", "\n").replace("\r", "\n")
     normalized = normalized.replace("\u00a0", " ").replace("\u00ad", "")
     normalized = CONTROL_CHARACTERS.sub("", normalized)
@@ -55,6 +57,7 @@ def normalize_text(text: str) -> str:
 
 
 def _is_heading(line: str) -> bool:
+    """Heuristically detect numbered or uppercase academic section headings."""
     words = line.split()
     if not 1 <= len(words) <= 16 or len(line) > 160:
         return False
@@ -64,6 +67,7 @@ def _is_heading(line: str) -> bool:
 
 
 def _find_section(text: str, current: str | None) -> str | None:
+    """Return the first detected heading in ``text`` or preserve ``current``."""
     for line in text.splitlines():
         stripped = line.strip()
         if _is_heading(stripped):
@@ -72,6 +76,7 @@ def _find_section(text: str, current: str | None) -> str | None:
 
 
 def _split_with_overlap(text: str, chunk_size: int, overlap: int) -> list[str]:
+    """Split ``text`` into chunks of up to ``chunk_size`` chars with ``overlap``."""
     if len(text) <= chunk_size:
         return [text]
 
@@ -104,6 +109,7 @@ def chunk_pages(
     chunk_size: int,
     overlap: int,
 ) -> list[PreparedChunk]:
+    """Normalize and split extracted PDF pages into ``PreparedChunk`` items."""
     chunks: list[PreparedChunk] = []
     section: str | None = None
     for page in pages:

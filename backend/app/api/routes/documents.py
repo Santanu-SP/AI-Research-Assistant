@@ -1,7 +1,18 @@
+"""API endpoints for global document upload, listing, inspection, download, and deletion."""
+
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Query, Request, Response, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Query,
+    Request,
+    Response,
+    UploadFile,
+    status,
+)
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -26,8 +37,13 @@ async def upload_document(
     user: CurrentUser,
     file: Annotated[UploadFile, File()],
 ) -> DocumentResponse:
+    """Upload, validate, parse, and index a new user document."""
     return await document_service.create_document(
-        session, file, storage, request.app.state.settings, user.id
+        session,
+        file,
+        storage,
+        request.app.state.settings,
+        user.id,
     )
 
 
@@ -47,6 +63,7 @@ def list_documents(
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> DocumentListResponse:
+    """List uploaded documents with optional search, status, and type filters."""
     items, total = document_service.list_documents(
         session,
         search=search,
@@ -70,6 +87,7 @@ def get_document(
     session: DatabaseSession,
     user: CurrentUser,
 ) -> DocumentResponse:
+    """Retrieve metadata and indexing status for a single document."""
     return document_service.get_document(session, document_id, user.id)
 
 
@@ -80,10 +98,15 @@ def open_document(
     storage: DocumentStorage,
     user: CurrentUser,
 ) -> FileResponse:
+    """Stream the original uploaded file inline for viewing in the browser."""
     document = document_service.get_document(session, document_id, user.id)
     path = storage.path_for(document.stored_name)
     if not path.is_file():
-        raise AppError("Document file not found", status_code=404, code="document_file_not_found")
+        raise AppError(
+            "Document file not found",
+            status_code=404,
+            code="document_file_not_found",
+        )
     return FileResponse(
         path,
         media_type=document.mime_type,
@@ -99,5 +122,6 @@ def delete_document(
     storage: DocumentStorage,
     user: CurrentUser,
 ) -> Response:
+    """Delete a document and its indexed chunks."""
     document_service.delete_document(session, document_id, storage, user.id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -1,3 +1,5 @@
+"""Pydantic request and response schemas for research projects (workspaces)."""
+
 from datetime import datetime
 from typing import Annotated
 from uuid import UUID
@@ -17,11 +19,15 @@ ProjectDescription = Annotated[
 
 
 class ResearchProjectCreate(ApiSchema):
+    """Payload for creating a new research project workspace."""
+
     name: ProjectName
     description: ProjectDescription | None = None
 
 
 class ResearchProjectUpdate(ApiSchema):
+    """Payload for partially updating an existing research project."""
+
     model_config = ConfigDict(extra="forbid")
 
     name: ProjectName | None = None
@@ -37,6 +43,8 @@ class ResearchProjectUpdate(ApiSchema):
 
 
 class ResearchProjectResponse(ApiSchema):
+    """Public representation of a research project workspace."""
+
     id: UUID
     name: str
     description: str | None
@@ -46,6 +54,8 @@ class ResearchProjectResponse(ApiSchema):
 
 
 class ResearchProjectListResponse(ApiSchema):
+    """Paginated list of research projects."""
+
     items: list[ResearchProjectResponse]
     total: int = Field(ge=0)
     limit: int = Field(ge=1, le=100)

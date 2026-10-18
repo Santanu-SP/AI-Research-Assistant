@@ -1,3 +1,5 @@
+"""Pydantic request and response schemas for uploaded documents and chunks."""
+
 from datetime import datetime
 from uuid import UUID
 
@@ -8,6 +10,8 @@ from app.schemas.base import ApiSchema
 
 
 class DocumentResponse(ApiSchema):
+    """Public representation of an uploaded or indexed research document."""
+
     id: UUID
     project_id: UUID | None = None
     name: str
@@ -42,6 +46,8 @@ class DocumentResponse(ApiSchema):
 
 
 class DocumentListResponse(ApiSchema):
+    """Paginated list of user documents."""
+
     items: list[DocumentResponse]
     total: int = Field(ge=0)
     limit: int = Field(ge=1, le=100)
@@ -49,6 +55,8 @@ class DocumentListResponse(ApiSchema):
 
 
 class DocumentChunkResponse(ApiSchema):
+    """Public representation of a parsed and indexed document chunk."""
+
     id: UUID = Field(serialization_alias="chunkId")
     document_id: UUID
     text: str

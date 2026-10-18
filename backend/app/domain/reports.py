@@ -1,3 +1,5 @@
+"""Domain enumerations for grounded research reports."""
+
 from enum import StrEnum
 
 

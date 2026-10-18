@@ -1,7 +1,8 @@
+"""Local filesystem storage and security validation for uploaded PDF and DOCX files."""
+
 from dataclasses import dataclass
 import hashlib
-from pathlib import Path
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from uuid import uuid4
 from zipfile import BadZipFile, ZipFile
 
@@ -30,6 +31,8 @@ MAX_OFFICE_EXPANDED_BYTES = 250 * 1024 * 1024
 
 @dataclass(frozen=True)
 class ValidatedUpload:
+    """Validated filename, extension, document type, and MIME type for an upload."""
+
     original_name: str
     extension: str
     file_type: DocumentType
@@ -38,17 +41,22 @@ class ValidatedUpload:
 
 @dataclass(frozen=True)
 class StoredUpload:
+    """Metadata for a file written to local storage, including SHA-256 checksum."""
+
     stored_name: str
     size: int
     checksum: str
 
 
 class LocalDocumentStorage:
+    """Manages safe local disk storage, path-traversal protection, and file inspection."""
+
     def __init__(self, upload_dir: Path, max_upload_bytes: int) -> None:
         self.root = upload_dir.expanduser().resolve()
         self.max_upload_bytes = max_upload_bytes
 
     def validate(self, upload: UploadFile) -> ValidatedUpload:
+        """Validate filename safety, file extension, and declared MIME content type."""
         filename = (upload.filename or "").strip()
         if (
             not filename
@@ -90,6 +98,7 @@ class LocalDocumentStorage:
         )
 
     def _path_for(self, stored_name: str) -> Path:
+        """Resolve a storage key and verify it stays strictly inside ``self.root``."""
         if (
             not stored_name
             or Path(stored_name).is_absolute()
@@ -114,10 +123,10 @@ class LocalDocumentStorage:
 
     def path_for(self, stored_name: str) -> Path:
         """Resolve a validated storage key for document processing."""
-
         return self._path_for(stored_name)
 
     async def save(self, upload: UploadFile, extension: str) -> StoredUpload:
+        """Stream an uploaded file to disk while enforcing size limits and signatures."""
         try:
             self.root.mkdir(parents=True, exist_ok=True)
         except OSError as exc:
@@ -171,6 +180,7 @@ class LocalDocumentStorage:
         )
 
     def _validate_stored_content(self, path: Path, extension: str) -> None:
+        """Verify file magic bytes (PDF header) or Office OpenXML archive structure."""
         if extension == ".pdf":
             with path.open("rb") as stored_file:
                 if b"%PDF-" not in stored_file.read(1024):
@@ -190,6 +200,7 @@ class LocalDocumentStorage:
         )
 
     def _validate_docx_archive(self, path: Path) -> None:
+        """Inspect DOCX ZIP archive entries against zip-bombs, traversal, and macros."""
         try:
             with ZipFile(path) as archive:
                 entries = archive.infolist()
@@ -247,6 +258,7 @@ class LocalDocumentStorage:
             ) from exc
 
     def delete(self, stored_name: str) -> bool:
+        """Delete a stored file from ``self.root``, returning False if already absent."""
         path = self._path_for(stored_name)
         try:
             path.unlink()
@@ -262,6 +274,7 @@ class LocalDocumentStorage:
 
 
 def get_document_storage(request: Request) -> LocalDocumentStorage:
+    """FastAPI dependency returning a configured ``LocalDocumentStorage``."""
     settings = request.app.state.settings
     return LocalDocumentStorage(
         settings.document_upload_dir,
