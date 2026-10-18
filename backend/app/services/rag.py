@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from uuid import UUID, uuid5
 
 from sqlalchemy.orm import Session
@@ -11,11 +10,20 @@ from app.core.config import Settings
 from app.core.errors import AppError
 from app.domain.reports import SourceType
 from app.domain.states import ProjectStatus
-from app.schemas.rag import ResearchQueryRequest, ResearchQueryResponse
+from app.schemas.rag import (
+    EvidenceItem,
+    ResearchQueryRequest,
+    ResearchQueryResponse,
+    ValidatedCitation,
+)
 from app.schemas.reports import ResearchReportCreate
 from app.schemas.research import ResearchCreate
 from app.services import reports, research, retrieval
-from app.services.citations import CitationValidator, SOURCE_REFERENCE
+from app.services.citations import (
+    CitationValidator,
+    SOURCE_REFERENCE,
+    strip_source_references,
+)
 from app.services.evidence import (
     INSUFFICIENT_EVIDENCE_ANSWER,
     EvidenceBuilder,
@@ -24,13 +32,11 @@ from app.services.evidence import (
 from app.services.generation import GenerationService, generation_service_for
 from app.services.reranking import RerankerService, reranker_service_for
 
+__all__ = ["SOURCE_REFERENCE", "_plain_answer", "run_query"]
+
 
 def _plain_answer(answer: str) -> str:
-    without_references = SOURCE_REFERENCE.sub("", answer)
-    without_reference_spacing = re.sub(
-        r"[ \t]+([,.;:!?])", r"\1", without_references
-    )
-    return re.sub(r" {2,}", " ", without_reference_spacing).strip()
+    return strip_source_references(answer)
 
 
 def _report_payload(
@@ -38,8 +44,8 @@ def _report_payload(
     research_id: UUID,
     title: str,
     answer: str,
-    citations,
-    evidence,
+    citations: list[ValidatedCitation],
+    evidence: list[EvidenceItem],
 ) -> ResearchReportCreate:
     evidence_by_id = {item.source_id: item for item in evidence}
     source_payloads = []
@@ -73,7 +79,7 @@ def _report_payload(
     return ResearchReportCreate(
         title=title,
         summary=display_answer,
-        dossier_ref=f"LOCAL RAG · {str(research_id)[:8].upper()}",
+        dossier_ref=f"LOCAL RAG \u00b7 {str(research_id)[:8].upper()}",
         reading_time_minutes=reading_minutes,
         sources=source_payloads,
         sections=[
@@ -133,9 +139,8 @@ def run_query(
             documents_found=len({item.document_id for item in candidates}),
         )
 
-        ranked = (reranker or reranker_service_for(settings)).rerank(
-            normalized_query, candidates
-        )
+        active_reranker = reranker or reranker_service_for(settings)
+        ranked = active_reranker.rerank(normalized_query, candidates)
         evidence = EvidenceBuilder().build(ranked, limit=settings.final_context_k)
         research.update_progress_counts(
             session,
@@ -151,17 +156,17 @@ def run_query(
             minimum_count=settings.minimum_evidence_count,
             minimum_relevance=settings.reranker_min_score,
         )
+        validator = CitationValidator()
         if insufficient:
             answer = INSUFFICIENT_EVIDENCE_ANSWER
-            validated = CitationValidator().validate(answer, evidence)
+            validated = validator.validate(answer, evidence)
         else:
             research.update_research_lifecycle(
                 session, record.id, ProjectStatus.REVIEW_READY
             )
-            generated = (generator or generation_service_for(settings)).generate(
-                normalized_query, evidence
-            )
-            validated = CitationValidator().validate(generated, evidence)
+            active_generator = generator or generation_service_for(settings)
+            generated = active_generator.generate(normalized_query, evidence)
+            validated = validator.validate(generated, evidence)
             answer = validated.answer
 
         reports.persist_report(

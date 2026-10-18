@@ -2,28 +2,26 @@ from uuid import UUID
 
 from fastapi import UploadFile
 from sqlalchemy import func, select
-from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.core.errors import AppError
+from app.db.base import commit_or_raise
 from app.domain.documents import ContentLevel, DocumentStatus, DocumentType, SourceType
 from app.models.document import Document
+from app.services import projects as project_service
 from app.services.embeddings import EmbeddingService
 from app.services.ingestion import DocumentIngestionAdapter, ingest_document
 from app.services.storage import LocalDocumentStorage
-from app.services import projects as project_service
+
 
 def _commit(session: Session, error_message: str) -> None:
-    try:
-        session.commit()
-    except SQLAlchemyError as exc:
-        session.rollback()
-        raise AppError(
-            error_message,
-            status_code=500,
-            code="document_persistence_error",
-        ) from exc
+    commit_or_raise(
+        session,
+        message=error_message,
+        code="document_persistence_error",
+        status_code=500,
+    )
 
 
 async def create_document(
@@ -44,11 +42,10 @@ async def create_document(
     duplicate_filters = [
         Document.user_id == user_id,
         Document.checksum == stored.checksum,
+        Document.project_id.is_(None)
+        if project_id is None
+        else Document.project_id == project_id,
     ]
-    if project_id is None:
-        duplicate_filters.append(Document.project_id.is_(None))
-    else:
-        duplicate_filters.append(Document.project_id == project_id)
     duplicate = session.scalar(select(Document).where(*duplicate_filters))
     if duplicate is not None:
         storage.delete(stored.stored_name)
@@ -57,6 +54,7 @@ async def create_document(
             status_code=409,
             code="duplicate_document",
         )
+
     document = Document(
         user_id=user_id,
         project_id=project_id,
@@ -134,7 +132,12 @@ def list_documents(
 
 
 def get_document(session: Session, document_id: UUID, user_id: UUID) -> Document:
-    document = session.scalar(select(Document).where(Document.id == document_id, Document.user_id == user_id))
+    document = session.scalar(
+        select(Document).where(
+            Document.id == document_id,
+            Document.user_id == user_id,
+        )
+    )
     if document is None:
         raise AppError(
             "Document not found",

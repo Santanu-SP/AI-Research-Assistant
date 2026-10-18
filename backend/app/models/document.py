@@ -1,10 +1,10 @@
 from datetime import datetime
 from uuid import UUID, uuid4
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     BigInteger,
     CheckConstraint,
-    Enum,
     ForeignKey,
     Index,
     Integer,
@@ -15,60 +15,20 @@ from sqlalchemy import (
     Uuid,
     func,
 )
-from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
-from pgvector.sqlalchemy import Vector
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.time import utc_now
-from app.db.base import Base, TimestampMixin
+from app.db.base import Base, TimestampMixin, enum_values, make_str_enum
 from app.db.types import UTCDateTime
 from app.domain.documents import ContentLevel, DocumentStatus, DocumentType, SourceType
 
+_enum_values = enum_values
 
-def _enum_values(
-    enum_class: type[ContentLevel]
-    | type[DocumentStatus]
-    | type[DocumentType]
-    | type[SourceType],
-) -> list[str]:
-    return [member.value for member in enum_class]
-
-
-document_type_enum = Enum(
-    DocumentType,
-    name="document_type",
-    native_enum=False,
-    create_constraint=True,
-    validate_strings=True,
-    values_callable=_enum_values,
-)
-
-document_status_enum = Enum(
-    DocumentStatus,
-    name="document_status",
-    native_enum=False,
-    create_constraint=True,
-    validate_strings=True,
-    values_callable=_enum_values,
-)
-
-source_type_enum = Enum(
-    SourceType,
-    name="source_type",
-    native_enum=False,
-    create_constraint=True,
-    validate_strings=True,
-    values_callable=_enum_values,
-)
-
-content_level_enum = Enum(
-    ContentLevel,
-    name="content_level",
-    native_enum=False,
-    create_constraint=True,
-    validate_strings=True,
-    values_callable=_enum_values,
-)
+document_type_enum = make_str_enum(DocumentType, name="document_type")
+document_status_enum = make_str_enum(DocumentStatus, name="document_status")
+source_type_enum = make_str_enum(SourceType, name="source_type")
+content_level_enum = make_str_enum(ContentLevel, name="content_level")
 
 json_document_type = JSON().with_variant(JSONB(), "postgresql")
 
@@ -90,7 +50,10 @@ class Document(TimestampMixin, Base):
         primary_key=True,
         default=uuid4,
     )
-    user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    user_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
+        index=True,
+    )
     project_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("research_projects.id", ondelete="SET NULL"),
         nullable=True,
@@ -156,7 +119,6 @@ class Document(TimestampMixin, Base):
     project: Mapped["ResearchProject | None"] = relationship(
         back_populates="documents"
     )
-
     chunks: Mapped[list["DocumentChunk"]] = relationship(
         back_populates="document",
         cascade="all, delete-orphan",
@@ -171,7 +133,6 @@ class Document(TimestampMixin, Base):
     @property
     def ingestion_status(self) -> DocumentStatus:
         """Expose the existing truthful lifecycle under canonical terminology."""
-
         return self.status
 
 

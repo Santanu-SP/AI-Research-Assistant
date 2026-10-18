@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-from enum import StrEnum
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
     CheckConstraint,
-    Enum,
-    ForeignKey,
     Float,
+    ForeignKey,
     Integer,
     JSON,
     String,
@@ -18,25 +16,14 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.base import Base, TimestampMixin
+from app.db.base import Base, TimestampMixin, enum_values, make_str_enum
 from app.domain.reports import SourceType
 
 if TYPE_CHECKING:
     from app.models.research import Research
 
-
-def _enum_values(enum_class: type[StrEnum]) -> list[str]:
-    return [member.value for member in enum_class]
-
-
-source_type_enum = Enum(
-    SourceType,
-    name="source_type",
-    native_enum=False,
-    create_constraint=True,
-    validate_strings=True,
-    values_callable=_enum_values,
-)
+_enum_values = enum_values
+source_type_enum = make_str_enum(SourceType, name="source_type")
 
 
 class ResearchReport(TimestampMixin, Base):

@@ -1,25 +1,22 @@
 from uuid import UUID
 
 from sqlalchemy import func, or_, select
-from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
 from app.core.time import utc_now
+from app.db.base import commit_or_raise
 from app.models.project import ResearchProject
 from app.schemas.projects import ResearchProjectCreate, ResearchProjectUpdate
 
 
 def _commit(session: Session) -> None:
-    try:
-        session.commit()
-    except SQLAlchemyError as exc:
-        session.rollback()
-        raise AppError(
-            "The research project could not be saved",
-            status_code=500,
-            code="research_project_persistence_error",
-        ) from exc
+    commit_or_raise(
+        session,
+        message="The research project could not be saved",
+        code="research_project_persistence_error",
+        status_code=500,
+    )
 
 
 def create_project(

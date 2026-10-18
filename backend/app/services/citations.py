@@ -2,13 +2,23 @@
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
+import re
 
 from app.schemas.rag import EvidenceItem, ValidatedCitation
 
-
 SOURCE_REFERENCE = re.compile(r"\[S(\d+)\]", re.IGNORECASE)
+
+
+def normalize_citation_spacing(text: str) -> str:
+    """Clean up extra spaces left behind when inline source tags are removed."""
+    collapsed_punctuation = re.sub(r"[ \t]+([,.;:!?])", r"\1", text)
+    return re.sub(r" {2,}", " ", collapsed_punctuation).strip()
+
+
+def strip_source_references(text: str) -> str:
+    """Remove all [S#] markers and normalize surrounding punctuation spacing."""
+    return normalize_citation_spacing(SOURCE_REFERENCE.sub("", text))
 
 
 @dataclass(frozen=True)
@@ -34,10 +44,12 @@ class CitationValidator:
                 cited_ids.append(source_id)
             return f"[{source_id}]"
 
-        sanitized = SOURCE_REFERENCE.sub(replace_reference, answer)
-        sanitized = re.sub(r"[ \t]+([,.;:!?])", r"\1", sanitized)
-        sanitized = re.sub(r" {2,}", " ", sanitized).strip()
-        citations = [self._citation(evidence_by_id[source_id]) for source_id in cited_ids]
+        sanitized = normalize_citation_spacing(
+            SOURCE_REFERENCE.sub(replace_reference, answer)
+        )
+        citations = [
+            self._citation(evidence_by_id[source_id]) for source_id in cited_ids
+        ]
         return CitationValidationResult(answer=sanitized, citations=citations)
 
     @staticmethod
