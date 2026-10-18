@@ -1,13 +1,19 @@
+"""Domain enumerations for document types, lifecycle states, and metadata provenance."""
+
 from enum import StrEnum
 
 
 class DocumentType(StrEnum):
+    """Supported file formats for user-uploaded research documents."""
+
     PDF = "pdf"
     DOCX = "docx"
     TXT = "txt"
 
 
 class DocumentStatus(StrEnum):
+    """Processing and indexing lifecycle states for a document."""
+
     UPLOADED = "uploaded"
     PROCESSING = "processing"
     INDEXED = "indexed"

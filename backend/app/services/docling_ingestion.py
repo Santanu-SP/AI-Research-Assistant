@@ -1,11 +1,12 @@
 """Official Docling and LlamaIndex adapter for rich local file ingestion."""
 
+from collections.abc import Sequence
 from functools import lru_cache
 from importlib.metadata import PackageNotFoundError, version
 import json
 from pathlib import Path
 import re
-from typing import Any, Sequence
+from typing import Any
 from uuid import UUID
 
 from docling.chunking import HybridChunker
@@ -31,12 +32,12 @@ from app.domain.documents import MetadataProvenance
 from app.domain.ingestion import CanonicalMetadata, ParsedDocument, ParsedNode
 from app.services.ingestion import DocumentIngestionError, stable_node_id
 
-
 DOI_PATTERN = re.compile(r"\b10\.\d{4,9}/[-._;()/:A-Z0-9]+", re.IGNORECASE)
+DOI_SCAN_NODE_LIMIT = 20
 
 
 class MarkdownTableSerializerProvider(ChunkingSerializerProvider):
-    """Keep tables readable for embedding and evidence display."""
+    """Keep tables readable in Markdown format for embedding and evidence display."""
 
     def get_serializer(self, doc):
         return ChunkingDocSerializer(
@@ -46,6 +47,7 @@ class MarkdownTableSerializerProvider(ChunkingSerializerProvider):
 
 
 def _package_version(name: str) -> str | None:
+    """Return the installed package version string or None if not installed."""
     try:
         return version(name)
     except PackageNotFoundError:
@@ -53,6 +55,7 @@ def _package_version(name: str) -> str | None:
 
 
 def _clean_text(value: object) -> str | None:
+    """Collapse internal whitespace and return a non-empty string or None."""
     if not isinstance(value, str):
         return None
     cleaned = " ".join(value.split()).strip()
@@ -60,6 +63,7 @@ def _clean_text(value: object) -> str | None:
 
 
 def _extract_title(data: dict[str, Any]) -> str | None:
+    """Extract the first non-empty text item labeled as 'title' in Docling JSON."""
     for item in data.get("texts", []):
         if item.get("label") == "title":
             title = _clean_text(item.get("text"))
@@ -69,6 +73,7 @@ def _extract_title(data: dict[str, Any]) -> str | None:
 
 
 def _extract_abstract(data: dict[str, Any]) -> str | None:
+    """Collect paragraphs under the 'Abstract' section header in Docling JSON."""
     collecting = False
     parts: list[str] = []
     for item in data.get("texts", []):
@@ -85,7 +90,8 @@ def _extract_abstract(data: dict[str, Any]) -> str | None:
 
 
 def _extract_doi(nodes: Sequence[BaseNode]) -> str | None:
-    for node in nodes[:20]:
+    """Scan the leading parsed nodes for a standard DOI identifier."""
+    for node in nodes[:DOI_SCAN_NODE_LIMIT]:
         match = DOI_PATTERN.search(node.get_content())
         if match:
             return match.group(0).rstrip(".,;")
@@ -93,22 +99,21 @@ def _extract_doi(nodes: Sequence[BaseNode]) -> str | None:
 
 
 def _page_count(data: dict[str, Any]) -> int | None:
+    """Determine total page count from the Docling JSON 'pages' collection."""
     pages = data.get("pages")
     if isinstance(pages, (dict, list)):
         return len(pages) or None
     return None
 
 
-def _node_grounding(metadata: dict[str, Any]) -> tuple[
-    int | None,
-    int | None,
-    list[str],
-    list[str],
-    list[str],
-]:
+def _node_grounding(
+    metadata: dict[str, Any],
+) -> tuple[int | None, int | None, list[str], list[str], list[str]]:
+    """Extract page range, section headings, labels, and self-refs from node metadata."""
     pages: set[int] = set()
     labels: list[str] = []
     references: list[str] = []
+
     for item in metadata.get("doc_items", []):
         label = _clean_text(item.get("label"))
         if label and label not in labels:
@@ -120,58 +125,31 @@ def _node_grounding(metadata: dict[str, Any]) -> tuple[
             page = provenance.get("page_no")
             if isinstance(page, int) and page >= 1:
                 pages.add(page)
+
     headings = [
         cleaned
         for value in metadata.get("headings", [])
         if (cleaned := _clean_text(value))
     ]
     ordered_pages = sorted(pages)
-    return (
-        ordered_pages[0] if ordered_pages else None,
-        ordered_pages[-1] if ordered_pages else None,
-        headings,
-        labels,
-        references,
-    )
+    start_page = ordered_pages[0] if ordered_pages else None
+    end_page = ordered_pages[-1] if ordered_pages else None
+    return start_page, end_page, headings, labels, references
 
 
-def canonicalize_docling_output(
+def _build_parsed_nodes(
     *,
     document_id: UUID,
-    llama_documents: Sequence[LlamaDocument],
     llama_nodes: Sequence[BaseNode],
     tokenizer: BaseTokenizer,
-    ingestion_version: str,
-) -> ParsedDocument:
-    """Convert framework objects into the application's stable contracts."""
-
-    if len(llama_documents) != 1:
-        raise DocumentIngestionError(
-            "Docling returned an unexpected number of documents"
-        )
-    try:
-        docling_data = json.loads(llama_documents[0].get_content())
-    except (TypeError, ValueError, json.JSONDecodeError) as exc:
-        raise DocumentIngestionError(
-            "Docling returned an invalid structured document"
-        ) from exc
-
-    title = _extract_title(docling_data)
-    abstract = _extract_abstract(docling_data)
-    doi = _extract_doi(llama_nodes)
-    provenance: dict[str, MetadataProvenance] = {}
-    if title:
-        provenance["title"] = MetadataProvenance.DOCLING
-    if abstract:
-        provenance["abstract"] = MetadataProvenance.DOCLING
-    if doi:
-        provenance["doi"] = MetadataProvenance.EXTRACTED
-
+) -> list[ParsedNode]:
+    """Convert LlamaIndex Docling nodes into framework-neutral ``ParsedNode`` items."""
     parsed_nodes: list[ParsedNode] = []
     for index, llama_node in enumerate(llama_nodes):
         text = llama_node.get_content().strip()
         if not text:
             continue
+
         metadata = dict(llama_node.metadata)
         page, page_end, headings, labels, references = _node_grounding(metadata)
         captions = [
@@ -179,7 +157,9 @@ def canonicalize_docling_output(
             for value in metadata.get("captions", [])
             if (cleaned := _clean_text(value))
         ]
-        content_kind = "table" if "table" in labels else (labels[0] if labels else "text")
+        content_kind = (
+            "table" if "table" in labels else (labels[0] if labels else "text")
+        )
         parsed_nodes.append(
             ParsedNode(
                 node_id=stable_node_id(document_id, index, text),
@@ -198,6 +178,46 @@ def canonicalize_docling_output(
                 },
             )
         )
+    return parsed_nodes
+
+
+def canonicalize_docling_output(
+    *,
+    document_id: UUID,
+    llama_documents: Sequence[LlamaDocument],
+    llama_nodes: Sequence[BaseNode],
+    tokenizer: BaseTokenizer,
+    ingestion_version: str,
+) -> ParsedDocument:
+    """Convert framework objects into the application's stable contracts."""
+    if len(llama_documents) != 1:
+        raise DocumentIngestionError(
+            "Docling returned an unexpected number of documents"
+        )
+    try:
+        docling_data = json.loads(llama_documents[0].get_content())
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise DocumentIngestionError(
+            "Docling returned an invalid structured document"
+        ) from exc
+
+    title = _extract_title(docling_data)
+    abstract = _extract_abstract(docling_data)
+    doi = _extract_doi(llama_nodes)
+
+    provenance: dict[str, MetadataProvenance] = {}
+    if title:
+        provenance["title"] = MetadataProvenance.DOCLING
+    if abstract:
+        provenance["abstract"] = MetadataProvenance.DOCLING
+    if doi:
+        provenance["doi"] = MetadataProvenance.EXTRACTED
+
+    parsed_nodes = _build_parsed_nodes(
+        document_id=document_id,
+        llama_nodes=llama_nodes,
+        tokenizer=tokenizer,
+    )
 
     origin = docling_data.get("origin") or {}
     canonical_values = {
@@ -213,6 +233,7 @@ def canonicalize_docling_output(
             "llama-index-node-parser-docling"
         ),
     }
+
     return ParsedDocument(
         document_id=document_id,
         metadata=CanonicalMetadata(
@@ -254,6 +275,7 @@ class DoclingIngestionAdapter:
         document_id: UUID,
         ingestion_version: str,
     ) -> ParsedDocument:
+        """Parse a PDF or DOCX file on disk into a ``ParsedDocument``."""
         try:
             reader = DoclingReader(
                 export_type=DoclingReader.ExportType.JSON,
@@ -293,6 +315,7 @@ def _cached_docling_adapter(
     chunk_max_tokens: int,
     ocr_mode: str,
 ) -> DoclingIngestionAdapter:
+    """Instantiate and cache the Docling converter, hybrid chunker, and tokenizer."""
     hf_tokenizer = AutoTokenizer.from_pretrained(
         embedding_model_name,
         cache_dir=cache_dir,
@@ -312,6 +335,7 @@ def _cached_docling_adapter(
     pdf_options.do_ocr = ocr_mode != "disabled"
     if ocr_mode == "force":
         pdf_options.ocr_options.mode = OcrMode.FULL_PAGE
+
     converter = DocumentConverter(
         allowed_formats=[InputFormat.PDF, InputFormat.DOCX],
         format_options={
@@ -322,6 +346,7 @@ def _cached_docling_adapter(
 
 
 def docling_adapter_for(settings: Settings) -> DoclingIngestionAdapter:
+    """Return a cached ``DoclingIngestionAdapter`` configured for ``settings``."""
     return _cached_docling_adapter(
         settings.embedding_model_name,
         str(settings.model_cache_dir) if settings.model_cache_dir else None,

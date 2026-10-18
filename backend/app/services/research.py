@@ -1,3 +1,5 @@
+"""Research run CRUD, lifecycle state-machine transitions, and progress tracking."""
+
 from uuid import UUID
 
 from sqlalchemy import func, or_, select
@@ -44,6 +46,7 @@ PROJECT_STATUS_STAGE_MAP: dict[ProjectStatus, ResearchProgressStage] = {
 
 
 def build_fallback_title(question: str) -> str:
+    """Derive a concise display title from a user's research question."""
     normalized = " ".join(question.split())
     if len(normalized) <= FALLBACK_TITLE_MAX_LENGTH:
         return normalized
@@ -53,6 +56,7 @@ def build_fallback_title(question: str) -> str:
 
 
 def _commit(session: Session) -> None:
+    """Commit the current transaction or rollback and raise a 500 ``AppError``."""
     try:
         session.commit()
     except SQLAlchemyError as exc:
@@ -64,7 +68,26 @@ def _commit(session: Session) -> None:
         ) from exc
 
 
-def create_research(session: Session, payload: ResearchCreate, user_id: UUID | None = None) -> Research:
+def _stage_index(target_stage: ResearchProgressStage | None) -> int | None:
+    """Return the 0-based index of ``target_stage`` in ``PROGRESS_STAGES``."""
+    if target_stage is None:
+        return None
+    return next(
+        (
+            index
+            for index, (stage, _) in enumerate(PROGRESS_STAGES)
+            if stage == target_stage
+        ),
+        None,
+    )
+
+
+def create_research(
+    session: Session,
+    payload: ResearchCreate,
+    user_id: UUID | None = None,
+) -> Research:
+    """Create a new ``Research`` run in DRAFT state."""
     if payload.project_id is not None:
         if user_id is None:
             raise AppError(
@@ -73,6 +96,7 @@ def create_research(session: Session, payload: ResearchCreate, user_id: UUID | N
                 code="research_project_user_required",
             )
         project_service.get_project(session, payload.project_id, user_id)
+
     research = Research(
         user_id=user_id,
         project_id=payload.project_id,
@@ -101,6 +125,7 @@ def list_research(
     user_id: UUID | None = None,
     project_id: UUID | None = None,
 ) -> tuple[list[Research], int]:
+    """List research runs with optional filtering by project, domain, status, and search."""
     filters = []
     if user_id is not None:
         filters.append(Research.user_id == user_id)
@@ -113,6 +138,7 @@ def list_research(
             )
         project_service.get_project(session, project_id, user_id)
         filters.append(Research.project_id == project_id)
+
     normalized_search = search.strip() if search else None
     normalized_domain = domain.strip() if domain else None
 
@@ -144,13 +170,17 @@ def list_research(
     return items, total or 0
 
 
-def get_research(session: Session, research_id: UUID, user_id: UUID | None = None) -> Research:
+def get_research(
+    session: Session,
+    research_id: UUID,
+    user_id: UUID | None = None,
+) -> Research:
+    """Fetch a single non-archived ``Research`` record or raise 404."""
     filters = [Research.id == research_id, Research.archived_at.is_(None)]
     if user_id is not None:
         filters.append(Research.user_id == user_id)
-    research = session.scalar(
-        select(Research).where(*filters)
-    )
+
+    research = session.scalar(select(Research).where(*filters))
     if research is None:
         raise AppError(
             "Research not found",
@@ -179,18 +209,8 @@ def map_project_status(
 
 
 def _build_progress_steps(research: Research) -> list[ResearchProgressStep]:
-    current_index = (
-        next(
-            (
-                index
-                for index, (stage, _) in enumerate(PROGRESS_STAGES)
-                if stage == research.progress_stage
-            ),
-            None,
-        )
-        if research.progress_stage is not None
-        else None
-    )
+    """Build the ordered 5-step progress stepper status list for ``research``."""
+    current_index = _stage_index(research.progress_stage)
     completed = research.project_status == ProjectStatus.REPORT_READY
     failed = research.project_status == ProjectStatus.PROCESSING_FAILED
     active = research.status == ResearchStatus.RESEARCHING
@@ -218,16 +238,9 @@ def get_research_progress(
     research_id: UUID,
     user_id: UUID | None = None,
 ) -> ResearchProgressResponse:
+    """Return the current progress stepper state and source counters for ``research_id``."""
     research = get_research(session, research_id, user_id)
-    current_step_index = (
-        next(
-            index
-            for index, (stage, _) in enumerate(PROGRESS_STAGES)
-            if stage == research.progress_stage
-        )
-        if research.progress_stage is not None
-        else None
-    )
+    current_step_index = _stage_index(research.progress_stage)
     return ResearchProgressResponse(
         id=research.id,
         project_id=research.project_id,
@@ -371,10 +384,12 @@ def update_progress_counts(
 
 
 def mark_research_completed(session: Session, research_id: UUID) -> Research:
+    """Transition ``research_id`` to the REPORT_READY / COMPLETED state."""
     return update_research_lifecycle(session, research_id, ProjectStatus.REPORT_READY)
 
 
 def mark_research_failed(session: Session, research_id: UUID) -> Research:
+    """Transition ``research_id`` to the PROCESSING_FAILED / FAILED state."""
     return update_research_lifecycle(
         session,
         research_id,
@@ -388,6 +403,7 @@ def update_research(
     payload: ResearchUpdate,
     user_id: UUID | None = None,
 ) -> Research:
+    """Apply partial field updates to a ``Research`` record."""
     research = get_research(session, research_id, user_id)
     updates = payload.model_dump(exclude_unset=True)
     for field, value in updates.items():
@@ -399,7 +415,12 @@ def update_research(
     return research
 
 
-def archive_research(session: Session, research_id: UUID, user_id: UUID | None = None) -> None:
+def archive_research(
+    session: Session,
+    research_id: UUID,
+    user_id: UUID | None = None,
+) -> None:
+    """Soft-delete (archive) a ``Research`` record."""
     research = get_research(session, research_id, user_id)
     archived_at = utc_now()
     research.archived_at = archived_at

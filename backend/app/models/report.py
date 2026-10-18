@@ -1,14 +1,15 @@
+"""SQLAlchemy models for grounded research reports, sections, sources, and citations."""
+
 from __future__ import annotations
 
-from enum import StrEnum
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
     CheckConstraint,
     Enum,
-    ForeignKey,
     Float,
+    ForeignKey,
     Integer,
     JSON,
     String,
@@ -18,16 +19,13 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.base import Base, TimestampMixin
+from app.db.base import Base, TimestampMixin, enum_values
 from app.domain.reports import SourceType
 
 if TYPE_CHECKING:
     from app.models.research import Research
 
-
-def _enum_values(enum_class: type[StrEnum]) -> list[str]:
-    return [member.value for member in enum_class]
-
+_enum_values = enum_values
 
 source_type_enum = Enum(
     SourceType,
@@ -52,7 +50,9 @@ class ResearchReport(TimestampMixin, Base):
     )
 
     id: Mapped[UUID] = mapped_column(
-        Uuid(as_uuid=True), primary_key=True, default=uuid4
+        Uuid(as_uuid=True),
+        primary_key=True,
+        default=uuid4,
     )
     research_id: Mapped[UUID] = mapped_column(
         ForeignKey("research.id", ondelete="CASCADE"),
@@ -64,7 +64,10 @@ class ResearchReport(TimestampMixin, Base):
     dossier_ref: Mapped[str] = mapped_column(String(100), nullable=False)
     reading_time_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
     version: Mapped[int] = mapped_column(
-        Integer, default=1, server_default="1", nullable=False
+        Integer,
+        default=1,
+        server_default="1",
+        nullable=False,
     )
 
     research: Mapped[Research] = relationship(back_populates="report")
@@ -77,18 +80,25 @@ class ResearchReport(TimestampMixin, Base):
 
 
 class ReportSection(TimestampMixin, Base):
+    """An ordered narrative section within a ``ResearchReport``."""
+
     __tablename__ = "report_sections"
     __table_args__ = (
         CheckConstraint(
-            "position >= 0", name="ck_report_sections_position_nonnegative"
+            "position >= 0",
+            name="ck_report_sections_position_nonnegative",
         ),
         UniqueConstraint(
-            "report_id", "position", name="uq_report_sections_report_position"
+            "report_id",
+            "position",
+            name="uq_report_sections_report_position",
         ),
     )
 
     id: Mapped[UUID] = mapped_column(
-        Uuid(as_uuid=True), primary_key=True, default=uuid4
+        Uuid(as_uuid=True),
+        primary_key=True,
+        default=uuid4,
     )
     report_id: Mapped[UUID] = mapped_column(
         ForeignKey("research_reports.id", ondelete="CASCADE"),
@@ -120,7 +130,9 @@ class Source(TimestampMixin, Base):
     )
 
     id: Mapped[UUID] = mapped_column(
-        Uuid(as_uuid=True), primary_key=True, default=uuid4
+        Uuid(as_uuid=True),
+        primary_key=True,
+        default=uuid4,
     )
     research_id: Mapped[UUID] = mapped_column(
         ForeignKey("research.id", ondelete="CASCADE"),
@@ -158,13 +170,17 @@ class Citation(TimestampMixin, Base):
     __table_args__ = (
         CheckConstraint("position >= 0", name="ck_citations_position_nonnegative"),
         UniqueConstraint(
-            "section_id", "position", name="uq_citations_section_position"
+            "section_id",
+            "position",
+            name="uq_citations_section_position",
         ),
         UniqueConstraint("section_id", "source_id", name="uq_citations_section_source"),
     )
 
     id: Mapped[UUID] = mapped_column(
-        Uuid(as_uuid=True), primary_key=True, default=uuid4
+        Uuid(as_uuid=True),
+        primary_key=True,
+        default=uuid4,
     )
     section_id: Mapped[UUID] = mapped_column(
         ForeignKey("report_sections.id", ondelete="CASCADE"),

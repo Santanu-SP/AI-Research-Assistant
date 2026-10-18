@@ -11,26 +11,30 @@ from app.core.errors import AppError
 from app.schemas.rag import EvidenceItem
 
 
+def _format_evidence_block(item: EvidenceItem) -> str:
+    """Format a single ``EvidenceItem`` with its metadata header for the LLM prompt."""
+    metadata = [f"source={item.source_id}"]
+    if item.page is not None:
+        page_label = (
+            f"{item.page}-{item.page_end}"
+            if item.page_end and item.page_end != item.page
+            else str(item.page)
+        )
+        metadata.append(f"page={page_label}")
+    if item.paper_title:
+        metadata.append(f"paper_title={item.paper_title}")
+    if item.authors:
+        metadata.append(f"authors={'; '.join(item.authors)}")
+    if item.doi:
+        metadata.append(f"doi={item.doi}")
+    if item.section:
+        metadata.append(f"section={item.section}")
+    return f"[{item.source_id}] {' | '.join(metadata)}\n{item.text}"
+
+
 def build_grounding_prompt(question: str, evidence: list[EvidenceItem]) -> str:
-    blocks = []
-    for item in evidence:
-        metadata = [f"source={item.source_id}"]
-        if item.page is not None:
-            page_label = (
-                f"{item.page}-{item.page_end}"
-                if item.page_end and item.page_end != item.page
-                else str(item.page)
-            )
-            metadata.append(f"page={page_label}")
-        if item.paper_title:
-            metadata.append(f"paper_title={item.paper_title}")
-        if item.authors:
-            metadata.append(f"authors={'; '.join(item.authors)}")
-        if item.doi:
-            metadata.append(f"doi={item.doi}")
-        if item.section:
-            metadata.append(f"section={item.section}")
-        blocks.append(f"[{item.source_id}] {' | '.join(metadata)}\n{item.text}")
+    """Construct the strict grounded synthesis prompt with formatted evidence blocks."""
+    blocks = [_format_evidence_block(item) for item in evidence]
 
     return f"""You are producing a grounded research answer.
 
@@ -53,6 +57,8 @@ Evidence:
 
 
 class GenerationService:
+    """Client for generating grounded answers via a local Ollama server."""
+
     def __init__(
         self,
         *,
@@ -75,10 +81,12 @@ class GenerationService:
         self._model_verified = False
 
     def close(self) -> None:
+        """Close the underlying HTTP client if owned by this service instance."""
         if self._owns_client:
             self._client.close()
 
     def _verify_model(self) -> None:
+        """Verify once that Ollama is reachable and the configured model is installed."""
         if self._model_verified:
             return
         try:
@@ -91,6 +99,7 @@ class GenerationService:
                 status_code=503,
                 code="ollama_unavailable",
             ) from exc
+
         if self.model_name not in names:
             raise AppError(
                 f"The required Ollama model {self.model_name} is not installed",
@@ -100,6 +109,7 @@ class GenerationService:
         self._model_verified = True
 
     def generate(self, question: str, evidence: list[EvidenceItem]) -> str:
+        """Generate a grounded answer from ``evidence`` for ``question``."""
         self._verify_model()
         try:
             response = self._client.post(
@@ -129,6 +139,7 @@ class GenerationService:
                 status_code=503,
                 code="generation_unavailable",
             ) from exc
+
         if not answer:
             raise AppError(
                 "The local generation model returned an empty answer",
@@ -156,6 +167,7 @@ def _cached_generation_service(
 
 
 def generation_service_for(settings: Settings) -> GenerationService:
+    """Return a cached ``GenerationService`` configured for ``settings``."""
     return _cached_generation_service(
         settings.ollama_base_url,
         settings.generation_model_name,

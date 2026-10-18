@@ -1,19 +1,26 @@
+"""SQLAlchemy model for research runs and their lifecycle progress tracking."""
+
 from datetime import datetime
-from enum import StrEnum
 from uuid import UUID, uuid4
 
-from sqlalchemy import CheckConstraint, Enum, ForeignKey, Index, Integer, String, Text, Uuid
+from sqlalchemy import (
+    CheckConstraint,
+    Enum,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    Uuid,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.base import Base, TimestampMixin
+from app.db.base import Base, TimestampMixin, enum_values
 from app.db.types import UTCDateTime
 from app.domain.research import ResearchDepth, ResearchProgressStage, ResearchStatus
 from app.domain.states import ProjectStatus
 
-
-def _enum_values(enum_class: type[StrEnum]) -> list[str]:
-    return [member.value for member in enum_class]
-
+_enum_values = enum_values
 
 research_depth_enum = Enum(
     ResearchDepth,
@@ -53,6 +60,8 @@ research_progress_stage_enum = Enum(
 
 
 class Research(TimestampMixin, Base):
+    """Persisted record of a user's research question, progress, and resulting report."""
+
     __tablename__ = "research"
     __table_args__ = (
         CheckConstraint(
@@ -79,7 +88,10 @@ class Research(TimestampMixin, Base):
         primary_key=True,
         default=uuid4,
     )
-    user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    user_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
+        index=True,
+    )
     project_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("research_projects.id", ondelete="SET NULL"),
         nullable=True,
@@ -140,6 +152,7 @@ class Research(TimestampMixin, Base):
     )
     completed_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
     failed_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+
     project: Mapped["ResearchProject | None"] = relationship(
         back_populates="research_runs"
     )

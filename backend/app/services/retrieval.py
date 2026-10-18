@@ -11,8 +11,8 @@ from app.core.errors import AppError
 from app.domain.documents import DocumentStatus
 from app.models.document import Document, DocumentChunk
 from app.schemas.retrieval import RetrievalCandidate
-from app.services.embeddings import EmbeddingService, embedding_service_for
 from app.services import projects as project_service
+from app.services.embeddings import EmbeddingService, embedding_service_for
 
 RRF_K = 60
 FTS_CONFIGURATION = "english"
@@ -20,14 +20,28 @@ FTS_CONFIGURATION = "english"
 
 @dataclass(frozen=True)
 class RankedChunk:
+    """Intermediate retrieval result holding a chunk and its individual search scores."""
+
     chunk: DocumentChunk
     vector_score: float | None = None
     keyword_score: float | None = None
 
 
 def _require_postgres(session: Session) -> None:
+    """Ensure the active SQLAlchemy session is bound to a PostgreSQL database."""
     if session.bind is None or session.bind.dialect.name != "postgresql":
-        raise AppError("Retrieval requires PostgreSQL with pgvector", status_code=503, code="retrieval_backend_unavailable")
+        raise AppError(
+            "Retrieval requires PostgreSQL with pgvector",
+            status_code=503,
+            code="retrieval_backend_unavailable",
+        )
+
+
+def _rrf_contribution(rank: int | None) -> float:
+    """Compute the Reciprocal Rank Fusion score contribution for a 1-based rank."""
+    if rank is None:
+        return 0.0
+    return 1 / (RRF_K + rank)
 
 
 def semantic_search(
@@ -37,6 +51,7 @@ def semantic_search(
     limit: int,
     project_id: UUID | None = None,
 ) -> list[RankedChunk]:
+    """Execute dense cosine similarity search over indexed chunks using pgvector."""
     distance = DocumentChunk.embedding.cosine_distance(query_vector)
     filters = [
         Document.user_id == user_id,
@@ -45,13 +60,17 @@ def semantic_search(
     ]
     if project_id is not None:
         filters.append(Document.project_id == project_id)
+
     rows = session.execute(
         select(DocumentChunk, distance.label("distance"))
         .join(Document)
         .where(*filters)
-        .order_by(distance, DocumentChunk.id).limit(limit)
+        .order_by(distance, DocumentChunk.id)
+        .limit(limit)
     ).all()
-    return [RankedChunk(chunk=row[0], vector_score=1 - float(row[1])) for row in rows]
+    return [
+        RankedChunk(chunk=row[0], vector_score=1 - float(row[1])) for row in rows
+    ]
 
 
 def keyword_search(
@@ -61,6 +80,7 @@ def keyword_search(
     limit: int,
     project_id: UUID | None = None,
 ) -> list[RankedChunk]:
+    """Execute lexical full-text search over indexed chunks using PostgreSQL TSVECTOR."""
     query_expression = func.websearch_to_tsquery(FTS_CONFIGURATION, query)
     rank = func.ts_rank_cd(DocumentChunk.search_vector, query_expression)
     filters = [
@@ -70,25 +90,46 @@ def keyword_search(
     ]
     if project_id is not None:
         filters.append(Document.project_id == project_id)
+
     rows = session.execute(
         select(DocumentChunk, rank.label("rank"))
         .join(Document)
         .where(*filters)
-        .order_by(rank.desc(), DocumentChunk.id).limit(limit)
+        .order_by(rank.desc(), DocumentChunk.id)
+        .limit(limit)
     ).all()
-    return [RankedChunk(chunk=row[0], keyword_score=float(row[1])) for row in rows]
+    return [
+        RankedChunk(chunk=row[0], keyword_score=float(row[1])) for row in rows
+    ]
 
 
-def fuse(vector_results: list[RankedChunk], keyword_results: list[RankedChunk], limit: int) -> list[RankedChunk]:
+def fuse(
+    vector_results: list[RankedChunk],
+    keyword_results: list[RankedChunk],
+    limit: int,
+) -> list[RankedChunk]:
+    """Merge semantic and keyword search results using Reciprocal Rank Fusion (RRF)."""
     merged: dict[UUID, RankedChunk] = {}
     scores: dict[UUID, float] = {}
-    for result_set, score_name in ((vector_results, "vector_score"), (keyword_results, "keyword_score")):
+
+    for result_set, score_name in (
+        (vector_results, "vector_score"),
+        (keyword_results, "keyword_score"),
+    ):
         for rank, item in enumerate(result_set, start=1):
             key = item.chunk.id
             previous = merged.get(key)
-            merged[key] = item if previous is None else replace(previous, **{score_name: getattr(item, score_name)})
-            scores[key] = scores.get(key, 0.0) + 1 / (RRF_K + rank)
-    return sorted(merged.values(), key=lambda item: (-scores[item.chunk.id], str(item.chunk.id)))[:limit]
+            merged[key] = (
+                item
+                if previous is None
+                else replace(previous, **{score_name: getattr(item, score_name)})
+            )
+            scores[key] = scores.get(key, 0.0) + _rrf_contribution(rank)
+
+    return sorted(
+        merged.values(),
+        key=lambda item: (-scores[item.chunk.id], str(item.chunk.id)),
+    )[:limit]
 
 
 def retrieve(
@@ -100,13 +141,20 @@ def retrieve(
     *,
     project_id: UUID | None = None,
 ) -> list[RetrievalCandidate]:
+    """Run hybrid semantic + keyword retrieval and return fused ``RetrievalCandidate`` items."""
     normalized = query.strip()
     if not normalized:
-        raise AppError("A retrieval query is required", status_code=422, code="retrieval_query_required")
+        raise AppError(
+            "A retrieval query is required",
+            status_code=422,
+            code="retrieval_query_required",
+        )
     if project_id is not None:
         project_service.get_project(session, project_id, user_id)
+
     _require_postgres(session)
     service = embeddings or embedding_service_for(settings)
+
     vector_results = semantic_search(
         session,
         user_id,
@@ -122,15 +170,24 @@ def retrieve(
         project_id,
     )
     candidates = fuse(vector_results, keyword_results, settings.hybrid_candidate_k)
-    vector_rank = {item.chunk.id: index for index, item in enumerate(vector_results, 1)}
-    keyword_rank = {item.chunk.id: index for index, item in enumerate(keyword_results, 1)}
+
+    vector_rank = {
+        item.chunk.id: index for index, item in enumerate(vector_results, 1)
+    }
+    keyword_rank = {
+        item.chunk.id: index for index, item in enumerate(keyword_results, 1)
+    }
+
     result: list[RetrievalCandidate] = []
     for item in candidates:
+        chunk_id = item.chunk.id
         document = item.chunk.document
-        score = (1 / (RRF_K + vector_rank[item.chunk.id]) if item.chunk.id in vector_rank else 0) + (1 / (RRF_K + keyword_rank[item.chunk.id]) if item.chunk.id in keyword_rank else 0)
+        score = _rrf_contribution(vector_rank.get(chunk_id)) + _rrf_contribution(
+            keyword_rank.get(chunk_id)
+        )
         result.append(
             RetrievalCandidate(
-                chunk_id=item.chunk.id,
+                chunk_id=chunk_id,
                 node_id=item.chunk.node_id,
                 document_id=document.id,
                 project_id=document.project_id,

@@ -1,7 +1,11 @@
+"""Internal state-machine enumerations for projects, papers, and answer generation."""
+
 from enum import StrEnum
 
 
 class ProjectStatus(StrEnum):
+    """Internal workflow milestone for a research run."""
+
     DRAFT = "DRAFT"
     PAPERS_DISCOVERED = "PAPERS_DISCOVERED"
     PAPERS_SELECTED = "PAPERS_SELECTED"
@@ -14,6 +18,8 @@ class ProjectStatus(StrEnum):
 
 
 class PaperStatus(StrEnum):
+    """Lifecycle states for discovered or uploaded academic papers."""
+
     DISCOVERED = "DISCOVERED"
     VERIFIED = "VERIFIED"
     SAVED = "SAVED"
@@ -26,6 +32,8 @@ class PaperStatus(StrEnum):
 
 
 class AnswerStatus(StrEnum):
+    """Granular stages during RAG answer synthesis."""
+
     QUESTION_RECEIVED = "QUESTION_RECEIVED"
     RETRIEVING = "RETRIEVING"
     RERANKING = "RERANKING"

@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from uuid import UUID
+
 from app.schemas.rag import EvidenceItem
 from app.schemas.retrieval import RetrievalCandidate
-
 
 INSUFFICIENT_EVIDENCE_ANSWER = (
     "The uploaded sources do not contain enough relevant evidence to answer "
@@ -13,19 +14,24 @@ INSUFFICIENT_EVIDENCE_ANSWER = (
 
 
 class EvidenceBuilder:
+    """Deduplicates reranked retrieval candidates and assigns sequential [S#] IDs."""
+
     def build(
         self,
         candidates: list[RetrievalCandidate],
         *,
         limit: int,
     ) -> list[EvidenceItem]:
+        """Select up to ``limit`` unique chunks that have valid rerank scores."""
         evidence: list[EvidenceItem] = []
-        seen_chunks = set()
+        seen_chunks: set[UUID] = set()
+
         for candidate in candidates:
             if len(evidence) >= limit:
                 break
             if candidate.chunk_id in seen_chunks or candidate.rerank_score is None:
                 continue
+
             seen_chunks.add(candidate.chunk_id)
             evidence.append(
                 EvidenceItem(
@@ -56,6 +62,7 @@ def evidence_is_sufficient(
     minimum_count: int,
     minimum_relevance: float,
 ) -> bool:
+    """Verify that the selected evidence meets both count and relevance thresholds."""
     return (
         len(evidence) >= minimum_count
         and max((item.rerank_score for item in evidence), default=float("-inf"))

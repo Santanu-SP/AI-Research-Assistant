@@ -1,7 +1,11 @@
+"""Domain enumerations for research depth, summary status, and progress stepper stages."""
+
 from enum import StrEnum
 
 
 class ResearchDepth(StrEnum):
+    """User-selected depth for a research query."""
+
     QUICK = "quick"
     STANDARD = "standard"
     DEEP = "deep"
@@ -17,6 +21,8 @@ class ResearchStatus(StrEnum):
 
 
 class ResearchProgressStage(StrEnum):
+    """Ordered user-visible stages in the research progress stepper."""
+
     PLANNING = "planning"
     SEARCHING_SOURCES = "searching_sources"
     FINDING_DOCUMENTS = "finding_documents"
@@ -25,6 +31,8 @@ class ResearchProgressStage(StrEnum):
 
 
 class ResearchProgressStepStatus(StrEnum):
+    """Execution state of an individual step in the progress stepper."""
+
     PENDING = "pending"
     ACTIVE = "active"
     COMPLETED = "completed"

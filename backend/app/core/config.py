@@ -1,3 +1,10 @@
+"""Centralized application configuration and environment validation.
+
+Loads settings from the repository root `.env` file or OS environment variables
+using Pydantic Settings. Validates database connectivity parameters, chunking
+bounds, authentication security flags, and local RAG model configurations.
+"""
+
 from functools import lru_cache
 from pathlib import Path
 import re
@@ -7,7 +14,6 @@ from dotenv import dotenv_values
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import URL
-
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_DATABASE_URL = "sqlite:///./backend/data/research_assistant.db"
@@ -32,6 +38,7 @@ def _legacy_supabase_defaults() -> dict[str, str | None]:
 
 
 LEGACY_SUPABASE_DEFAULTS = _legacy_supabase_defaults()
+
 LOCAL_NETWORK_ORIGIN_REGEX = (
     r"^http://(?:localhost|127\.0\.0\.1|"
     r"10(?:\.\d{1,3}){3}|192\.168(?:\.\d{1,3}){2}|"
@@ -40,14 +47,15 @@ LOCAL_NETWORK_ORIGIN_REGEX = (
 
 
 class Settings(BaseSettings):
+    """Typed runtime configuration for the AI Research Assistant backend."""
+
+    # --- Application & API Metadata ---
     app_name: str = "AI Research Assistant API"
     app_environment: str = "development"
     api_v1_prefix: str = "/api/v1"
+
+    # --- Database Configuration ---
     database_url: str = DEFAULT_DATABASE_URL
-    # These optional values support the connection details copied from the
-    # Supabase Connect dialog.  ``DATABASE_URL`` remains the preferred generic
-    # setting; when all five values are present, this app safely constructs it
-    # with the psycopg driver, URL-encoded credentials, and TLS enabled.
     supabase_db_user: str | None = Field(
         default=LEGACY_SUPABASE_DEFAULTS["user"],
         validation_alias="SUPABASE_DB_USER",
@@ -68,6 +76,8 @@ class Settings(BaseSettings):
         default=LEGACY_SUPABASE_DEFAULTS["dbname"],
         validation_alias="SUPABASE_DB_NAME",
     )
+
+    # --- Document Storage & Ingestion ---
     document_upload_dir: Path = Path("backend/data/uploads")
     document_max_upload_bytes: int = Field(default=25 * 1024 * 1024, gt=0)
     document_chunk_size: int = Field(default=4000, ge=256)
@@ -76,6 +86,8 @@ class Settings(BaseSettings):
     ingestion_version: str = Field(default="docling-llamaindex-v1", min_length=1)
     document_chunk_max_tokens: int = Field(default=512, ge=64, le=8192)
     docling_ocr_mode: Literal["auto", "disabled", "force"] = "auto"
+
+    # --- Authentication & Google OAuth ---
     auth_session_days: int = Field(default=7, ge=1, le=30)
     auth_cookie_secure: bool = False
     frontend_url: str = "http://localhost:3000"
@@ -83,6 +95,8 @@ class Settings(BaseSettings):
     google_client_secret: str | None = None
     google_redirect_uri: str = "http://localhost:8000/api/v1/auth/google/callback"
     google_oauth_state_minutes: int = Field(default=10, ge=1, le=30)
+
+    # --- Embedding & Hybrid Retrieval ---
     embedding_model_name: str = "Qwen/Qwen3-Embedding-0.6B"
     model_device: str = "auto"
     model_cache_dir: Path | None = None
@@ -92,25 +106,38 @@ class Settings(BaseSettings):
     keyword_top_k: int = Field(default=24, ge=1, le=100)
     hybrid_candidate_k: int = Field(default=24, ge=1, le=30)
     embedding_enabled: bool = True
+
+    # --- Cross-Encoder Reranking & Evidence Selection ---
     reranker_model_name: str = "Qwen/Qwen3-Reranker-0.6B"
     reranker_batch_size: int = Field(default=8, ge=1, le=64)
     final_context_k: int = Field(default=8, ge=1, le=12)
     minimum_evidence_count: int = Field(default=1, ge=1, le=8)
     reranker_min_score: float = 0.0
+
+    # --- Local LLM Generation (Ollama) ---
     generation_runtime: str = "ollama"
     generation_model_name: str = "qwen3.5:9b"
     ollama_base_url: str = "http://localhost:11434"
     generation_max_new_tokens: int = Field(default=768, ge=64, le=4096)
     generation_temperature: float = Field(default=0.1, ge=0.0, le=1.0)
     generation_timeout_seconds: float = Field(default=120.0, gt=0.0, le=600.0)
+
+    # --- CORS & Network Security ---
     cors_origins: list[str] = Field(
         default_factory=lambda: [
             "http://localhost:3000",
-            "http://127.0.0.1:3000",
+            "[http://127.0.0.1:3000](http://127.0.0.1:3000)",
         ]
     )
     cors_origin_regex: str | None = None
     cors_allow_local_network: bool = True
+
+    model_config = SettingsConfigDict(
+        env_file=PROJECT_ROOT / ".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+        protected_namespaces=("settings_",),
+    )
 
     @field_validator("google_client_id", "google_client_secret", mode="before")
     @classmethod
@@ -118,20 +145,11 @@ class Settings(BaseSettings):
         """Allow the checked-in example env file to leave OAuth disabled."""
         if value is None:
             return None
-        value = value.strip()
-        return value or None
+        cleaned = value.strip()
+        return cleaned or None
 
-    model_config = SettingsConfigDict(
-        # Resolve the shared development env file from the repository root,
-        # not from the shell's current working directory.
-        env_file=PROJECT_ROOT / ".env",
-        env_file_encoding="utf-8",
-        extra="ignore",
-        protected_namespaces=("settings_",),
-    )
-
-    @model_validator(mode="after")
-    def validate_chunk_settings(self) -> "Settings":
+    def _resolve_supabase_database_url(self) -> None:
+        """Build a PostgreSQL connection URL from Supabase fields when DATABASE_URL is default."""
         supabase_values = (
             self.supabase_db_user,
             self.supabase_db_password,
@@ -139,10 +157,6 @@ class Settings(BaseSettings):
             self.supabase_db_port,
             self.supabase_db_name,
         )
-        # An explicitly supplied DATABASE_URL always wins.  This keeps the
-        # generic deployment setting authoritative and lets tests select their
-        # own isolated SQLite database even when a developer's .env contains
-        # Supabase fields.
         if (
             any(value is not None for value in supabase_values)
             and self.database_url == DEFAULT_DATABASE_URL
@@ -160,6 +174,12 @@ class Settings(BaseSettings):
                 database=self.supabase_db_name,
                 query={"sslmode": "require"},
             ).render_as_string(hide_password=False)
+
+    @model_validator(mode="after")
+    def validate_chunk_settings(self) -> "Settings":
+        """Validate cross-field invariants for database, chunking, auth, and generation."""
+        self._resolve_supabase_database_url()
+
         if self.document_chunk_overlap >= self.document_chunk_size:
             raise ValueError(
                 "document_chunk_overlap must be smaller than document_chunk_size"
@@ -167,7 +187,9 @@ class Settings(BaseSettings):
         if self.app_environment == "production" and not self.auth_cookie_secure:
             raise ValueError("AUTH_COOKIE_SECURE must be true in production")
         if (self.google_client_id is None) != (self.google_client_secret is None):
-            raise ValueError("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set together")
+            raise ValueError(
+                "GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set together"
+            )
         if self.generation_runtime != "ollama":
             raise ValueError("GENERATION_RUNTIME must be ollama")
         return self
@@ -180,6 +202,7 @@ class Settings(BaseSettings):
         return self.cors_origin_regex
 
     def is_allowed_origin(self, origin: str) -> bool:
+        """Return True if the request HTTP Origin header is permitted by CORS rules."""
         if origin in self.cors_origins:
             return True
         pattern = self.effective_cors_origin_regex
@@ -188,6 +211,7 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
+    """Return a cached singleton of application settings."""
     return Settings()
 
 
