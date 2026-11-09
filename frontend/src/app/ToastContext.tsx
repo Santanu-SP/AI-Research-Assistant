@@ -1,11 +1,3 @@
-/**
- * Lightweight toast notification system.
- *
- * Provides a useToast hook to push transient notifications.
- * Supports types: success | error | info | warning.
- *
- * No external dependency required – uses a simple event-driven approach.
- */
 import React, {
   createContext,
   useCallback,
@@ -79,7 +71,6 @@ export const useToast = (): ToastContextValue => {
   return ctx;
 };
 
-// ─── Internal Components ─────────────────────────────────────────────────────
 
 const ICONS: Record<ToastType, React.ReactNode> = {
   success: <Check className="w-4 h-4 text-[#163328]" />,

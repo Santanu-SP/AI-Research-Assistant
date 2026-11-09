@@ -8,7 +8,7 @@ from docling.datamodel.pipeline_options import PdfPipelineOptions
 from docling.document_converter import DocumentConverter, PdfFormatOption
 import pytest
 
-from app.services.docling_ingestion import (
+from app.services.ingestion.docling import (
     DoclingIngestionAdapter,
     MarkdownTableSerializerProvider,
 )

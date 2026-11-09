@@ -1,7 +1,3 @@
-/**
- * ProjectHeader: Shows the project name, archived status, and key actions.
- * Reusable across the workspace and any project-scoped sub-pages.
- */
 import React, { useState } from 'react';
 import { Archive, Pencil, Settings2 } from 'lucide-react';
 import { ResearchProject } from '../../types/project';
@@ -58,7 +54,6 @@ export const ProjectHeader: React.FC<ProjectHeaderProps> = ({
           </div>
         </div>
 
-        {/* Actions */}
         <div className="flex items-center gap-2 shrink-0">
           <button
             type="button"
@@ -84,7 +79,6 @@ export const ProjectHeader: React.FC<ProjectHeaderProps> = ({
         </div>
       </div>
 
-      {/* Archived banner */}
       {isArchived && (
         <div className="mt-4 flex items-start gap-3 rounded-xl border border-[#fde68a] bg-[#fef3c7]/60 px-4 py-3 text-sm text-[#b45309]">
           <Archive className="w-4 h-4 mt-0.5 shrink-0" />

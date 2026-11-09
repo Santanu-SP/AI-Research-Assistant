@@ -1,15 +1,6 @@
 /**
- * ProjectResearchPanel: Project-scoped research composer and result display.
- *
- * Critical safety rule: research submissions always include the projectId
- * from props (never from stale global state). When the project changes,
- * any in-flight result is discarded.
- *
- * States:
- *  idle → submitting → complete | failed
- *
- * Shows answer with SafeMarkdown + citation chips + evidence drawer.
- * Insufficient evidence state is clearly communicated.
+ * The question is always submitted with this panel's project id.
+ * A project change drops any answer that belonged to the previous project.
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { Send, RotateCcw, AlertTriangle, Info } from 'lucide-react';
@@ -103,7 +94,6 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Composer */}
       <div className="bg-white border border-[#e5e7e4] rounded-xl p-5">
         <div className="flex items-center gap-2 mb-3">
           <p className="text-xs font-semibold text-[#929792] uppercase tracking-wider">
@@ -180,7 +170,6 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
         )}
       </div>
 
-      {/* Submitting state */}
       {researchState === 'submitting' && (
         <div className="bg-white border border-[#e5e7e4] rounded-xl p-8 flex flex-col items-center gap-3 text-center">
           <span className="w-8 h-8 border-2 border-[#163328]/20 border-t-[#163328] rounded-full animate-spin block" />
@@ -194,7 +183,6 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
         </div>
       )}
 
-      {/* Error state */}
       {researchState === 'failed' && error && (
         <div className="bg-white border border-[#fecaca] rounded-xl p-5 flex items-start gap-3">
           <AlertTriangle className="w-5 h-5 text-[#b91c1c] shrink-0 mt-0.5" />
@@ -207,7 +195,6 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
         </div>
       )}
 
-      {/* Result */}
       {researchState === 'complete' && result && (
         <ResearchResult
           result={result}
@@ -219,7 +206,6 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
   );
 };
 
-// ─── ResearchResult ──────────────────────────────────────────────────────────
 
 interface ResearchResultProps {
   result: ResearchQueryResponse;
@@ -234,7 +220,6 @@ const ResearchResult: React.FC<ResearchResultProps> = ({
 }) => {
   return (
     <div className="space-y-4">
-      {/* Insufficient evidence warning */}
       {result.insufficientEvidence && (
         <div className="flex items-start gap-2.5 text-sm text-[#0369a1] bg-[#e0f2fe]/50 border border-[#bae6fd] rounded-xl px-4 py-3">
           <Info className="w-4 h-4 shrink-0 mt-0.5" />
@@ -246,7 +231,6 @@ const ResearchResult: React.FC<ResearchResultProps> = ({
         </div>
       )}
 
-      {/* Answer */}
       <div className="bg-white border border-[#e5e7e4] rounded-xl p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-semibold text-[#181a18]">Answer</h3>
@@ -259,7 +243,6 @@ const ResearchResult: React.FC<ResearchResultProps> = ({
         </div>
         <SafeMarkdown content={result.answer} />
 
-        {/* Inline citations */}
         {result.citations.length > 0 && (
           <div className="mt-4 pt-4 border-t border-[#f5f5f2]">
             <p className="text-[10px] font-semibold uppercase tracking-wider text-[#929792] mb-2">
@@ -293,7 +276,6 @@ const ResearchResult: React.FC<ResearchResultProps> = ({
         )}
       </div>
 
-      {/* Citation detail panel */}
       {selectedCitationId && (
         <CitationPanel
           citation={

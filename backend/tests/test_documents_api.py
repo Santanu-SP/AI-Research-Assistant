@@ -8,8 +8,8 @@ from reportlab.pdfgen import canvas
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.services import documents as document_service
-from app.services import ingestion as ingestion_service
+from app.services.documents import records as document_service
+from app.services.ingestion import pipeline as ingestion_service
 from app.domain.documents import DocumentStatus
 from app.models.document import Document, DocumentChunk
 

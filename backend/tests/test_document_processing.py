@@ -1,8 +1,8 @@
 from pathlib import Path
 from uuid import uuid4
 
-from app.services.pdf_extraction import ExtractedPage, extract_pdf
-from app.services.text_processing import chunk_pages, normalize_text
+from app.services.ingestion.pdf import ExtractedPage, extract_pdf
+from app.services.ingestion.text import chunk_pages, normalize_text
 from tests.test_documents_api import make_pdf
 
 

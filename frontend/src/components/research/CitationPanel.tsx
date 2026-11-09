@@ -1,9 +1,4 @@
-/**
- * CitationPanel: Detailed view of a single citation/evidence record.
- *
- * Shows only backend-provided fields. Hides null/zero values (page 0 = null,
- * "Unknown section" = hidden). Does not fabricate source details.
- */
+/** Page 0 and the placeholder "Unknown section" are omitted rather than shown. */
 import React from 'react';
 import { X, FileText, BookOpen, Hash } from 'lucide-react';
 import { Citation } from '../../types/research';
@@ -28,7 +23,6 @@ export const CitationPanel: React.FC<CitationPanelProps> = ({
 
   return (
     <div className="bg-white border border-[#e5e7e4] rounded-xl overflow-hidden">
-      {/* Header */}
       <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#f5f5f2] bg-[#fafaf8]">
         <div className="flex items-center gap-2">
           <BookOpen className="w-4 h-4 text-[#163328]" />
@@ -46,9 +40,7 @@ export const CitationPanel: React.FC<CitationPanelProps> = ({
         </button>
       </div>
 
-      {/* Content */}
       <div className="p-5 space-y-4">
-        {/* Paper title */}
         {citation.paperTitle && (
           <div>
             <div className="flex items-start gap-2">
@@ -65,7 +57,6 @@ export const CitationPanel: React.FC<CitationPanelProps> = ({
           </div>
         )}
 
-        {/* Metadata badges */}
         <div className="flex flex-wrap items-center gap-2 ml-0">
           {citation.sourceType && (
             <SourceTypeLabel sourceType={citation.sourceType} />
@@ -99,7 +90,6 @@ export const CitationPanel: React.FC<CitationPanelProps> = ({
           )}
         </div>
 
-        {/* Evidence excerpt */}
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-wider text-[#929792] mb-2">
             Evidence excerpt

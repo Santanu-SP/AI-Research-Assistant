@@ -1,7 +1,3 @@
-/**
- * Tests for projectsService – API layer correctness.
- * All network calls are intercepted with vi.stubGlobal / fetch mocking.
- */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { projectsService, getProjectErrorMessage } from '../services/projects.service';
 import { ApiError } from '../services/api';

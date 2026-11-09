@@ -12,7 +12,7 @@ from app.schemas.projects import (
     ResearchProjectResponse,
     ResearchProjectUpdate,
 )
-from app.services import projects as project_service
+from app.services.research import projects as project_service
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 DatabaseSession = Annotated[Session, Depends(get_db)]

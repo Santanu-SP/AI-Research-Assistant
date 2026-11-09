@@ -72,7 +72,6 @@ export const SourcesPanel: React.FC<SourcesPanelProps> = ({
         isMobileDrawer ? 'w-full' : 'w-full max-w-[420px]'
       }`}
     >
-      {/* Header */}
       <div className="p-4 border-b border-[#e5e7e4] shrink-0 bg-white">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
@@ -93,7 +92,6 @@ export const SourcesPanel: React.FC<SourcesPanelProps> = ({
           )}
         </div>
 
-        {/* Tab switcher: Sources / Notes */}
         <div className="flex items-center gap-4 text-xs border-b border-[#e5e7e4] pb-2 mb-3">
           <button
             type="button"
@@ -132,7 +130,6 @@ export const SourcesPanel: React.FC<SourcesPanelProps> = ({
           </button>
         </div>
 
-        {/* Filter Input for Sources */}
         {activeTab === 'sources' && (
           <div className="relative">
             <Search className="w-3.5 h-3.5 text-[#929792] absolute left-2.5 top-1/2 -translate-y-1/2" />
@@ -158,7 +155,6 @@ export const SourcesPanel: React.FC<SourcesPanelProps> = ({
         )}
       </div>
 
-      {/* Main Content Area */}
       <div className="flex-1 overflow-y-auto p-4">
         {activeTab === 'notes' ? (
           <div className="h-full flex flex-col">
@@ -195,7 +191,6 @@ export const SourcesPanel: React.FC<SourcesPanelProps> = ({
               })
             )}
 
-            {/* View additional references toggle */}
             {hasMore && (
               <button
                 type="button"

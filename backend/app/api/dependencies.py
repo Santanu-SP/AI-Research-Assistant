@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.errors import AppError
 from app.db.session import get_db
 from app.models.user import User
-from app.services.auth import SESSION_COOKIE, current_user
+from app.services.auth.sessions import SESSION_COOKIE, current_user
 
 
 def validate_origin(request: Request) -> None:

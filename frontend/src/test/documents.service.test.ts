@@ -1,6 +1,3 @@
-/**
- * Tests for documents service – project-scoped upload and duplicate detection.
- */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   documentsService,

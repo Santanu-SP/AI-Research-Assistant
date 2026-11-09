@@ -1,16 +1,10 @@
-/**
- * useProjectDocuments: Fetch and poll project documents for a given projectId.
- *
- * Uses AbortController to cancel stale in-flight requests when projectId changes,
- * preventing stale Project A data from appearing in Project B's UI.
- */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Document, DocumentListResponse } from '../types/document';
 import {
   ProjectDocumentListParams,
   documentsService,
+  getDocumentErrorMessage,
 } from '../services/documents.service';
-import { getDocumentErrorMessage } from '../services/documents.service';
 
 const POLL_INTERVAL_MS = 4000;
 
@@ -37,7 +31,8 @@ export function useProjectDocuments(
     setReloadKey((k) => k + 1);
   }, []);
 
-  // Primary fetch – cancels stale requests on projectId or param change
+  // Cancel the in-flight list when the project changes so a slow response
+  // cannot replace the new project's documents.
   useEffect(() => {
     if (!projectId) {
       setDocuments([]);
@@ -47,7 +42,6 @@ export function useProjectDocuments(
       return;
     }
 
-    // Abort previous request
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;

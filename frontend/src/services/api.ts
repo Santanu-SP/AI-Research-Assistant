@@ -1,8 +1,6 @@
 /**
- * Central API Client configuration for FastAPI integration.
- * In production or development with a live FastAPI backend, requests
- * route to VITE_API_BASE_URL. Without that setting, the API uses the same
- * hostname as the page so local-network development remains same-site.
+ * Requests go to VITE_API_BASE_URL when it is set. Otherwise they use the
+ * page hostname on port 8000, so a LAN address stays on the same host.
  */
 
 const pageHostname = window.location.hostname;
@@ -39,9 +37,6 @@ export const apiErrorMessage = (error: unknown, fallback: string): string => {
   return fallback;
 };
 
-/**
- * Generic API request helper for future FastAPI consumption.
- */
 export async function apiRequest<T>(
   endpoint: string,
   options: RequestInit = {}

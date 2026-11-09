@@ -1,9 +1,3 @@
-/**
- * CreateProjectDialog: Modal for creating a new research project.
- *
- * Only accepts backend-supported fields: name (required) and description (optional).
- * Handles form validation, submit loading, server errors, and keyboard support.
- */
 import React, { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { PrimaryButton } from '../common/PrimaryButton';
@@ -88,7 +82,6 @@ export const CreateProjectDialog: React.FC<CreateProjectDialogProps> = ({
         className="w-full max-w-md bg-white rounded-xl shadow-xl border border-[#e5e7e4] overflow-hidden animate-in fade-in zoom-in-95 duration-150"
         onMouseDown={(e) => e.stopPropagation()}
       >
-        {/* Header */}
         <div className="px-6 py-4 border-b border-[#e5e7e4] flex items-center justify-between">
           <div>
             <h3
@@ -111,7 +104,6 @@ export const CreateProjectDialog: React.FC<CreateProjectDialogProps> = ({
           </button>
         </div>
 
-        {/* Body */}
         <form onSubmit={(e) => void handleSubmit(e)} className="p-6 space-y-4">
           <div>
             <label
@@ -162,7 +154,6 @@ export const CreateProjectDialog: React.FC<CreateProjectDialogProps> = ({
             </p>
           )}
 
-          {/* Footer */}
           <div className="flex items-center justify-end gap-2.5 pt-2">
             <button
               type="button"

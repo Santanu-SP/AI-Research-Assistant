@@ -21,7 +21,6 @@ export const ExpandedSource: React.FC<ExpandedSourceProps> = ({ source }) => {
       id={`source-${source.number}`}
       className="bg-[#fcfdfc] border-2 border-[#163328] rounded-lg p-3.5 shadow-xs transition-all duration-200"
     >
-      {/* Top Metadata Row */}
       <div className="flex items-center justify-between gap-2 mb-1.5 text-xs">
         <div className="flex items-center gap-1.5 font-medium text-[#163328]">
           <span className="font-bold">[S{source.number}]</span>
@@ -35,12 +34,10 @@ export const ExpandedSource: React.FC<ExpandedSourceProps> = ({ source }) => {
         </span>
       </div>
 
-      {/* Title */}
       <h4 className="text-[13.5px] font-semibold text-[#181a18] leading-snug mb-1">
         {source.title || 'Untitled uploaded source'}
       </h4>
 
-      {/* Authors */}
       {source.authors.length > 0 && (
         <p className="text-xs text-[#6b706c] mb-3">
           {source.authors.join(', ')}
@@ -53,14 +50,12 @@ export const ExpandedSource: React.FC<ExpandedSourceProps> = ({ source }) => {
         {source.doi && <span>DOI: {source.doi}</span>}
       </div>
 
-      {/* Relevant Excerpt */}
       {source.relevantExcerpt && (
         <div className="bg-[#fafaf8] border-l-2 border-[#163328] pl-3 py-2 pr-2 text-xs text-[#424744] italic rounded-r mb-3 leading-relaxed">
           &ldquo;{source.relevantExcerpt}&rdquo;
         </div>
       )}
 
-      {/* Action Footer */}
       <div className="flex items-center justify-between pt-2 border-t border-[#e5e7e4] text-xs">
         <div className="flex items-center gap-3">
           {source.url ? (

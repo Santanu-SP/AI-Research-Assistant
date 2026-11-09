@@ -30,17 +30,13 @@ export const AppRouter: React.FC = () => {
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/auth/google/complete" element={<GoogleAuthCompletePage />} />
       <Route element={<ProtectedLayout />}>
-        {/* Project workspace routes */}
         <Route path="/projects" element={<ProjectsPage />} />
         <Route path="/projects/:projectId" element={<ProjectWorkspacePage />} />
-        {/* Research routes */}
         <Route path="/research/new" element={<NewResearch />} />
         <Route path="/research/:id/progress" element={<ResearchProgressPage />} />
         <Route path="/research" element={<MyResearchPage />} />
         <Route path="/research/:id" element={<ResearchReportPage />} />
-        {/* Documents */}
         <Route path="/documents" element={<DocumentsPage />} />
-        {/* Fallback */}
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>

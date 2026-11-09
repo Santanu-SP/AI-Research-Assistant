@@ -9,18 +9,23 @@ from app.api.dependencies import CurrentUser, validate_origin
 from app.core.errors import AppError
 from app.db.session import get_db
 from app.schemas.auth import LoginRequest, RegisterRequest, UserResponse
-from app.services import auth as auth_service
-from app.services import google_auth
+from app.services.auth import google as google_auth
+from app.services.auth import sessions as auth_service
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
 
 
 def _set_session_cookie(response: Response, token: str, request: Request) -> None:
+    settings = request.app.state.settings
     response.set_cookie(
-        auth_service.SESSION_COOKIE, token, httponly=True,
-        secure=request.app.state.settings.auth_cookie_secure, samesite="lax",
-        max_age=request.app.state.settings.auth_session_days * 86400, path="/api/v1",
+        auth_service.SESSION_COOKIE,
+        token,
+        httponly=True,
+        secure=settings.auth_cookie_secure,
+        samesite="lax",
+        max_age=settings.auth_session_days * 86400,
+        path="/api/v1",
     )
 
 

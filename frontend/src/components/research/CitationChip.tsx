@@ -40,7 +40,6 @@ export const CitationChip: React.FC<CitationChipProps> = ({
         [S{number}]
       </button>
 
-      {/* Compact Source Preview Tooltip on Hover */}
       {isHovered && source && (
         <div
           className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-72 p-3 bg-[#181a18] text-white rounded-lg shadow-xl z-50 pointer-events-none text-left text-xs animate-in fade-in zoom-in-95 duration-150"
@@ -62,7 +61,6 @@ export const CitationChip: React.FC<CitationChipProps> = ({
               <span>Cited {source.citationCount} times</span>
             )}
           </div>
-          {/* Arrow */}
           <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-[#181a18]" />
         </div>
       )}

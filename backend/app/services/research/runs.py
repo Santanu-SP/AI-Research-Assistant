@@ -19,7 +19,7 @@ from app.schemas.research import (
     ResearchProgressStep,
     ResearchUpdate,
 )
-from app.services import projects as project_service
+from app.services.research import projects as project_service
 
 FALLBACK_TITLE_MAX_LENGTH = 80
 PROGRESS_STAGES: tuple[tuple[ResearchProgressStage, str], ...] = (
@@ -178,38 +178,57 @@ def map_project_status(
     return ResearchStatus.RESEARCHING, PROJECT_STATUS_STAGE_MAP[project_status]
 
 
+def _stage_index(stage: ResearchProgressStage | None) -> int | None:
+    if stage is None:
+        return None
+    for index, (candidate, _title) in enumerate(PROGRESS_STAGES):
+        if candidate == stage:
+            return index
+    return None
+
+
+def _step_status(
+    index: int,
+    current_index: int | None,
+    *,
+    completed: bool,
+    failed: bool,
+    active: bool,
+) -> ResearchProgressStepStatus:
+    if completed:
+        return ResearchProgressStepStatus.COMPLETED
+    if current_index is None or index > current_index:
+        return ResearchProgressStepStatus.PENDING
+    if index < current_index:
+        return ResearchProgressStepStatus.COMPLETED
+    if failed:
+        return ResearchProgressStepStatus.FAILED
+    if active:
+        return ResearchProgressStepStatus.ACTIVE
+    return ResearchProgressStepStatus.PENDING
+
+
 def _build_progress_steps(research: Research) -> list[ResearchProgressStep]:
-    current_index = (
-        next(
-            (
-                index
-                for index, (stage, _) in enumerate(PROGRESS_STAGES)
-                if stage == research.progress_stage
-            ),
-            None,
-        )
-        if research.progress_stage is not None
-        else None
-    )
+    current_index = _stage_index(research.progress_stage)
     completed = research.project_status == ProjectStatus.REPORT_READY
     failed = research.project_status == ProjectStatus.PROCESSING_FAILED
     active = research.status == ResearchStatus.RESEARCHING
 
     steps = []
     for index, (stage, title) in enumerate(PROGRESS_STAGES):
-        if completed:
-            step_status = ResearchProgressStepStatus.COMPLETED
-        elif current_index is None:
-            step_status = ResearchProgressStepStatus.PENDING
-        elif index < current_index:
-            step_status = ResearchProgressStepStatus.COMPLETED
-        elif index == current_index and failed:
-            step_status = ResearchProgressStepStatus.FAILED
-        elif index == current_index and active:
-            step_status = ResearchProgressStepStatus.ACTIVE
-        else:
-            step_status = ResearchProgressStepStatus.PENDING
-        steps.append(ResearchProgressStep(id=stage, title=title, status=step_status))
+        steps.append(
+            ResearchProgressStep(
+                id=stage,
+                title=title,
+                status=_step_status(
+                    index,
+                    current_index,
+                    completed=completed,
+                    failed=failed,
+                    active=active,
+                ),
+            )
+        )
     return steps
 
 
@@ -219,15 +238,7 @@ def get_research_progress(
     user_id: UUID | None = None,
 ) -> ResearchProgressResponse:
     research = get_research(session, research_id, user_id)
-    current_step_index = (
-        next(
-            index
-            for index, (stage, _) in enumerate(PROGRESS_STAGES)
-            if stage == research.progress_stage
-        )
-        if research.progress_stage is not None
-        else None
-    )
+    current_step_index = _stage_index(research.progress_stage)
     return ResearchProgressResponse(
         id=research.id,
         project_id=research.project_id,

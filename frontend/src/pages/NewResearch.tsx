@@ -84,7 +84,6 @@ export const NewResearch: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#fafaf8] flex flex-col">
-      {/* TopBar with breadcrumb */}
       <TopBar
         breadcrumbs={
           <div className="flex items-center gap-2">
@@ -95,10 +94,8 @@ export const NewResearch: React.FC = () => {
         }
       />
 
-      {/* Main Content Area */}
       <main className="flex-1 pt-14 pb-16 px-4 sm:px-6">
         <div className="max-w-3xl mx-auto py-10">
-          {/* Header Section */}
           <div className="mb-8 text-center sm:text-left">
             <h1 className="font-serif text-3xl sm:text-4xl text-[#181a18] tracking-tight font-normal mb-2.5">
               What would you like to investigate?
@@ -108,7 +105,6 @@ export const NewResearch: React.FC = () => {
             </p>
           </div>
 
-          {/* Research Composer */}
           <div className="mb-10">
             <ResearchComposer
               key={location.key}
@@ -126,7 +122,6 @@ export const NewResearch: React.FC = () => {
             ) : null}
           </div>
 
-          {/* Suggested Research Questions */}
           <div className="mb-10">
             <div className="uppercase tracking-wider text-[11px] font-semibold text-[#929792] mb-3">
               Suggested Research Questions
@@ -154,7 +149,6 @@ export const NewResearch: React.FC = () => {
             </div>
           </div>
 
-          {/* Recent Research Section */}
           <div>
             <div className="flex items-center justify-between mb-3">
               <span className="uppercase tracking-wider text-[11px] font-semibold text-[#929792]">

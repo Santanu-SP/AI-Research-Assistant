@@ -1,9 +1,4 @@
-/**
- * ArchiveProjectDialog: Confirmation dialog before archiving a project.
- *
- * Backend uses DELETE /projects/{id} as a soft archive (not hard delete).
- * Archived projects can be viewed with includeArchived=true on list endpoint.
- */
+/** DELETE /projects/{id} archives the project; it does not remove the row. */
 import React, { useEffect, useState } from 'react';
 import { Archive, X } from 'lucide-react';
 import { ResearchProject } from '../../types/project';

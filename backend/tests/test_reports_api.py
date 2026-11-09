@@ -9,7 +9,7 @@ from app.core.errors import AppError
 from app.models.report import Citation, ReportSection, ResearchReport, Source
 from app.models.research import Research
 from app.schemas.reports import ResearchReportCreate
-from app.services import reports as report_service
+from app.services.research import reports as report_service
 
 
 def create_research(client: TestClient, *, title: str = "Evidence review") -> UUID:

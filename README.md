@@ -21,6 +21,33 @@ producing locally generated answers with traceable source excerpts.
 The production retrieval path requires PostgreSQL with pgvector. SQLite is
 kept for ordinary unit tests and non-retrieval development workflows.
 
+## Repository layout
+
+```text
+backend/app/
+  api/            HTTP routes and request dependencies
+  core/           settings and shared errors
+  db/             SQLAlchemy engine and sessions
+  domain/         enums and parser-neutral contracts
+  models/         tables
+  schemas/        request and response models
+  services/
+    auth/         password sessions and Google sign-in
+    documents/    upload records and local file storage
+    ingestion/    Docling, the pypdf fallback, and chunking
+    rag/          hybrid retrieval, reranking, and generation
+    research/     projects, research runs, and reports
+backend/alembic/  schema migrations
+backend/tests/    API and service tests
+frontend/src/
+  app/            router and auth, project, and toast state
+  components/     layout and feature UI
+  pages/          route screens
+  services/       typed API clients
+  types/          response shapes shared with the API
+docs/             setup notes and design records
+```
+
 ## Architecture
 
 ```text

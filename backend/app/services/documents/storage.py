@@ -28,6 +28,18 @@ MAX_OFFICE_ARCHIVE_MEMBERS = 10_000
 MAX_OFFICE_EXPANDED_BYTES = 250 * 1024 * 1024
 
 
+def _filename_is_safe(filename: str) -> bool:
+    # Reject path separators and nulls before the file is joined onto the
+    # upload directory. The stored name is a generated id, not this string.
+    if not filename or filename in {".", ".."}:
+        return False
+    if len(filename) > MAX_ORIGINAL_FILENAME_LENGTH:
+        return False
+    if "/" in filename or "\\" in filename or "\x00" in filename:
+        return False
+    return True
+
+
 @dataclass(frozen=True)
 class ValidatedUpload:
     original_name: str
@@ -50,14 +62,7 @@ class LocalDocumentStorage:
 
     def validate(self, upload: UploadFile) -> ValidatedUpload:
         filename = (upload.filename or "").strip()
-        if (
-            not filename
-            or filename in {".", ".."}
-            or len(filename) > MAX_ORIGINAL_FILENAME_LENGTH
-            or "/" in filename
-            or "\\" in filename
-            or "\x00" in filename
-        ):
+        if not _filename_is_safe(filename):
             raise AppError(
                 "A valid document filename is required",
                 status_code=400,

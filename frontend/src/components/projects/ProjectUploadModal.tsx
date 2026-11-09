@@ -1,14 +1,3 @@
-/**
- * ProjectUploadModal: Upload PDF or DOCX to a specific project.
- *
- * Features:
- * - Drag-and-drop or file picker
- * - PDF/DOCX validation before submission
- * - Indeterminate loading (backend does not stream upload progress)
- * - Duplicate document detection (HTTP 409)
- * - Archived project restriction (upload button disabled)
- * - Sequential multi-file upload queue
- */
 import React, { useEffect, useRef, useState } from 'react';
 import { X, UploadCloud, CheckCircle2, AlertCircle, Clock } from 'lucide-react';
 import { PrimaryButton } from '../common/PrimaryButton';
@@ -234,7 +223,6 @@ export const ProjectUploadModal: React.FC<ProjectUploadModalProps> = ({
         className="w-full max-w-lg bg-white rounded-xl shadow-xl border border-[#e5e7e4] overflow-hidden animate-in fade-in zoom-in-95 duration-150"
         onMouseDown={(e) => e.stopPropagation()}
       >
-        {/* Header */}
         <div className="px-6 py-4 border-b border-[#e5e7e4] flex items-center justify-between">
           <div>
             <h3
@@ -257,9 +245,7 @@ export const ProjectUploadModal: React.FC<ProjectUploadModalProps> = ({
           </button>
         </div>
 
-        {/* Body */}
         <div className="p-6 space-y-4">
-          {/* Dropzone */}
           <div
             onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
             onDragLeave={(e) => { e.preventDefault(); setDragOver(false); }}
@@ -297,7 +283,6 @@ export const ProjectUploadModal: React.FC<ProjectUploadModalProps> = ({
             <p className="text-xs text-[#929792]">PDF and DOCX</p>
           </div>
 
-          {/* File queue */}
           {queue.length > 0 && (
             <div className="space-y-2 max-h-52 overflow-y-auto">
               {queue.map((item) => (
@@ -335,7 +320,6 @@ export const ProjectUploadModal: React.FC<ProjectUploadModalProps> = ({
           )}
         </div>
 
-        {/* Footer */}
         <div className="px-6 py-3.5 bg-[#fafaf8] border-t border-[#e5e7e4] flex items-center justify-end gap-2.5">
           <button
             type="button"

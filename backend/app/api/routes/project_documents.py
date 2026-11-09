@@ -8,8 +8,8 @@ from app.api.dependencies import CurrentUser
 from app.db.session import get_db
 from app.domain.documents import DocumentStatus, DocumentType
 from app.schemas.documents import DocumentListResponse, DocumentResponse
-from app.services import documents as document_service
-from app.services.storage import LocalDocumentStorage, get_document_storage
+from app.services.documents import records as document_service
+from app.services.documents.storage import LocalDocumentStorage, get_document_storage
 
 router = APIRouter(
     prefix="/projects/{project_id}/documents",

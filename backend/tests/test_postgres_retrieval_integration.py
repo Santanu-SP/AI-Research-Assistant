@@ -16,7 +16,7 @@ from app.domain.documents import DocumentStatus, DocumentType
 from app.models.document import Document, DocumentChunk
 from app.models.project import ResearchProject
 from app.models.user import User
-from app.services.retrieval import keyword_search, retrieve, semantic_search
+from app.services.rag.retrieval import keyword_search, retrieve, semantic_search
 
 pytestmark = [pytest.mark.integration, pytest.mark.postgres]
 PROJECT_ROOT = Path(__file__).resolve().parents[2]

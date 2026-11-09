@@ -1,7 +1,4 @@
-/**
- * Reusable test fixtures matching actual backend schemas.
- * Do NOT add fields that don't exist in the backend responses.
- */
+/** Fixtures stay limited to fields the API actually returns. */
 import { ResearchProject, ResearchProjectListResponse } from '../types/project';
 import { Document, DocumentListResponse } from '../types/document';
 import { ResearchQueryResponse } from '../types/research';
