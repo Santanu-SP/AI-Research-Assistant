@@ -28,12 +28,10 @@ export const AppLayout: React.FC = () => {
     <div className="relative isolate min-h-screen overflow-x-clip bg-[#fafaf8] text-[#181a18]">
       <AnimatedResearchBackground mode={motionMode} />
 
-      {/* Desktop Sidebar */}
       <div className="hidden lg:block">
         <AppSidebar />
       </div>
 
-      {/* Mobile Header Bar with Hamburger */}
       <div className="app-chrome-surface lg:hidden fixed top-0 left-0 right-0 h-14 border-b border-[#e5e7e4] z-50 flex items-center justify-between px-4">
         <button
           type="button"
@@ -56,7 +54,6 @@ export const AppLayout: React.FC = () => {
         </div>
       </div>
 
-      {/* Mobile Drawer */}
       {mobileMenuOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
           <div
@@ -69,7 +66,6 @@ export const AppLayout: React.FC = () => {
         </div>
       )}
 
-      {/* Main content offset by desktop sidebar */}
       <div className="app-content-surface relative z-10 lg:pl-[232px] pt-14 lg:pt-0 min-h-screen flex flex-col">
         <Outlet />
       </div>

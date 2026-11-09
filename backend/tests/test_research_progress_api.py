@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
 from app.domain.states import ProjectStatus
-from app.services import research as research_service
+from app.services.research import runs as research_service
 
 PROGRESS_PATH = "/api/v1/research/{research_id}/status"
 STEP_IDS = [

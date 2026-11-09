@@ -3,7 +3,7 @@ from uuid import UUID, uuid4
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.services import research as research_service
+from app.services.research import runs as research_service
 
 
 def create_research(

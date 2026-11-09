@@ -1,9 +1,3 @@
-/**
- * ProjectCard: A single project card in the projects grid.
- *
- * Shows real backend fields only: name, description, archivedAt, updatedAt.
- * Includes inline edit and archive actions accessible via keyboard.
- */
 import React, { useState } from 'react';
 import { MoreHorizontal, Pencil, Archive, ExternalLink } from 'lucide-react';
 import { ResearchProject } from '../../types/project';
@@ -59,7 +53,6 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
         tabIndex={isArchived ? undefined : 0}
         aria-label={`Open project: ${project.name}`}
       >
-        {/* Card header */}
         <div className="p-5 pb-3">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
@@ -82,7 +75,6 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
               </h3>
             </div>
 
-            {/* Actions menu */}
             <div className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
               <button
                 type="button"
@@ -149,7 +141,6 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
           )}
         </div>
 
-        {/* Card footer */}
         <div className="px-5 pb-4 pt-2 border-t border-[#f5f5f2] flex items-center justify-between text-[11px] text-[#929792]">
           <span>Updated {formatDate(project.updatedAt)}</span>
           <span>Created {formatDate(project.createdAt)}</span>

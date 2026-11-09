@@ -14,7 +14,7 @@ from app.schemas.reports import (
     ResearchReportResponse,
     SourceResponse,
 )
-from app.services.research import get_research
+from app.services.research.runs import get_research
 
 
 def _invalid_evidence(message: str) -> AppError:

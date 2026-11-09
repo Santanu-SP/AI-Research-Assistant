@@ -1,13 +1,3 @@
-/**
- * ProjectsPage: The main project library / list view.
- *
- * Shows all user projects. Users can:
- *  - Search/filter projects (search is wired to backend query param)
- *  - Toggle archived projects
- *  - Create a new project
- *  - Open a project workspace
- *  - See empty, loading, and error states
- */
 import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -121,7 +111,6 @@ export const ProjectsPage: React.FC = () => {
 
       <main className="flex-1 pt-14 pb-16 px-4 sm:px-6">
         <div className="max-w-5xl mx-auto py-8">
-          {/* Header */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
             <div>
               <h1 className="font-serif text-2xl sm:text-3xl text-[#181a18] font-normal tracking-tight">
@@ -133,7 +122,6 @@ export const ProjectsPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Filter bar */}
           <div className="p-3 bg-white border border-[#e5e7e4] rounded-xl mb-6 flex flex-wrap items-center gap-3 shadow-xs">
             <div className="relative flex-1 min-w-[220px]">
               <Search className="w-4 h-4 text-[#929792] absolute left-3 top-1/2 -translate-y-1/2" />
@@ -162,7 +150,6 @@ export const ProjectsPage: React.FC = () => {
             </label>
           </div>
 
-          {/* Content */}
           {isLoading ? (
             <LoadingState rows={4} />
           ) : error ? (
@@ -189,7 +176,6 @@ export const ProjectsPage: React.FC = () => {
             />
           ) : (
             <div className="space-y-8">
-              {/* Active projects */}
               {activeProjects.length > 0 && (
                 <section>
                   {showArchived && (
@@ -211,7 +197,6 @@ export const ProjectsPage: React.FC = () => {
                 </section>
               )}
 
-              {/* Archived projects */}
               {showArchived && archivedProjects.length > 0 && (
                 <section>
                   <h2 className="text-[11px] font-semibold uppercase tracking-wider text-[#929792] mb-3">

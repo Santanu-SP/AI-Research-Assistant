@@ -17,6 +17,37 @@ import {
   BookOpen,
 } from 'lucide-react';
 
+const buildReportMarkdown = (
+  report: ResearchReportResponse,
+  sources: SourceResponse[],
+): string => {
+  let markdown = `# ${report.title}\n\n`;
+  markdown += `${report.dossierRef} | ${report.readingTimeMinutes} min read\n\n`;
+  const summaryAlreadyInFirstSection =
+    report.sections.length > 0 && report.sections[0].content === report.summary;
+  if (!summaryAlreadyInFirstSection) {
+    markdown += `## Executive Summary\n${report.summary}\n\n`;
+  }
+  report.sections.forEach((section) => {
+    markdown += `## ${section.heading}\n${section.content}\n\n`;
+    if (section.quote) {
+      markdown += `> "${section.quote}"\n\n`;
+    }
+  });
+  markdown += `## References\n`;
+  sources.forEach((source) => {
+    const metadata = [
+      source.authors.join(', '),
+      source.year ? `(${source.year})` : '',
+      source.title ? `"${source.title}"` : '',
+      source.publisher || '',
+      source.page ? `p. ${source.page}` : '',
+    ].filter(Boolean).join(' ');
+    markdown += `[S${source.number}] ${metadata}\n`;
+  });
+  return markdown;
+};
+
 export const ResearchReportPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -63,30 +94,8 @@ export const ResearchReportPage: React.FC = () => {
 
   const handleExport = () => {
     if (!report) return;
-    let md = `# ${report.title}\n\n`;
-    md += `${report.dossierRef} | ${report.readingTimeMinutes} min read\n\n`;
-    if (!(report.sections.length > 0 && report.sections[0].content === report.summary)) {
-      md += `## Executive Summary\n${report.summary}\n\n`;
-    }
-    report.sections.forEach((sec) => {
-      md += `## ${sec.heading}\n${sec.content}\n\n`;
-      if (sec.quote) {
-        md += `> "${sec.quote}"\n\n`;
-      }
-    });
-    md += `## References\n`;
-    sources.forEach((s) => {
-      const metadata = [
-        s.authors.join(', '),
-        s.year ? `(${s.year})` : '',
-        s.title ? `"${s.title}"` : '',
-        s.publisher || '',
-        s.page ? `p. ${s.page}` : '',
-      ].filter(Boolean).join(' ');
-      md += `[S${s.number}] ${metadata}\n`;
-    });
-
-    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8;' });
+    const markdown = buildReportMarkdown(report, sources);
+    const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
@@ -135,7 +144,6 @@ export const ResearchReportPage: React.FC = () => {
 
   return (
     <div className="report-reading-page min-h-screen bg-[#fafaf8] flex flex-col">
-      {/* TopBar */}
       <TopBar
         breadcrumbs={
           <div className="flex items-center gap-2 text-xs truncate">
@@ -223,7 +231,6 @@ export const ResearchReportPage: React.FC = () => {
             </div>
 
             <article className="space-y-10">
-              {/* Executive Summary */}
               {report.summary && showSummary && (
                 <section>
                   <h2 className="font-serif text-2xl text-[#181a18] font-normal mb-3">
@@ -235,7 +242,6 @@ export const ResearchReportPage: React.FC = () => {
                 </section>
               )}
 
-              {/* Dynamic Sections */}
               {report.sections.map((section) => (
                 <section key={section.id}>
                   <h2 className="font-serif text-2xl text-[#181a18] font-normal mb-3">

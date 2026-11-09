@@ -14,15 +14,17 @@ from app.domain.states import ProjectStatus
 from app.schemas.rag import ResearchQueryRequest, ResearchQueryResponse
 from app.schemas.reports import ResearchReportCreate
 from app.schemas.research import ResearchCreate
-from app.services import reports, research, retrieval
-from app.services.citations import CitationValidator, SOURCE_REFERENCE
-from app.services.evidence import (
+from app.services.rag import retrieval
+from app.services.rag.citations import CitationValidator, SOURCE_REFERENCE
+from app.services.rag.evidence import (
     INSUFFICIENT_EVIDENCE_ANSWER,
     EvidenceBuilder,
     evidence_is_sufficient,
 )
-from app.services.generation import GenerationService, generation_service_for
-from app.services.reranking import RerankerService, reranker_service_for
+from app.services.rag.generation import GenerationService, generation_service_for
+from app.services.rag.reranking import RerankerService, reranker_service_for
+from app.services.research import reports
+from app.services.research import runs as research
 
 
 def _plain_answer(answer: str) -> str:

@@ -7,16 +7,7 @@ import {
 } from '../types/project';
 import { ApiError, apiRequest } from './api';
 
-/**
- * Project API service.
- * All endpoints: /api/v1/projects (see backend/app/api/routes/projects.py)
- */
-
 export const projectsService = {
-  /**
-   * List projects for the authenticated user.
-   * GET /api/v1/projects
-   */
   async listProjects(
     params: ProjectListParams = {}
   ): Promise<ResearchProjectListResponse> {
@@ -32,18 +23,10 @@ export const projectsService = {
     );
   },
 
-  /**
-   * Get a single project by ID.
-   * GET /api/v1/projects/{id}
-   */
   async getProject(id: string): Promise<ResearchProject> {
     return apiRequest<ResearchProject>(`/projects/${encodeURIComponent(id)}`);
   },
 
-  /**
-   * Create a new project.
-   * POST /api/v1/projects
-   */
   async createProject(input: CreateProjectInput): Promise<ResearchProject> {
     return apiRequest<ResearchProject>('/projects', {
       method: 'POST',
@@ -52,10 +35,6 @@ export const projectsService = {
     });
   },
 
-  /**
-   * Update an existing project (rename, edit description).
-   * PATCH /api/v1/projects/{id}
-   */
   async updateProject(
     id: string,
     input: UpdateProjectInput
@@ -67,10 +46,6 @@ export const projectsService = {
     });
   },
 
-  /**
-   * Archive a project (soft-delete via DELETE).
-   * DELETE /api/v1/projects/{id}
-   */
   async archiveProject(id: string): Promise<void> {
     await apiRequest<void>(`/projects/${encodeURIComponent(id)}`, {
       method: 'DELETE',
@@ -78,10 +53,6 @@ export const projectsService = {
   },
 };
 
-/**
- * Extract a user-safe error message from a project API failure.
- * Maps stable HTTP status codes to meaningful strings.
- */
 export const getProjectErrorMessage = (
   error: unknown,
   fallback: string

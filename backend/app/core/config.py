@@ -130,8 +130,11 @@ class Settings(BaseSettings):
         protected_namespaces=("settings_",),
     )
 
-    @model_validator(mode="after")
-    def validate_chunk_settings(self) -> "Settings":
+    def _apply_supabase_database_url(self) -> None:
+        # An explicitly supplied DATABASE_URL always wins. This keeps the
+        # generic deployment setting authoritative and lets tests select their
+        # own isolated SQLite database even when a developer's .env contains
+        # Supabase fields.
         supabase_values = (
             self.supabase_db_user,
             self.supabase_db_password,
@@ -139,27 +142,27 @@ class Settings(BaseSettings):
             self.supabase_db_port,
             self.supabase_db_name,
         )
-        # An explicitly supplied DATABASE_URL always wins.  This keeps the
-        # generic deployment setting authoritative and lets tests select their
-        # own isolated SQLite database even when a developer's .env contains
-        # Supabase fields.
-        if (
-            any(value is not None for value in supabase_values)
-            and self.database_url == DEFAULT_DATABASE_URL
-        ):
-            if any(value is None for value in supabase_values):
-                raise ValueError(
-                    "Supabase database settings require user, password, host, port, and database name"
-                )
-            self.database_url = URL.create(
-                "postgresql+psycopg",
-                username=self.supabase_db_user,
-                password=self.supabase_db_password,
-                host=self.supabase_db_host,
-                port=self.supabase_db_port,
-                database=self.supabase_db_name,
-                query={"sslmode": "require"},
-            ).render_as_string(hide_password=False)
+        if not any(value is not None for value in supabase_values):
+            return
+        if self.database_url != DEFAULT_DATABASE_URL:
+            return
+        if any(value is None for value in supabase_values):
+            raise ValueError(
+                "Supabase database settings require user, password, host, port, and database name"
+            )
+        self.database_url = URL.create(
+            "postgresql+psycopg",
+            username=self.supabase_db_user,
+            password=self.supabase_db_password,
+            host=self.supabase_db_host,
+            port=self.supabase_db_port,
+            database=self.supabase_db_name,
+            query={"sslmode": "require"},
+        ).render_as_string(hide_password=False)
+
+    @model_validator(mode="after")
+    def validate_chunk_settings(self) -> "Settings":
+        self._apply_supabase_database_url()
         if self.document_chunk_overlap >= self.document_chunk_size:
             raise ValueError(
                 "document_chunk_overlap must be smaller than document_chunk_size"

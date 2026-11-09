@@ -1,13 +1,6 @@
 /**
- * ProjectContext: Provides the currently selected ResearchProject to the app.
- *
- * The selected project is stored by ID in sessionStorage so that:
- *  - Refreshing a page within a project preserves context.
- *  - Navigating away and back restores the selection.
- *  - A new browser tab always starts fresh.
- *
- * Components that display project-scoped data must consume this context
- * and re-fetch whenever selectedProjectId changes.
+ * The selected project id is kept in sessionStorage so a refresh stays in
+ * the same project, and a new tab starts with nothing selected.
  */
 import React, {
   createContext,
@@ -22,17 +15,11 @@ import { projectsService } from '../services/projects.service';
 const SESSION_KEY = 'selected_project_id';
 
 interface ProjectState {
-  /** The currently selected project (null = no project selected). */
   selectedProject: ResearchProject | null;
-  /** True while the project is being loaded from the API. */
   projectLoading: boolean;
-  /** Error encountered when loading the selected project. */
   projectError: string | null;
-  /** Select a project by its ID, triggering a fetch if needed. */
   selectProject: (id: string | null) => void;
-  /** Force-refresh the selected project from the API. */
   refreshProject: () => Promise<void>;
-  /** Clear the selected project and remove it from session. */
   clearProject: () => void;
 }
 

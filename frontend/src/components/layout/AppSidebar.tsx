@@ -64,7 +64,6 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ className = '' }) => {
       className={`app-chrome-surface fixed left-0 top-0 h-full w-[232px] z-50 flex flex-col justify-between border-r border-[#e5e7e4] select-none ${className}`}
     >
       <div className="flex flex-col overflow-y-auto flex-1">
-        {/* Brand / Logo Header */}
         <div className="h-14 px-4 flex items-center gap-2.5 border-b border-[#e5e7e4] shrink-0">
           <div className="w-6 h-6 flex items-center justify-center shrink-0 text-[#163328]">
             <svg
@@ -86,10 +85,8 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ className = '' }) => {
           </span>
         </div>
 
-        {/* Primary Navigation */}
         <div className="p-2 pt-3">
           <nav aria-label="Main navigation" className="flex flex-col gap-0.5">
-            {/* Projects */}
             <NavLink
               to="/projects"
               className={({ isActive }) =>
@@ -109,7 +106,6 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ className = '' }) => {
               )}
             </NavLink>
 
-            {/* New Research */}
             <NavLink to="/research/new" className={navLinkClass}>
               {({ isActive }) => (
                 <>
@@ -120,7 +116,6 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ className = '' }) => {
               )}
             </NavLink>
 
-            {/* My Research */}
             <NavLink to="/research" end className={navLinkClass}>
               {({ isActive }) => (
                 <>
@@ -131,7 +126,6 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ className = '' }) => {
               )}
             </NavLink>
 
-            {/* Documents */}
             <NavLink to="/documents" className={navLinkClass}>
               {({ isActive }) => (
                 <>
@@ -144,7 +138,6 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ className = '' }) => {
           </nav>
         </div>
 
-        {/* Recent Projects */}
         {recentProjects.length > 0 && (
           <div className="px-2 mt-3">
             <div className="uppercase tracking-wider text-[10.5px] text-[#929792] font-semibold px-3 mb-1.5">
@@ -176,7 +169,6 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ className = '' }) => {
           </div>
         )}
 
-        {/* Recent Research */}
         {recentItems.length > 0 && (
           <div className="px-2 mt-3">
             <div className="uppercase tracking-wider text-[10.5px] text-[#929792] font-semibold px-3 mb-1.5">
@@ -222,7 +214,6 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ className = '' }) => {
         )}
       </div>
 
-      {/* Bottom Profile & Settings */}
       <div className="border-t border-[#e5e7e4] p-2 shrink-0">
         {profileOpen && (
           <div className="mb-2 rounded-md border border-[#e5e7e4] bg-white p-2">

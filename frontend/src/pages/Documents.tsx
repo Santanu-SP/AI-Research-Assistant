@@ -100,7 +100,6 @@ export const DocumentsPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#fafaf8] flex flex-col">
-      {/* TopBar */}
       <TopBar
         breadcrumbs={
           <div className="flex items-center gap-2">
@@ -111,10 +110,8 @@ export const DocumentsPage: React.FC = () => {
         }
       />
 
-      {/* Main Content */}
       <main className="flex-1 pt-14 pb-16 px-4 sm:px-6">
         <div className="max-w-5xl mx-auto py-8">
-          {/* Header Row */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
             <div>
               <h1 className="font-serif text-2xl sm:text-3xl text-[#181a18] font-normal tracking-tight">
@@ -134,7 +131,6 @@ export const DocumentsPage: React.FC = () => {
             </PrimaryButton>
           </div>
 
-          {/* Filter / Search Bar */}
           <div className="p-3 bg-white border border-[#e5e7e4] rounded-xl mb-6 flex flex-wrap items-center justify-between gap-3 shadow-xs">
             <div className="relative flex-1 min-w-[240px]">
               <Search className="w-4 h-4 text-[#929792] absolute left-3 top-1/2 -translate-y-1/2" />
@@ -175,7 +171,6 @@ export const DocumentsPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Document Rows List */}
           {actionError && <p role="alert" className="mb-3 rounded-md border border-[#fecaca] bg-[#fee2e2]/50 p-3 text-xs text-[#b91c1c]">{actionError}</p>}
           {isLoading ? (
             <CenteredLoadingState label="Loading workspace documents…" />
@@ -224,7 +219,6 @@ export const DocumentsPage: React.FC = () => {
         </div>
       </main>
 
-      {/* Upload Modal */}
       <UploadDocumentModal
         isOpen={isUploadOpen}
         onClose={() => setIsUploadOpen(false)}

@@ -1,7 +1,3 @@
-/**
- * EditProjectDialog: Modal for renaming and updating a project's description.
- * Only modifies backend-supported fields (name, description).
- */
 import React, { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { PrimaryButton } from '../common/PrimaryButton';

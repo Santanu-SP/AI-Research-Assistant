@@ -9,10 +9,11 @@ from app.core.config import Settings
 from app.core.errors import AppError
 from app.domain.documents import ContentLevel, DocumentStatus, DocumentType, SourceType
 from app.models.document import Document
-from app.services.embeddings import EmbeddingService
-from app.services.ingestion import DocumentIngestionAdapter, ingest_document
-from app.services.storage import LocalDocumentStorage
-from app.services import projects as project_service
+from app.services.rag.embeddings import EmbeddingService
+from app.services.ingestion.pipeline import DocumentIngestionAdapter, ingest_document
+from app.services.documents.storage import LocalDocumentStorage
+from app.services.research import projects as project_service
+
 
 def _commit(session: Session, error_message: str) -> None:
     try:
@@ -24,6 +25,25 @@ def _commit(session: Session, error_message: str) -> None:
             status_code=500,
             code="document_persistence_error",
         ) from exc
+
+
+def _find_duplicate(
+    session: Session,
+    user_id: UUID,
+    checksum: str,
+    project_id: UUID | None,
+) -> Document | None:
+    # A null project is its own scope. Matching only on checksum would treat
+    # a legacy unscoped upload as a duplicate of a project upload.
+    filters = [
+        Document.user_id == user_id,
+        Document.checksum == checksum,
+    ]
+    if project_id is None:
+        filters.append(Document.project_id.is_(None))
+    else:
+        filters.append(Document.project_id == project_id)
+    return session.scalar(select(Document).where(*filters))
 
 
 async def create_document(
@@ -41,15 +61,7 @@ async def create_document(
         project_service.get_project(session, project_id, user_id)
     metadata = storage.validate(upload)
     stored = await storage.save(upload, metadata.extension)
-    duplicate_filters = [
-        Document.user_id == user_id,
-        Document.checksum == stored.checksum,
-    ]
-    if project_id is None:
-        duplicate_filters.append(Document.project_id.is_(None))
-    else:
-        duplicate_filters.append(Document.project_id == project_id)
-    duplicate = session.scalar(select(Document).where(*duplicate_filters))
+    duplicate = _find_duplicate(session, user_id, stored.checksum, project_id)
     if duplicate is not None:
         storage.delete(stored.stored_name)
         raise AppError(
@@ -134,7 +146,12 @@ def list_documents(
 
 
 def get_document(session: Session, document_id: UUID, user_id: UUID) -> Document:
-    document = session.scalar(select(Document).where(Document.id == document_id, Document.user_id == user_id))
+    document = session.scalar(
+        select(Document).where(
+            Document.id == document_id,
+            Document.user_id == user_id,
+        )
+    )
     if document is None:
         raise AppError(
             "Document not found",

@@ -11,9 +11,11 @@ from app.core.errors import AppError
 from app.domain.documents import DocumentStatus
 from app.models.document import Document, DocumentChunk
 from app.schemas.retrieval import RetrievalCandidate
-from app.services.embeddings import EmbeddingService, embedding_service_for
-from app.services import projects as project_service
+from app.services.rag.embeddings import EmbeddingService, embedding_service_for
+from app.services.research import projects as project_service
 
+# Standard reciprocal-rank fusion constant. A larger k softens the penalty
+# for a result that only one of the two lists ranked highly.
 RRF_K = 60
 FTS_CONFIGURATION = "english"
 
@@ -26,8 +28,17 @@ class RankedChunk:
 
 
 def _require_postgres(session: Session) -> None:
-    if session.bind is None or session.bind.dialect.name != "postgresql":
-        raise AppError("Retrieval requires PostgreSQL with pgvector", status_code=503, code="retrieval_backend_unavailable")
+    dialect = None if session.bind is None else session.bind.dialect.name
+    if dialect != "postgresql":
+        raise AppError(
+            "Retrieval requires PostgreSQL with pgvector",
+            status_code=503,
+            code="retrieval_backend_unavailable",
+        )
+
+
+def _reciprocal_rank(rank: int) -> float:
+    return 1 / (RRF_K + rank)
 
 
 def semantic_search(
@@ -49,9 +60,13 @@ def semantic_search(
         select(DocumentChunk, distance.label("distance"))
         .join(Document)
         .where(*filters)
-        .order_by(distance, DocumentChunk.id).limit(limit)
+        .order_by(distance, DocumentChunk.id)
+        .limit(limit)
     ).all()
-    return [RankedChunk(chunk=row[0], vector_score=1 - float(row[1])) for row in rows]
+    return [
+        RankedChunk(chunk=row[0], vector_score=1 - float(row[1]))
+        for row in rows
+    ]
 
 
 def keyword_search(
@@ -74,21 +89,55 @@ def keyword_search(
         select(DocumentChunk, rank.label("rank"))
         .join(Document)
         .where(*filters)
-        .order_by(rank.desc(), DocumentChunk.id).limit(limit)
+        .order_by(rank.desc(), DocumentChunk.id)
+        .limit(limit)
     ).all()
-    return [RankedChunk(chunk=row[0], keyword_score=float(row[1])) for row in rows]
+    return [
+        RankedChunk(chunk=row[0], keyword_score=float(row[1]))
+        for row in rows
+    ]
 
 
-def fuse(vector_results: list[RankedChunk], keyword_results: list[RankedChunk], limit: int) -> list[RankedChunk]:
+def fuse(
+    vector_results: list[RankedChunk],
+    keyword_results: list[RankedChunk],
+    limit: int,
+) -> list[RankedChunk]:
     merged: dict[UUID, RankedChunk] = {}
     scores: dict[UUID, float] = {}
-    for result_set, score_name in ((vector_results, "vector_score"), (keyword_results, "keyword_score")):
-        for rank, item in enumerate(result_set, start=1):
-            key = item.chunk.id
-            previous = merged.get(key)
-            merged[key] = item if previous is None else replace(previous, **{score_name: getattr(item, score_name)})
-            scores[key] = scores.get(key, 0.0) + 1 / (RRF_K + rank)
-    return sorted(merged.values(), key=lambda item: (-scores[item.chunk.id], str(item.chunk.id)))[:limit]
+    ranked_lists = (
+        (vector_results, "vector_score"),
+        (keyword_results, "keyword_score"),
+    )
+    for results, score_field in ranked_lists:
+        for rank, item in enumerate(results, start=1):
+            chunk_id = item.chunk.id
+            existing = merged.get(chunk_id)
+            if existing is None:
+                merged[chunk_id] = item
+            else:
+                incoming_score = getattr(item, score_field)
+                merged[chunk_id] = replace(existing, **{score_field: incoming_score})
+            scores[chunk_id] = scores.get(chunk_id, 0.0) + _reciprocal_rank(rank)
+
+    ranked = sorted(
+        merged.values(),
+        key=lambda item: (-scores[item.chunk.id], str(item.chunk.id)),
+    )
+    return ranked[:limit]
+
+
+def _hybrid_score(
+    chunk_id: UUID,
+    vector_ranks: dict[UUID, int],
+    keyword_ranks: dict[UUID, int],
+) -> float:
+    score = 0.0
+    if chunk_id in vector_ranks:
+        score += _reciprocal_rank(vector_ranks[chunk_id])
+    if chunk_id in keyword_ranks:
+        score += _reciprocal_rank(keyword_ranks[chunk_id])
+    return score
 
 
 def retrieve(
@@ -102,10 +151,15 @@ def retrieve(
 ) -> list[RetrievalCandidate]:
     normalized = query.strip()
     if not normalized:
-        raise AppError("A retrieval query is required", status_code=422, code="retrieval_query_required")
+        raise AppError(
+            "A retrieval query is required",
+            status_code=422,
+            code="retrieval_query_required",
+        )
     if project_id is not None:
         project_service.get_project(session, project_id, user_id)
     _require_postgres(session)
+
     service = embeddings or embedding_service_for(settings)
     vector_results = semantic_search(
         session,
@@ -122,12 +176,17 @@ def retrieve(
         project_id,
     )
     candidates = fuse(vector_results, keyword_results, settings.hybrid_candidate_k)
-    vector_rank = {item.chunk.id: index for index, item in enumerate(vector_results, 1)}
-    keyword_rank = {item.chunk.id: index for index, item in enumerate(keyword_results, 1)}
+    vector_ranks = {
+        item.chunk.id: index for index, item in enumerate(vector_results, start=1)
+    }
+    keyword_ranks = {
+        item.chunk.id: index for index, item in enumerate(keyword_results, start=1)
+    }
+
     result: list[RetrievalCandidate] = []
     for item in candidates:
         document = item.chunk.document
-        score = (1 / (RRF_K + vector_rank[item.chunk.id]) if item.chunk.id in vector_rank else 0) + (1 / (RRF_K + keyword_rank[item.chunk.id]) if item.chunk.id in keyword_rank else 0)
+        score = _hybrid_score(item.chunk.id, vector_ranks, keyword_ranks)
         result.append(
             RetrievalCandidate(
                 chunk_id=item.chunk.id,

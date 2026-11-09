@@ -17,10 +17,10 @@ from app.schemas.research import (
 from app.schemas.rag import ResearchQueryRequest, ResearchQueryResponse
 from app.schemas.reports import ComposedReportResponse
 from app.schemas.retrieval import RetrievalRequest, RetrievalResponse
-from app.services import research as research_service
-from app.services import reports as reports_service
-from app.services import retrieval as retrieval_service
-from app.services import rag as rag_service
+from app.services.research import runs as research_service
+from app.services.research import reports as reports_service
+from app.services.rag import retrieval as retrieval_service
+from app.services.rag import query as rag_service
 
 router = APIRouter(prefix="/research", tags=["research"])
 DatabaseSession = Annotated[Session, Depends(get_db)]

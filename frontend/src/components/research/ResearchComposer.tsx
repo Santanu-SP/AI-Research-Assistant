@@ -80,7 +80,6 @@ export const ResearchComposer: React.FC<ResearchComposerProps> = ({
 
   return (
     <div className="w-full bg-white border border-[#e5e7e4] rounded-xl shadow-xs transition-all duration-150 focus-within:border-[#163328] focus-within:ring-1 focus-within:ring-[#163328]">
-      {/* Textarea container */}
       <div className="p-4 sm:p-5">
         <label htmlFor="research-prompt" className="sr-only">
           Research inquiry query or prompt
@@ -98,11 +97,8 @@ export const ResearchComposer: React.FC<ResearchComposerProps> = ({
         />
       </div>
 
-      {/* Composer Bottom Toolbar */}
       <div className="px-4 py-2.5 bg-[#fafaf8] rounded-b-[11px] border-t border-[#e5e7e4] flex flex-wrap items-center justify-between gap-3">
-        {/* Left Controls: Chips & Depth Dropdown */}
         <div className="flex flex-wrap items-center gap-2 relative">
-          {/* Research Depth Dropdown Trigger */}
           <div className="relative" ref={dropdownRef}>
             <button
               type="button"
@@ -119,7 +115,6 @@ export const ResearchComposer: React.FC<ResearchComposerProps> = ({
               />
             </button>
 
-            {/* Dropdown Menu */}
             {isDepthOpen && (
               <div className="absolute left-0 bottom-full mb-1.5 w-52 bg-white border border-[#e5e7e4] rounded-md shadow-md py-1 z-30 transition-all duration-150 text-xs">
                 <button
@@ -177,7 +172,6 @@ export const ResearchComposer: React.FC<ResearchComposerProps> = ({
           </div>
         </div>
 
-        {/* Right CTA Button & Helper */}
         <div className="flex items-center gap-3 ml-auto">
           <span className="text-[11px] text-[#929792] hidden md:inline">
             {isLoading ? LOADING_MESSAGES[loadingMessageIndex] : 'Uses your indexed papers only'}

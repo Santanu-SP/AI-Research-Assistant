@@ -9,7 +9,6 @@ interface ProgressStepperProps {
 export const ProgressStepper: React.FC<ProgressStepperProps> = ({ progress }) => {
   return (
     <div className="w-full bg-white border border-[#e5e7e4] rounded-xl p-5 mb-8">
-      {/* Stepper Header */}
       <div className="flex items-center justify-between pb-3 mb-3 border-b border-[#e5e7e4]">
         <span className="uppercase tracking-wider text-[11px] font-semibold text-[#929792]">
           Research Progress Stepper
@@ -19,7 +18,6 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({ progress }) =>
         </span>
       </div>
 
-      {/* Steps grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-2.5 mb-4">
         {progress.steps.map((step, index) => {
           const isCompleted = step.status === 'completed';
@@ -79,7 +77,6 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({ progress }) =>
         })}
       </div>
 
-      {/* Stepper bottom counters & metadata */}
       <div className="pt-2 flex flex-wrap items-center justify-between gap-3 text-xs">
         <div className="flex items-center gap-2 text-[#181a18] font-medium">
           <FileSpreadsheet className="w-4 h-4 text-[#163328]" />

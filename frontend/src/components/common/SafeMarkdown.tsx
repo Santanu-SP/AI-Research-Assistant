@@ -1,13 +1,6 @@
 /**
- * SafeMarkdown: Renders model-generated Markdown safely without dangerouslySetInnerHTML.
- *
- * Uses a simple parse-and-render approach. The backend answer is plain text or
- * light Markdown (headers, bold, bullets, code spans). We render structure without
- * executing any HTML from the model output.
- *
- * This implementation handles the subset of Markdown that the research backend
- * actually produces. If a full Markdown library is needed in the future, install
- * a sanitizing renderer (e.g., react-markdown with rehype-sanitize).
+ * Renders the small Markdown subset the model is asked to produce.
+ * HTML from the answer is never inserted as markup.
  */
 import React from 'react';
 
@@ -16,7 +9,6 @@ interface SafeMarkdownProps {
   className?: string;
 }
 
-/** Split text into inline segments: bold, code, and plain text. */
 const parseInline = (text: string): React.ReactNode[] => {
   const segments: React.ReactNode[] = [];
   // Match **bold**, `code`, and plain text

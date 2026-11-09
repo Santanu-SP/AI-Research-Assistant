@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 from uuid import uuid4
 
-from app.services.retrieval import RankedChunk, fuse
+from app.services.rag.retrieval import RankedChunk, fuse
 
 
 def test_rrf_deduplicates_same_chunk_and_prefers_agreement() -> None:

@@ -1,15 +1,6 @@
 /**
- * ProjectWorkspacePage: The central workspace for a selected research project.
- *
- * Route: /projects/:projectId
- *
- * Sections:
- *  1. ProjectHeader – project name, archived state, actions
- *  2. Sources tab – project documents, upload
- *  3. Research tab – project-scoped research composer + recent results
- *
- * Changing :projectId in the URL switches context safely. The previous
- * project's data is cleared before the new project loads.
+ * Switching :projectId clears the previous project's documents before the
+ * next fetch, so a slow response cannot paint the wrong workspace.
  */
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
@@ -75,7 +66,6 @@ export const ProjectWorkspacePage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#fafaf8] flex flex-col">
-      {/* TopBar */}
       <TopBar
         breadcrumbs={
           <div className="flex items-center gap-2 text-xs">
@@ -102,14 +92,12 @@ export const ProjectWorkspacePage: React.FC = () => {
 
       <main className="flex-1 pt-14 flex flex-col">
         <div className="max-w-5xl mx-auto w-full px-4 sm:px-6 py-6 flex flex-col flex-1">
-          {/* Project Header */}
           <ProjectHeader
             project={selectedProject}
             onUpdated={() => void refreshProject()}
             onArchived={() => navigate('/projects')}
           />
 
-          {/* Tab Navigation */}
           <div className="border-b border-[#e5e7e4] mt-6 mb-0 flex items-center gap-0">
             <button
               type="button"
@@ -145,7 +133,6 @@ export const ProjectWorkspacePage: React.FC = () => {
             </button>
           </div>
 
-          {/* Tab Panels */}
           <div className="flex-1 mt-6">
             <div
               id="panel-sources"

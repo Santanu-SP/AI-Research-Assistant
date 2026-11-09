@@ -1,15 +1,7 @@
-/**
- * SourceTypeLabel: Consistent presentation of document source types.
- * ContentLevelLabel: Human-readable presentation of content depth level.
- *
- * Maps backend enum values to human-readable labels and icons.
- * Degrades safely for unknown future values.
- */
 import React from 'react';
 import { FileUp, Globe, Link2, BookOpen, Database } from 'lucide-react';
 import { SourceType, ContentLevel } from '../../types/document';
 
-// ─── SourceTypeLabel ─────────────────────────────────────────────────────────
 
 interface SourceTypeLabelProps {
   sourceType: SourceType | string;
@@ -43,7 +35,6 @@ export const SourceTypeLabel: React.FC<SourceTypeLabelProps> = ({
   );
 };
 
-// ─── ContentLevelLabel ────────────────────────────────────────────────────────
 
 const CONTENT_LEVEL_LABELS: Record<string, string> = {
   user_document: 'User Document',
