@@ -7,9 +7,9 @@ from uuid import UUID
 from app.core.config import Settings
 from app.domain.documents import MetadataProvenance
 from app.domain.ingestion import CanonicalMetadata, ParsedDocument, ParsedNode
-from app.services.ingestion import DocumentIngestionError, stable_node_id
-from app.services.pdf_extraction import PdfExtractionError, extract_pdf
-from app.services.text_processing import chunk_pages
+from app.services.ingestion.pipeline import DocumentIngestionError, stable_node_id
+from app.services.ingestion.pdf import PdfExtractionError, extract_pdf
+from app.services.ingestion.text import chunk_pages
 
 
 class LegacyPdfIngestionAdapter:

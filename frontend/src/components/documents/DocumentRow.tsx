@@ -27,7 +27,6 @@ export const DocumentRow: React.FC<DocumentRowProps> = ({
 
   return (
     <div className="p-4 bg-white border border-[#e5e7e4] rounded-lg hover:border-[#cbd0ca] hover:shadow-xs transition-all duration-150 flex flex-col sm:flex-row sm:items-center justify-between gap-3 group">
-      {/* File Icon + Info */}
       <div className="flex items-start gap-3 min-w-0">
         <div
           className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 border ${
@@ -87,7 +86,6 @@ export const DocumentRow: React.FC<DocumentRowProps> = ({
         </div>
       </div>
 
-      {/* Status & Actions */}
       <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-[#f5f5f2]">
         <StatusBadge 
           status={document.status} 

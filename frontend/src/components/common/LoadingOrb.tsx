@@ -1,9 +1,8 @@
 import React from 'react';
 
 interface LoadingOrbProps {
-  /** Diameter in CSS pixels. */
   size?: number;
-  /** Accessible status text. Omit for an inline decorative loader. */
+  /** Screen-reader text. Leave unset when the orb is only decorative. */
   label?: string;
   className?: string;
 }

@@ -18,8 +18,13 @@ password_hasher = PasswordHasher()
 
 
 def register(session: Session, payload: RegisterRequest) -> User:
-    if session.scalar(select(User.id).where(User.email == payload.email)):
-        raise AppError("An account with this email already exists", status_code=409, code="email_taken")
+    existing = session.scalar(select(User.id).where(User.email == payload.email))
+    if existing:
+        raise AppError(
+            "An account with this email already exists",
+            status_code=409,
+            code="email_taken",
+        )
     user = User(
         name=payload.name,
         email=payload.email,
@@ -30,19 +35,32 @@ def register(session: Session, payload: RegisterRequest) -> User:
         session.commit()
     except IntegrityError as exc:
         session.rollback()
-        raise AppError("An account with this email already exists", status_code=409, code="email_taken") from exc
+        raise AppError(
+            "An account with this email already exists",
+            status_code=409,
+            code="email_taken",
+        ) from exc
     session.refresh(user)
     return user
 
 
+def _password_matches(user: User | None, password: str) -> bool:
+    if user is None or not user.is_active or not user.password_hash:
+        return False
+    try:
+        return bool(password_hasher.verify(user.password_hash, password))
+    except (VerifyMismatchError, VerificationError):
+        return False
+
+
 def login(session: Session, email: str, password: str, session_days: int) -> tuple[User, str]:
     user = session.scalar(select(User).where(User.email == email.strip().lower()))
-    try:
-        valid = bool(user and user.is_active and user.password_hash and password_hasher.verify(user.password_hash, password))
-    except (VerifyMismatchError, VerificationError):
-        valid = False
-    if not valid or user is None:
-        raise AppError("Incorrect email or password", status_code=401, code="invalid_credentials")
+    if not _password_matches(user, password) or user is None:
+        raise AppError(
+            "Incorrect email or password",
+            status_code=401,
+            code="invalid_credentials",
+        )
     token = create_session(session, user, session_days)
     return user, token
 
@@ -50,24 +68,38 @@ def login(session: Session, email: str, password: str, session_days: int) -> tup
 def create_session(session: Session, user: User, session_days: int) -> str:
     """Create one opaque, revocable application session for any verified identity."""
     token = secrets.token_urlsafe(48)
-    session.add(AuthSession(
-        token_hash=sha256(token.encode()).hexdigest(),
-        user_id=user.id,
-        expires_at=utc_now() + timedelta(days=session_days),
-    ))
+    session.add(
+        AuthSession(
+            token_hash=sha256(token.encode()).hexdigest(),
+            user_id=user.id,
+            expires_at=utc_now() + timedelta(days=session_days),
+        )
+    )
     session.commit()
     return token
 
 
 def current_user(session: Session, token: str | None) -> User:
     if not token:
-        raise AppError("Authentication required", status_code=401, code="authentication_required")
+        raise AppError(
+            "Authentication required",
+            status_code=401,
+            code="authentication_required",
+        )
     auth_session = session.get(AuthSession, sha256(token.encode()).hexdigest())
     if auth_session is None or auth_session.expires_at <= utc_now():
-        raise AppError("Session expired or invalid", status_code=401, code="session_invalid")
+        raise AppError(
+            "Session expired or invalid",
+            status_code=401,
+            code="session_invalid",
+        )
     user = session.get(User, auth_session.user_id)
     if user is None or not user.is_active:
-        raise AppError("Session expired or invalid", status_code=401, code="session_invalid")
+        raise AppError(
+            "Session expired or invalid",
+            status_code=401,
+            code="session_invalid",
+        )
     return user
 
 

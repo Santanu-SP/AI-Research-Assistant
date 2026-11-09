@@ -1,9 +1,6 @@
 /**
- * IngestionStatus: A reusable badge for document ingestion lifecycle states.
- *
- * Supports all current backend statuses (uploaded | processing | indexed | failed)
- * with safe fallback for unknown future statuses.
- * Does NOT display Python stack traces or raw processing_error strings.
+ * Status badge for the ingestion lifecycle. Callers pass a short summary;
+ * the raw processing error is not rendered here.
  */
 import React from 'react';
 import { Clock, Loader2, CheckCircle2, AlertCircle, HelpCircle } from 'lucide-react';
@@ -11,7 +8,6 @@ import { DocumentStatus } from '../../types/document';
 
 interface IngestionStatusProps {
   status: DocumentStatus | string;
-  /** If status is 'failed', an optional user-safe error summary. */
   errorSummary?: string | null;
   size?: 'sm' | 'md';
 }

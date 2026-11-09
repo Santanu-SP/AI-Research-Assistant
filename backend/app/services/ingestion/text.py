@@ -2,7 +2,7 @@ from dataclasses import dataclass
 import re
 from uuid import UUID, uuid4
 
-from app.services.pdf_extraction import ExtractedPage
+from app.services.ingestion.pdf import ExtractedPage
 
 
 CONTROL_CHARACTERS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
@@ -81,6 +81,8 @@ def _split_with_overlap(text: str, chunk_size: int, overlap: int) -> list[str]:
         hard_end = min(start + chunk_size, len(text))
         end = hard_end
         if hard_end < len(text):
+            # Break on a paragraph or sentence only after the window is half
+            # full. An earlier break would leave a tiny chunk and a large overlap.
             preferred = max(
                 text.rfind("\n\n", start, hard_end),
                 text.rfind(". ", start, hard_end),

@@ -9,32 +9,26 @@ export interface ProjectDocumentListParams {
   offset?: number;
 }
 
-/**
- * Documents service for both global and project-scoped endpoints.
- * Global: /api/v1/documents
- * Project-scoped: /api/v1/projects/{projectId}/documents
- */
-export const documentsService = {
-  /**
-   * Fetch all global (non-project-scoped) documents.
-   * GET /api/v1/documents
-   */
-  async getDocuments(params?: ProjectDocumentListParams): Promise<DocumentListResponse> {
-    const query = new URLSearchParams();
-    if (params?.search) query.append('search', params.search);
-    if (params?.status && params.status !== 'all') query.append('status', params.status);
-    if (params?.type && params.type !== 'all') query.append('type', params.type.toLowerCase());
-    if (params?.limit) query.append('limit', params.limit.toString());
-    if (params?.offset) query.append('offset', params.offset.toString());
+const documentListPath = (
+  path: string,
+  params?: ProjectDocumentListParams,
+): string => {
+  const query = new URLSearchParams();
+  if (params?.search) query.append('search', params.search);
+  if (params?.status && params.status !== 'all') query.append('status', params.status);
+  if (params?.type && params.type !== 'all') query.append('type', params.type.toLowerCase());
+  if (params?.limit) query.append('limit', params.limit.toString());
+  if (params?.offset) query.append('offset', params.offset.toString());
 
-    const qs = query.toString();
-    return apiRequest<DocumentListResponse>(qs ? `/documents?${qs}` : '/documents');
+  const serialized = query.toString();
+  return serialized ? `${path}?${serialized}` : path;
+};
+
+export const documentsService = {
+  async getDocuments(params?: ProjectDocumentListParams): Promise<DocumentListResponse> {
+    return apiRequest<DocumentListResponse>(documentListPath('/documents', params));
   },
 
-  /**
-   * Upload a document to the global workspace.
-   * POST /api/v1/documents (multipart/form-data)
-   */
   async uploadDocument(file: File): Promise<Document> {
     const formData = new FormData();
     formData.append('file', file);
@@ -44,10 +38,6 @@ export const documentsService = {
     });
   },
 
-  /**
-   * Delete a global document.
-   * DELETE /api/v1/documents/{id}
-   */
   async deleteDocument(id: string): Promise<boolean> {
     await apiRequest<void>(`/documents/${encodeURIComponent(id)}`, {
       method: 'DELETE',
@@ -55,33 +45,15 @@ export const documentsService = {
     return true;
   },
 
-  // ─── Project-scoped endpoints ────────────────────────────────────────────
-
-  /**
-   * Fetch documents belonging to a specific project.
-   * GET /api/v1/projects/{projectId}/documents
-   */
   async getProjectDocuments(
     projectId: string,
     params?: ProjectDocumentListParams,
     signal?: AbortSignal
   ): Promise<DocumentListResponse> {
-    const query = new URLSearchParams();
-    if (params?.search) query.append('search', params.search);
-    if (params?.status && params.status !== 'all') query.append('status', params.status);
-    if (params?.type && params.type !== 'all') query.append('type', params.type.toLowerCase());
-    if (params?.limit) query.append('limit', params.limit.toString());
-    if (params?.offset) query.append('offset', params.offset.toString());
-
-    const qs = query.toString();
-    const base = `/projects/${encodeURIComponent(projectId)}/documents`;
-    return apiRequest<DocumentListResponse>(qs ? `${base}?${qs}` : base, { signal });
+    const path = `/projects/${encodeURIComponent(projectId)}/documents`;
+    return apiRequest<DocumentListResponse>(documentListPath(path, params), { signal });
   },
 
-  /**
-   * Upload a document to a specific project.
-   * POST /api/v1/projects/{projectId}/documents (multipart/form-data)
-   */
   async uploadProjectDocument(projectId: string, file: File): Promise<Document> {
     const formData = new FormData();
     formData.append('file', file);
@@ -92,23 +64,18 @@ export const documentsService = {
   },
 };
 
-/**
- * Check whether an API error represents a duplicate document.
- * The backend raises HTTP 409 for duplicate files within a project.
- */
 export const isDuplicateDocumentError = (error: unknown): boolean => {
-  if (!(error instanceof ApiError)) return false;
-  if (error.status !== 409) return false;
-  // Check for a stable error code in the response body if available
+  if (!(error instanceof ApiError) || error.status !== 409) return false;
   const data = error.data as { detail?: string; error?: { code?: string } } | null;
   if (data?.error?.code === 'duplicate_document') return true;
-  if (typeof data?.detail === 'string' && data.detail.toLowerCase().includes('duplicate')) return true;
-  return true; // 409 from document endpoints is treated as duplicate
+  if (typeof data?.detail === 'string' && data.detail.toLowerCase().includes('duplicate')) {
+    return true;
+  }
+  // Document routes use 409 only for duplicates, including older bodies
+  // that did not include the stable error code.
+  return true;
 };
 
-/**
- * Map a document API error to a user-safe string.
- */
 export const getDocumentErrorMessage = (
   error: unknown,
   fallback: string

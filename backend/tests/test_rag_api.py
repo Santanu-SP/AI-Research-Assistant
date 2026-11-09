@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.models.report import Source
 from app.models.research import Research
 from app.schemas.retrieval import RetrievalCandidate
-from app.services import rag as rag_service
+from app.services.rag import query as rag_service
 
 
 def candidates() -> list[RetrievalCandidate]:

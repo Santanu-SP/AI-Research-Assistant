@@ -1,12 +1,3 @@
-/**
- * ProjectSourcesPanel: Displays and manages documents for a project.
- *
- * - Lists project-scoped documents from /api/v1/projects/{id}/documents
- * - Supports search filter (wired to backend) and status filter (local)
- * - Upload button (disabled for archived projects)
- * - Polling for ingestion status updates
- * - Empty state, loading skeleton, error retry
- */
 import React, { useCallback, useState } from 'react';
 import {
   Upload,
@@ -94,9 +85,7 @@ export const ProjectSourcesPanel: React.FC<ProjectSourcesPanelProps> = ({
 
   return (
     <div className="space-y-4">
-      {/* Toolbar */}
       <div className="flex flex-col sm:flex-row gap-3">
-        {/* Search */}
         <div className="relative flex-1">
           <Search className="w-4 h-4 text-[#929792] absolute left-3 top-1/2 -translate-y-1/2" />
           <input
@@ -120,7 +109,6 @@ export const ProjectSourcesPanel: React.FC<ProjectSourcesPanelProps> = ({
           )}
         </div>
 
-        {/* Status filter */}
         <select
           aria-label="Filter by ingestion status"
           value={statusFilter}
@@ -134,7 +122,6 @@ export const ProjectSourcesPanel: React.FC<ProjectSourcesPanelProps> = ({
           <option value="failed">Failed</option>
         </select>
 
-        {/* Upload button */}
         {!isArchived && (
           <PrimaryButton
             id="upload-document-btn"
@@ -147,7 +134,6 @@ export const ProjectSourcesPanel: React.FC<ProjectSourcesPanelProps> = ({
         )}
       </div>
 
-      {/* Document count */}
       {!isLoading && !error && (
         <p className="text-xs text-[#929792]">
           {total} document{total !== 1 ? 's' : ''}
@@ -155,7 +141,6 @@ export const ProjectSourcesPanel: React.FC<ProjectSourcesPanelProps> = ({
         </p>
       )}
 
-      {/* Content */}
       {isLoading ? (
         <LoadingState rows={3} />
       ) : error ? (

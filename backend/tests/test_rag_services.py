@@ -9,10 +9,10 @@ import pytest
 from app.core.errors import AppError
 from app.schemas.rag import EvidenceItem
 from app.schemas.retrieval import RetrievalCandidate
-from app.services.citations import CitationValidator
-from app.services.evidence import EvidenceBuilder, evidence_is_sufficient
-from app.services.generation import GenerationService, build_grounding_prompt
-from app.services.reranking import RerankerService
+from app.services.rag.citations import CitationValidator
+from app.services.rag.evidence import EvidenceBuilder, evidence_is_sufficient
+from app.services.rag.generation import GenerationService, build_grounding_prompt
+from app.services.rag.reranking import RerankerService
 
 
 def candidate(index: int, *, chunk_id=None) -> RetrievalCandidate:

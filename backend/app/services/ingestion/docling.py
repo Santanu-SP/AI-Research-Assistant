@@ -1,5 +1,6 @@
 """Official Docling and LlamaIndex adapter for rich local file ingestion."""
 
+from dataclasses import dataclass
 from functools import lru_cache
 from importlib.metadata import PackageNotFoundError, version
 import json
@@ -29,7 +30,7 @@ from transformers import AutoTokenizer
 from app.core.config import Settings
 from app.domain.documents import MetadataProvenance
 from app.domain.ingestion import CanonicalMetadata, ParsedDocument, ParsedNode
-from app.services.ingestion import DocumentIngestionError, stable_node_id
+from app.services.ingestion.pipeline import DocumentIngestionError, stable_node_id
 
 
 DOI_PATTERN = re.compile(r"\b10\.\d{4,9}/[-._;()/:A-Z0-9]+", re.IGNORECASE)
@@ -99,13 +100,16 @@ def _page_count(data: dict[str, Any]) -> int | None:
     return None
 
 
-def _node_grounding(metadata: dict[str, Any]) -> tuple[
-    int | None,
-    int | None,
-    list[str],
-    list[str],
-    list[str],
-]:
+@dataclass(frozen=True)
+class NodeGrounding:
+    page: int | None
+    page_end: int | None
+    headings: list[str]
+    labels: list[str]
+    references: list[str]
+
+
+def _node_grounding(metadata: dict[str, Any]) -> NodeGrounding:
     pages: set[int] = set()
     labels: list[str] = []
     references: list[str] = []
@@ -126,12 +130,12 @@ def _node_grounding(metadata: dict[str, Any]) -> tuple[
         if (cleaned := _clean_text(value))
     ]
     ordered_pages = sorted(pages)
-    return (
-        ordered_pages[0] if ordered_pages else None,
-        ordered_pages[-1] if ordered_pages else None,
-        headings,
-        labels,
-        references,
+    return NodeGrounding(
+        page=ordered_pages[0] if ordered_pages else None,
+        page_end=ordered_pages[-1] if ordered_pages else None,
+        headings=headings,
+        labels=labels,
+        references=references,
     )
 
 
@@ -173,7 +177,12 @@ def canonicalize_docling_output(
         if not text:
             continue
         metadata = dict(llama_node.metadata)
-        page, page_end, headings, labels, references = _node_grounding(metadata)
+        grounding = _node_grounding(metadata)
+        page = grounding.page
+        page_end = grounding.page_end
+        headings = grounding.headings
+        labels = grounding.labels
+        references = grounding.references
         captions = [
             cleaned
             for value in metadata.get("captions", [])

@@ -1,7 +1,4 @@
-/**
- * Frontend types for ResearchProject, mirroring backend schemas/projects.py.
- * All field names match the camelCase API response (backend uses alias mode).
- */
+/** CamelCase matches the API aliases from the project schemas. */
 
 export interface ResearchProject {
   id: string;

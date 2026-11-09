@@ -28,18 +28,18 @@ from app.domain.documents import (
 from app.domain.ingestion import CanonicalMetadata, ParsedDocument, ParsedNode
 from app.models.document import Document, DocumentChunk
 from app.schemas.retrieval import RetrievalCandidate
-from app.services import documents as document_service
-from app.services import ingestion as ingestion_service
-from app.services.docling_ingestion import (
+from app.services.documents import records as document_service
+from app.services.ingestion import pipeline as ingestion_service
+from app.services.ingestion.docling import (
     DoclingIngestionAdapter,
     MarkdownTableSerializerProvider,
     canonicalize_docling_output,
 )
-from app.services.ingestion import DocumentIngestionError, stable_node_id
-from app.services.evidence import EvidenceBuilder
-from app.services.reranking import RerankerService
-from app.services.retrieval import RankedChunk, fuse
-from app.services.storage import LocalDocumentStorage
+from app.services.ingestion.pipeline import DocumentIngestionError, stable_node_id
+from app.services.rag.evidence import EvidenceBuilder
+from app.services.rag.reranking import RerankerService
+from app.services.rag.retrieval import RankedChunk, fuse
+from app.services.documents.storage import LocalDocumentStorage
 
 
 DOCX_MIME = (
@@ -241,7 +241,7 @@ def test_legacy_ingestion_fallback_is_explicitly_logged(
         update={"document_ingestion_backend": "legacy"}
     )
 
-    with caplog.at_level(logging.WARNING, logger="app.services.ingestion"):
+    with caplog.at_level(logging.WARNING, logger="app.services.ingestion.pipeline"):
         adapter = ingestion_service.ingestion_adapter_for(settings)
 
     assert adapter.__class__.__name__ == "LegacyPdfIngestionAdapter"

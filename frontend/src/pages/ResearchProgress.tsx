@@ -75,7 +75,6 @@ export const ResearchProgressPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#fafaf8] flex flex-col">
-      {/* TopBar */}
       <TopBar
         breadcrumbs={
           <div className="flex items-center gap-2">
@@ -106,10 +105,8 @@ export const ResearchProgressPage: React.FC = () => {
         }
       />
 
-      {/* Main Container */}
       <main className="flex-1 pt-14 pb-16 px-4 sm:px-6">
         <div className="max-w-5xl mx-auto py-8">
-          {/* Header Metadata */}
           <div className="mb-6">
             <div className="flex flex-wrap items-center gap-2 text-xs text-[#6b706c] mb-2 font-mono">
               <span className="text-[#163328] font-semibold">{progress.id}</span>
@@ -128,7 +125,6 @@ export const ResearchProgressPage: React.FC = () => {
             </h1>
           </div>
 
-          {/* Stepper Component */}
           <ProgressStepper progress={progress} />
           
         </div>

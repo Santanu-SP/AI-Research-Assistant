@@ -99,7 +99,6 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
         className="w-full max-w-lg bg-white rounded-xl shadow-xl border border-[#e5e7e4] overflow-hidden animate-in fade-in zoom-in-95 duration-150"
         onMouseDown={(e) => e.stopPropagation()}
       >
-        {/* Modal Header */}
         <div className="px-6 py-4 border-b border-[#e5e7e4] flex items-center justify-between">
           <div>
             <h3 id="upload-document-title" className="font-semibold text-base text-[#181a18]">
@@ -119,7 +118,6 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
           </button>
         </div>
 
-        {/* Modal Body */}
         <div className="p-6">
           <input
             ref={fileInputRef}
@@ -129,7 +127,6 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
             className="hidden"
           />
 
-          {/* Dropzone */}
           <div
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
@@ -187,7 +184,6 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
             )}
           </div>
 
-          {/* Error notice */}
           {uploadError && (
             <div className="mt-3 flex items-center gap-2 text-xs text-[#b91c1c] bg-[#fee2e2]/50 p-2.5 rounded-lg border border-[#fecaca]">
               <AlertCircle className="w-4 h-4 shrink-0" />
@@ -195,7 +191,6 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
             </div>
           )}
 
-          {/* Information badge */}
           <div className="mt-4 p-3 bg-[#fafaf8] border border-[#e5e7e4] rounded-lg text-xs text-[#6b706c] flex items-start gap-2">
             <Check className="w-4 h-4 text-[#163328] shrink-0 mt-0.5" />
             <div>
@@ -205,7 +200,6 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
           </div>
         </div>
 
-        {/* Modal Footer */}
         <div className="px-6 py-3.5 bg-[#fafaf8] border-t border-[#e5e7e4] flex items-center justify-end gap-2.5">
           <button
             type="button"

@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.models.user import User
-from app.services.google_auth import GoogleIdentity
+from app.services.auth.google import GoogleIdentity
 
 
 def _start_state(client: TestClient) -> str:
@@ -21,7 +21,7 @@ def test_google_status_does_not_expose_credentials(anonymous_client: TestClient)
 
 
 def test_google_callback_creates_user_and_application_session(anonymous_client: TestClient, monkeypatch) -> None:
-    from app.services import google_auth
+    from app.services.auth import google as google_auth
 
     monkeypatch.setattr(google_auth, "verify_google_identity", lambda *_: GoogleIdentity("google-sub-1", "google@example.com", "Google User"))
     state = _start_state(anonymous_client)
@@ -48,7 +48,7 @@ def test_google_callback_cancellation_returns_to_popup_completion(anonymous_clie
 
 
 def test_google_login_links_existing_password_user(anonymous_client: TestClient, db_session_factory: sessionmaker[Session], monkeypatch) -> None:
-    from app.services import google_auth
+    from app.services.auth import google as google_auth
 
     registered = anonymous_client.post("/api/v1/auth/register", json={"name": "Local", "email": "same@example.com", "password": "long-password-123"})
     assert registered.status_code == 201

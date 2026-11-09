@@ -1,11 +1,3 @@
-/**
- * SourceCard (DocumentCard): Reusable card for a project document/source.
- *
- * Renders only fields that have real values from the backend.
- * Does not show: internal local paths (source_uri), raw processing stack traces.
- * Architecture is future-ready for multiple source types but only exposes
- * actions backend actually supports.
- */
 import React from 'react';
 import { FileText, Trash2 } from 'lucide-react';
 import { Document } from '../../types/document';
@@ -62,12 +54,10 @@ export const SourceCard: React.FC<SourceCardProps> = ({
       className="bg-white border border-[#e5e7e4] rounded-xl p-4 flex flex-col sm:flex-row sm:items-start gap-4 hover:border-[#cbd0ca] hover:shadow-xs transition-all duration-150"
       data-document-id={document.id}
     >
-      {/* File icon */}
       <div className="w-9 h-9 rounded-lg bg-[#f1f6f3] flex items-center justify-center shrink-0">
         <FileText className="w-5 h-5 text-[#163328]" />
       </div>
 
-      {/* Main content */}
       <div className="flex-1 min-w-0">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
@@ -93,7 +83,6 @@ export const SourceCard: React.FC<SourceCardProps> = ({
           )}
         </div>
 
-        {/* Metadata row */}
         <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
           <IngestionStatus
             status={document.ingestionStatus}
@@ -108,7 +97,6 @@ export const SourceCard: React.FC<SourceCardProps> = ({
           )}
         </div>
 
-        {/* Secondary metadata row */}
         <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[#929792]">
           <span>{formatSize(document.size)}</span>
           {document.pageCount && document.pageCount > 0 && (
