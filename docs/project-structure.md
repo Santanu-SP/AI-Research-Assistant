@@ -52,9 +52,6 @@ Document upload stores the file, enqueues a job and returns `202`; the worker co
 
 PPTX and other file types, URL ingestion, DOI lookup, stricter structured generation, LangGraph, and Ragas are not implemented.
 
-## Deployment files
+## CI
 
-- `backend/Dockerfile` and `backend/docker-entrypoint.sh` — non-root API/worker image with CPU PyTorch; runs `alembic upgrade head` before starting.
-- `frontend/Dockerfile` and `frontend/nginx.conf` — static build served by unprivileged nginx with security headers, proxying `/api`.
-- `docker-compose.yml` — PostgreSQL + pgvector, Ollama, API, optional worker, and web.
-- `.github/workflows/ci.yml` and `.github/dependabot.yml` — CI and dependency updates.
+- `.github/workflows/ci.yml` — backend tests, PostgreSQL + pgvector, frontend checks, and security scans.
