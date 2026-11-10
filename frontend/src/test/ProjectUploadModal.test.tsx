@@ -12,6 +12,8 @@ vi.mock('../services/documents.service', () => ({
   },
   isDuplicateDocumentError: vi.fn().mockReturnValue(false),
   getDocumentErrorMessage: vi.fn().mockReturnValue('Upload failed.'),
+  isDocumentPending: (doc: { status: string }) =>
+    doc.status === 'uploaded' || doc.status === 'processing',
 }));
 
 import { documentsService, isDuplicateDocumentError } from '../services/documents.service';
@@ -97,6 +99,22 @@ describe('ProjectUploadModal', () => {
     await waitFor(() => {
       expect(onUploaded).toHaveBeenCalledWith(fixture);
     });
+  });
+
+  it('shows a queued (202) upload as processing rather than indexed', async () => {
+    const fixture = makeDocument({ status: 'uploaded', ingestionStatus: 'uploaded' });
+    vi.mocked(documentsService.uploadProjectDocument).mockResolvedValue(fixture);
+
+    const { onUploaded } = renderModal();
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    Object.defineProperty(input, 'files', { value: [makeFile()], configurable: true });
+    fireEvent.change(input);
+    await waitFor(() => expect(screen.getByText(/Upload 1 file/i)).toBeInTheDocument());
+    fireEvent.click(screen.getByText(/Upload 1 file/i));
+
+    await waitFor(() => expect(onUploaded).toHaveBeenCalledWith(fixture));
+    expect(screen.getByText('Uploaded · processing')).toBeInTheDocument();
+    expect(screen.queryByText('Indexed')).not.toBeInTheDocument();
   });
 
   it('marks duplicate errors correctly via isDuplicateDocumentError utility', () => {

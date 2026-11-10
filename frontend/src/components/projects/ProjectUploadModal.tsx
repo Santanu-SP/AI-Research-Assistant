@@ -5,6 +5,7 @@ import {
   documentsService,
   getDocumentErrorMessage,
   isDuplicateDocumentError,
+  isDocumentPending,
 } from '../../services/documents.service';
 import { Document } from '../../types/document';
 import { useToast } from '../../app/ToastContext';
@@ -73,7 +74,7 @@ const StatusIcon: React.FC<{ status: FileItemStatus }> = ({ status }) => {
 const STATUS_LABELS: Record<FileItemStatus, string> = {
   waiting: 'Waiting',
   uploading: 'Uploading…',
-  processing: 'Processing…',
+  processing: 'Uploaded · processing',
   done: 'Indexed',
   duplicate: 'Already exists',
   failed: 'Failed',
@@ -154,18 +155,25 @@ export const ProjectUploadModal: React.FC<ProjectUploadModalProps> = ({
           item.file
         );
 
-        // Mark as processing while backend ingests
+        // A 202 response means the file is stored and queued for the worker;
+        // the sources list keeps polling until it is indexed or fails.
+        const nextStatus: FileItemStatus = isDocumentPending(doc)
+          ? 'processing'
+          : doc.status === 'failed'
+            ? 'failed'
+            : 'done';
         setQueue((prev) =>
           prev.map((q) =>
-            q.id === item.id ? { ...q, status: 'processing' } : q
-          )
-        );
-
-        // The backend returns immediately after storing; ingestion is async.
-        // We optimistically show 'done' and let the list polling update the real status.
-        setQueue((prev) =>
-          prev.map((q) =>
-            q.id === item.id ? { ...q, status: 'done' } : q
+            q.id === item.id
+              ? {
+                  ...q,
+                  status: nextStatus,
+                  errorMessage:
+                    nextStatus === 'failed'
+                      ? doc.processingError || 'Processing failed.'
+                      : undefined,
+                }
+              : q
           )
         );
         onUploaded(doc);
@@ -208,7 +216,11 @@ export const ProjectUploadModal: React.FC<ProjectUploadModalProps> = ({
   const allDone =
     queue.length > 0 &&
     queue.every(
-      (q) => q.status === 'done' || q.status === 'duplicate' || q.status === 'failed'
+      (q) =>
+        q.status === 'done' ||
+        q.status === 'processing' ||
+        q.status === 'duplicate' ||
+        q.status === 'failed'
     );
 
   return (

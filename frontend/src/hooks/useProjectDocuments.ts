@@ -5,14 +5,15 @@ import {
   documentsService,
   getDocumentErrorMessage,
 } from '../services/documents.service';
-
-const POLL_INTERVAL_MS = 4000;
+import { activeIngestionKey, useBackoffPolling } from './useBackoffPolling';
 
 export interface UseProjectDocumentsResult {
   documents: Document[];
   total: number;
   isLoading: boolean;
   error: string | null;
+  /** True when documents are still processing but polling has given up. */
+  pollingStopped: boolean;
   reload: () => void;
 }
 
@@ -26,6 +27,9 @@ export function useProjectDocuments(
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const abortRef = useRef<AbortController | null>(null);
+  const search = params?.search;
+  const status = params?.status;
+  const type = params?.type;
 
   const reload = useCallback(() => {
     setReloadKey((k) => k + 1);
@@ -50,7 +54,7 @@ export function useProjectDocuments(
     setError(null);
 
     documentsService
-      .getProjectDocuments(projectId, params, controller.signal)
+      .getProjectDocuments(projectId, { search, status, type }, controller.signal)
       .then((res: DocumentListResponse) => {
         if (controller.signal.aborted) return;
         setDocuments(res.items);
@@ -71,32 +75,22 @@ export function useProjectDocuments(
     return () => {
       controller.abort();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, reloadKey, params?.search, params?.status, params?.type]);
+  }, [projectId, reloadKey, search, status, type]);
 
-  // Polling while any document is in UPLOADED or PROCESSING state
-  useEffect(() => {
+  const refreshSilently = useCallback(async () => {
     if (!projectId) return;
-    const hasActiveIngestion = documents.some(
-      (d) => d.status === 'uploaded' || d.status === 'processing'
-    );
-    if (!hasActiveIngestion) return;
+    const res = await documentsService.getProjectDocuments(projectId, { search, status, type });
+    setDocuments(res.items);
+    setTotal(res.total);
+  }, [projectId, search, status, type]);
 
-    const intervalId = window.setInterval(() => {
-      void documentsService
-        .getProjectDocuments(projectId, params)
-        .then((res: DocumentListResponse) => {
-          setDocuments(res.items);
-          setTotal(res.total);
-        })
-        .catch(() => {
-          // Silent polling failure – do not overwrite the visible error
-        });
-    }, POLL_INTERVAL_MS);
+  // Poll with backoff while any document is uploaded or processing.
+  const pendingKey = activeIngestionKey(documents);
+  const { timedOut } = useBackoffPolling(
+    Boolean(projectId) && pendingKey !== '',
+    refreshSilently,
+    `${projectId}:${pendingKey}`,
+  );
 
-    return () => window.clearInterval(intervalId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, documents]);
-
-  return { documents, total, isLoading, error, reload };
+  return { documents, total, isLoading, error, pollingStopped: timedOut, reload };
 }

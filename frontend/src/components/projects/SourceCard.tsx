@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, Trash2 } from 'lucide-react';
+import { FileText, RotateCcw, Trash2 } from 'lucide-react';
 import { Document } from '../../types/document';
 import { IngestionStatus } from '../common/IngestionStatus';
 import { SourceTypeLabel, ContentLevelLabel } from '../common/SourceTypeLabel';
@@ -7,6 +7,8 @@ import { SourceTypeLabel, ContentLevelLabel } from '../common/SourceTypeLabel';
 interface SourceCardProps {
   document: Document;
   onDelete?: (id: string) => void;
+  onRetry?: (id: string) => void;
+  isRetrying?: boolean;
   isArchived?: boolean;
 }
 
@@ -44,6 +46,8 @@ const safeErrorSummary = (error: string | null | undefined): string | null => {
 export const SourceCard: React.FC<SourceCardProps> = ({
   document,
   onDelete,
+  onRetry,
+  isRetrying = false,
   isArchived = false,
 }) => {
   const displayName = document.title || document.name;
@@ -71,6 +75,19 @@ export const SourceCard: React.FC<SourceCardProps> = ({
             )}
           </div>
 
+          <div className="flex items-center gap-1 shrink-0">
+          {onRetry && !isArchived && document.status === 'failed' && (
+            <button
+              type="button"
+              aria-label={`Retry processing: ${displayName}`}
+              title="Retry processing"
+              disabled={isRetrying}
+              onClick={() => onRetry(document.id)}
+              className="shrink-0 p-1.5 text-[#929792] hover:text-[#163328] hover:bg-[#f1f6f3] rounded-md transition-colors disabled:opacity-50"
+            >
+              <RotateCcw className={`w-3.5 h-3.5 ${isRetrying ? 'animate-spin' : ''}`} />
+            </button>
+          )}
           {onDelete && !isArchived && (
             <button
               type="button"
@@ -81,6 +98,7 @@ export const SourceCard: React.FC<SourceCardProps> = ({
               <Trash2 className="w-3.5 h-3.5" />
             </button>
           )}
+          </div>
         </div>
 
         <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">

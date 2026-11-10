@@ -1,5 +1,5 @@
 import { Document, DocumentListResponse } from '../types/document';
-import { ApiError, apiRequest } from './api';
+import { ApiError, UPLOAD_REQUEST_TIMEOUT_MS, apiErrorCode, apiErrorMessage, apiRequest } from './api';
 
 export interface ProjectDocumentListParams {
   search?: string;
@@ -35,6 +35,7 @@ export const documentsService = {
     return apiRequest<Document>('/documents', {
       method: 'POST',
       body: formData,
+      timeoutMs: UPLOAD_REQUEST_TIMEOUT_MS,
     });
   },
 
@@ -59,15 +60,28 @@ export const documentsService = {
     formData.append('file', file);
     return apiRequest<Document>(
       `/projects/${encodeURIComponent(projectId)}/documents`,
-      { method: 'POST', body: formData }
+      { method: 'POST', body: formData, timeoutMs: UPLOAD_REQUEST_TIMEOUT_MS }
     );
   },
+
+  /** Queue a failed document for another ingestion attempt. */
+  async retryDocument(id: string): Promise<Document> {
+    return apiRequest<Document>(`/documents/${encodeURIComponent(id)}/retry`, {
+      method: 'POST',
+    });
+  },
 };
+
+/** True while the server is still parsing and indexing the document. */
+export const isDocumentPending = (document: Pick<Document, 'status'>): boolean =>
+  document.status === 'uploaded' || document.status === 'processing';
 
 export const isDuplicateDocumentError = (error: unknown): boolean => {
   if (!(error instanceof ApiError) || error.status !== 409) return false;
   const data = error.data as { detail?: string; error?: { code?: string } } | null;
   if (data?.error?.code === 'duplicate_document') return true;
+  // Other 409s (for example document_not_retryable) carry their own code.
+  if (data?.error?.code) return false;
   if (typeof data?.detail === 'string' && data.detail.toLowerCase().includes('duplicate')) {
     return true;
   }
@@ -86,10 +100,17 @@ export const getDocumentErrorMessage = (
   if (error instanceof ApiError) {
     if (error.status === 403) return 'You do not have permission to upload to this project.';
     if (error.status === 413) return 'File is too large to upload.';
+    if (error.status === 429) return 'Too many uploads. Please wait a minute and try again.';
+    if (apiErrorCode(error) === 'document_not_retryable') {
+      return 'Only documents that failed processing can be retried.';
+    }
+    if (apiErrorCode(error) === 'document_file_missing') {
+      return 'The original file is no longer available. Delete the document and upload it again.';
+    }
     if (error.status === 422) {
       const data = error.data as { detail?: unknown } | null;
       if (typeof data?.detail === 'string') return data.detail;
     }
   }
-  return fallback;
+  return apiErrorMessage(error, fallback);
 };
