@@ -81,7 +81,13 @@ def test_documents_and_research_are_isolated_by_owner(anonymous_client: TestClie
     })
     assert uploaded.status_code == 201
     document_id = uploaded.json()["id"]
-    assert client.get(f"/api/v1/documents/{document_id}/file").status_code == 200
+    served = client.get(f"/api/v1/documents/{document_id}/file")
+    assert served.status_code == 200
+    assert served.headers["content-disposition"].startswith("inline")
+    assert served.headers["cache-control"] == "private, no-store"
+    assert served.headers["x-content-type-options"] == "nosniff"
+    # The PDF viewer must not be blocked by the API's default-src 'none'.
+    assert served.headers["content-security-policy"] == "frame-ancestors 'none'"
     assert client.post("/api/v1/auth/logout").status_code == 204
     assert client.post("/api/v1/auth/login", json={
         "email": "bob@example.com", "password": "long-password-123",

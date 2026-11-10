@@ -6,6 +6,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import CurrentUser, validate_origin
+from app.core import rate_limit
 from app.core.errors import AppError
 from app.db.session import get_db
 from app.schemas.auth import LoginRequest, RegisterRequest, UserResponse
@@ -40,14 +41,41 @@ def _google_error_redirect(request: Request, code: str) -> RedirectResponse:
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 def register(payload: RegisterRequest, session: DatabaseSession, request: Request) -> UserResponse:
     validate_origin(request)
+    settings = request.app.state.settings
+    rate_limit.enforce(
+        request,
+        "register",
+        key=rate_limit.client_ip(request),
+        limit=settings.rate_limit_register_per_hour,
+        window_seconds=3600,
+    )
     return auth_service.register(session, payload)
 
 
 @router.post("/login", response_model=UserResponse)
 def login(payload: LoginRequest, session: DatabaseSession, request: Request, response: Response) -> UserResponse:
     validate_origin(request)
+    settings = request.app.state.settings
+    rate_limit.enforce(
+        request,
+        "login-ip",
+        key=rate_limit.client_ip(request),
+        limit=settings.rate_limit_login_per_minute,
+        window_seconds=60,
+    )
+    rate_limit.enforce(
+        request,
+        "login-account",
+        key=payload.email.strip().lower(),
+        limit=settings.rate_limit_login_per_account_per_hour,
+        window_seconds=3600,
+    )
     user, token = auth_service.login(
-        session, payload.email, payload.password, request.app.state.settings.auth_session_days
+        session,
+        payload.email,
+        payload.password,
+        settings.auth_session_days,
+        max_sessions=settings.auth_max_sessions_per_user,
     )
     _set_session_cookie(response, token, request)
     return user
@@ -55,6 +83,13 @@ def login(payload: LoginRequest, session: DatabaseSession, request: Request, res
 
 @router.get("/google/start")
 def google_start(session: DatabaseSession, request: Request) -> RedirectResponse:
+    rate_limit.enforce(
+        request,
+        "oauth-start",
+        key=rate_limit.client_ip(request),
+        limit=request.app.state.settings.rate_limit_oauth_start_per_minute,
+        window_seconds=60,
+    )
     return RedirectResponse(google_auth.start_url(session, request.app.state.settings), status_code=303)
 
 
@@ -78,7 +113,12 @@ def google_callback(
         google_auth.consume_state(session, state)
         identity = google_auth.verify_google_identity(code, request.app.state.settings)
         user = google_auth.resolve_google_user(session, identity)
-        token = auth_service.create_session(session, user, request.app.state.settings.auth_session_days)
+        token = auth_service.create_session(
+            session,
+            user,
+            request.app.state.settings.auth_session_days,
+            max_sessions=request.app.state.settings.auth_max_sessions_per_user,
+        )
     except AppError as exc:
         return _google_error_redirect(request, exc.code)
     response = RedirectResponse(
@@ -98,4 +138,15 @@ def me(user: CurrentUser) -> UserResponse:
 def logout(session: DatabaseSession, request: Request, response: Response) -> None:
     validate_origin(request)
     auth_service.logout(session, request.cookies.get(auth_service.SESSION_COOKIE))
+    response.delete_cookie(auth_service.SESSION_COOKIE, path="/api/v1")
+
+
+@router.post("/logout-all", status_code=status.HTTP_204_NO_CONTENT)
+def logout_all(
+    user: CurrentUser,
+    session: DatabaseSession,
+    response: Response,
+) -> None:
+    """Sign out of every device by revoking all of this user's sessions."""
+    auth_service.logout_everywhere(session, user)
     response.delete_cookie(auth_service.SESSION_COOKIE, path="/api/v1")

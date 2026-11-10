@@ -301,11 +301,16 @@ def _cached_docling_adapter(
     cache_dir: str | None,
     chunk_max_tokens: int,
     ocr_mode: str,
+    revision: str = "main",
+    trust_remote_code: bool = False,
 ) -> DoclingIngestionAdapter:
+    # Pinned to the same revision as the embedding model so chunk token
+    # counts match what the embedder sees.
     hf_tokenizer = AutoTokenizer.from_pretrained(
         embedding_model_name,
         cache_dir=cache_dir,
-        trust_remote_code=True,
+        revision=revision,
+        trust_remote_code=trust_remote_code,
     )
     tokenizer = HuggingFaceTokenizer(
         tokenizer=hf_tokenizer,
@@ -336,4 +341,6 @@ def docling_adapter_for(settings: Settings) -> DoclingIngestionAdapter:
         str(settings.model_cache_dir) if settings.model_cache_dir else None,
         settings.document_chunk_max_tokens,
         settings.docling_ocr_mode,
+        settings.embedding_model_revision,
+        settings.model_trust_remote_code,
     )

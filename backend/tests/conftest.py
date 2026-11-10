@@ -13,6 +13,11 @@ from app.db.session import create_db_engine, create_session_factory
 from app.main import create_app
 import app.models  # noqa: F401 - registers models with Base metadata
 
+# Browsers send Origin on every state-changing request; the API now rejects
+# unsafe requests without it, so the test clients behave like the frontend.
+FRONTEND_ORIGIN = "http://localhost:3000"
+FRONTEND_HEADERS = {"Origin": FRONTEND_ORIGIN}
+
 
 @pytest.fixture
 def upload_dir(tmp_path: Path) -> Path:
@@ -33,6 +38,9 @@ def test_settings(tmp_path: Path, upload_dir: Path) -> Settings:
         embedding_enabled=False,
         google_client_id="test-google-client",
         google_client_secret="test-google-secret",
+        ingestion_mode="inline",
+        worker_enabled=False,
+        rate_limit_enabled=False,
     )
 
 
@@ -70,7 +78,7 @@ def test_app(test_settings: Settings) -> Generator[FastAPI, None, None]:
 
 @pytest.fixture
 def client(test_app: FastAPI) -> Generator[TestClient, None, None]:
-    with TestClient(test_app) as test_client:
+    with TestClient(test_app, headers=FRONTEND_HEADERS) as test_client:
         registered = test_client.post("/api/v1/auth/register", json={
             "name": "Test Researcher", "email": "researcher@example.com", "password": "test-password-123",
         })
@@ -84,5 +92,5 @@ def client(test_app: FastAPI) -> Generator[TestClient, None, None]:
 
 @pytest.fixture
 def anonymous_client(test_app: FastAPI) -> Generator[TestClient, None, None]:
-    with TestClient(test_app) as test_client:
+    with TestClient(test_app, headers=FRONTEND_HEADERS) as test_client:
         yield test_client

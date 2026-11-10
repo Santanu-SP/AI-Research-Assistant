@@ -41,7 +41,12 @@ LOCAL_NETWORK_ORIGIN_REGEX = (
 
 class Settings(BaseSettings):
     app_name: str = "AI Research Assistant API"
-    app_environment: str = "development"
+    # Production is the safe default. Local development opts in explicitly
+    # with APP_ENVIRONMENT=development (see .env.example).
+    app_environment: Literal["production", "development", "test"] = "production"
+    log_level: str = "INFO"
+    log_json: bool = False
+    enable_api_docs: bool | None = None
     api_v1_prefix: str = "/api/v1"
     database_url: str = DEFAULT_DATABASE_URL
     # These optional values support the connection details copied from the
@@ -77,13 +82,19 @@ class Settings(BaseSettings):
     document_chunk_max_tokens: int = Field(default=512, ge=64, le=8192)
     docling_ocr_mode: Literal["auto", "disabled", "force"] = "auto"
     auth_session_days: int = Field(default=7, ge=1, le=30)
-    auth_cookie_secure: bool = False
+    # Unset means "secure in production, plain HTTP everywhere else".
+    auth_cookie_secure: bool | None = None
+    auth_max_sessions_per_user: int = Field(default=10, ge=1, le=100)
     frontend_url: str = "http://localhost:3000"
     google_client_id: str | None = None
     google_client_secret: str | None = None
     google_redirect_uri: str = "http://localhost:8000/api/v1/auth/google/callback"
     google_oauth_state_minutes: int = Field(default=10, ge=1, le=30)
     embedding_model_name: str = "Qwen/Qwen3-Embedding-0.6B"
+    # Pinned Hugging Face commits so a changed upstream repo cannot swap the
+    # model (or its code) underneath the app. Use "main" to opt out.
+    embedding_model_revision: str = "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3"
+    model_trust_remote_code: bool = False
     model_device: str = "auto"
     model_cache_dir: Path | None = None
     embedding_batch_size: int = Field(default=8, ge=1, le=128)
@@ -93,6 +104,7 @@ class Settings(BaseSettings):
     hybrid_candidate_k: int = Field(default=24, ge=1, le=30)
     embedding_enabled: bool = True
     reranker_model_name: str = "Qwen/Qwen3-Reranker-0.6B"
+    reranker_model_revision: str = "e61197ed45024b0ed8a2d74b80b4d909f1255473"
     reranker_batch_size: int = Field(default=8, ge=1, le=64)
     final_context_k: int = Field(default=8, ge=1, le=12)
     minimum_evidence_count: int = Field(default=1, ge=1, le=8)
@@ -103,6 +115,9 @@ class Settings(BaseSettings):
     generation_max_new_tokens: int = Field(default=768, ge=64, le=4096)
     generation_temperature: float = Field(default=0.1, ge=0.0, le=1.0)
     generation_timeout_seconds: float = Field(default=120.0, gt=0.0, le=600.0)
+    generation_connect_timeout_seconds: float = Field(default=5.0, gt=0.0, le=60.0)
+    generation_max_retries: int = Field(default=2, ge=0, le=5)
+    generation_model_check_ttl_seconds: int = Field(default=300, ge=0)
     cors_origins: list[str] = Field(
         default_factory=lambda: [
             "http://localhost:3000",
@@ -110,7 +125,38 @@ class Settings(BaseSettings):
         ]
     )
     cors_origin_regex: str | None = None
-    cors_allow_local_network: bool = True
+    # Private-LAN origins are an explicit development opt-in only.
+    cors_allow_local_network: bool = False
+    # Reject cookie-authenticated unsafe requests that carry neither an
+    # Origin nor a Referer header (defence in depth on top of SameSite=Lax).
+    require_origin_header: bool = True
+    # Requests larger than this are refused before the body is parsed.
+    # Uploads may use document_max_upload_bytes plus multipart overhead.
+    max_json_body_bytes: int = Field(default=1024 * 1024, ge=1024)
+    # Database pool. Sized above the default 40-thread FastAPI worker pool so
+    # sync endpoints never queue on a connection for long.
+    db_pool_size: int = Field(default=20, ge=1, le=200)
+    db_max_overflow: int = Field(default=30, ge=0, le=200)
+    db_pool_timeout_seconds: float = Field(default=10.0, gt=0.0, le=120.0)
+    # In-process rate limiting (per worker process).
+    rate_limit_enabled: bool = True
+    rate_limit_login_per_minute: int = Field(default=10, ge=1)
+    rate_limit_login_per_account_per_hour: int = Field(default=30, ge=1)
+    rate_limit_register_per_hour: int = Field(default=20, ge=1)
+    rate_limit_query_per_minute: int = Field(default=12, ge=1)
+    rate_limit_upload_per_minute: int = Field(default=20, ge=1)
+    rate_limit_oauth_start_per_minute: int = Field(default=20, ge=1)
+    trust_forwarded_for: bool = False
+    # Background jobs. "background" hands ingestion and research runs to the
+    # in-process worker; "inline" keeps the old request-bound behaviour.
+    ingestion_mode: Literal["background", "inline"] = "background"
+    worker_enabled: bool = True
+    worker_threads: int = Field(default=1, ge=1, le=8)
+    worker_poll_seconds: float = Field(default=2.0, gt=0.0, le=60.0)
+    job_max_attempts: int = Field(default=3, ge=1, le=10)
+    job_stale_after_seconds: int = Field(default=900, ge=30)
+    maintenance_interval_seconds: int = Field(default=600, ge=10)
+    model_warmup_on_startup: bool = False
 
     @field_validator("google_client_id", "google_client_secret", mode="before")
     @classmethod
@@ -167,6 +213,8 @@ class Settings(BaseSettings):
             raise ValueError(
                 "document_chunk_overlap must be smaller than document_chunk_size"
             )
+        if self.auth_cookie_secure is None:
+            self.auth_cookie_secure = self.app_environment == "production"
         if self.app_environment == "production" and not self.auth_cookie_secure:
             raise ValueError("AUTH_COOKIE_SECURE must be true in production")
         if (self.google_client_id is None) != (self.google_client_secret is None):
@@ -174,6 +222,12 @@ class Settings(BaseSettings):
         if self.generation_runtime != "ollama":
             raise ValueError("GENERATION_RUNTIME must be ollama")
         return self
+
+    @property
+    def api_docs_enabled(self) -> bool:
+        if self.enable_api_docs is not None:
+            return self.enable_api_docs
+        return self.app_environment != "production"
 
     @property
     def effective_cors_origin_regex(self) -> str | None:
