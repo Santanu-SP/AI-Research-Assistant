@@ -1,0 +1,115 @@
+# Local, single-machine deployment: PostgreSQL + pgvector, Ollama, the API
+# (with its in-process ingestion/research worker) and the web app behind nginx.
+#
+#   cp .env.example .env            # then set POSTGRES_PASSWORD at least
+#   docker compose up -d --build
+#   docker compose exec ollama ollama pull qwen3.5:9b
+#   open http://localhost:8080
+#
+# Optional: run the worker in its own container and keep the API process light:
+#   API_WORKER_ENABLED=false docker compose --profile worker up -d
+name: ai-research-assistant
+
+x-backend-env: &backend-env
+  APP_ENVIRONMENT: ${APP_ENVIRONMENT:-production}
+  DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-ara}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-ara}
+  OLLAMA_BASE_URL: http://ollama:11434
+  GENERATION_MODEL_NAME: ${GENERATION_MODEL_NAME:-qwen3.5:9b}
+  DOCUMENT_UPLOAD_DIR: /data/uploads
+  HF_HOME: /models
+  FRONTEND_URL: ${PUBLIC_URL:-http://localhost:8080}
+  CORS_ORIGINS: '["${PUBLIC_URL:-http://localhost:8080}"]'
+  # Browsers accept Secure cookies on http://localhost. Anywhere else, put
+  # TLS in front of the web container.
+  AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-true}
+  # nginx overwrites X-Forwarded-For with the real client address.
+  TRUST_FORWARDED_FOR: "true"
+  GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+  GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+  GOOGLE_REDIRECT_URI: ${PUBLIC_URL:-http://localhost:8080}/api/v1/auth/google/callback
+  LOG_JSON: ${LOG_JSON:-true}
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ara}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-ara}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ara} -d ${POSTGRES_DB:-ara}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    volumes:
+      - ollama-data:/root/.ollama
+    # Uncomment on a machine with an NVIDIA GPU and the container toolkit.
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    environment:
+      <<: *backend-env
+      WORKER_ENABLED: ${API_WORKER_ENABLED:-true}
+      FORWARDED_ALLOW_IPS: "*"
+    volumes:
+      - uploads:/data
+      - models:/models
+    depends_on:
+      db:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    # Not published: the web container proxies /api to it.
+    expose:
+      - "8000"
+
+  worker:
+    profiles: ["worker"]
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: ["worker"]
+    restart: unless-stopped
+    environment:
+      <<: *backend-env
+      WORKER_ENABLED: "true"
+      WORKER_THREADS: ${WORKER_THREADS:-1}
+    volumes:
+      - uploads:/data
+      - models:/models
+    depends_on:
+      api:
+        condition: service_healthy
+
+  web:
+    build:
+      context: frontend
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-8080}:8080"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  db-data:
+  ollama-data:
+  uploads:
+  models:
