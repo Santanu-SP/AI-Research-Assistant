@@ -13,14 +13,14 @@ from urllib.parse import urlencode
 import httpx
 from google.auth.transport.requests import Request as GoogleRequest
 from google.oauth2 import id_token
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.core.errors import AppError
 from app.core.time import utc_now
-from app.models.user import OAuthState, User
+from app.models.user import AuthSession, OAuthState, User
 
 GOOGLE_AUTHORIZATION_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -175,10 +175,19 @@ def resolve_google_user(session: Session, identity: GoogleIdentity) -> User:
             email=identity.email,
             password_hash=None,
             google_sub=identity.subject,
+            email_verified_at=utc_now(),
         )
         session.add(user)
     elif user.google_sub is None:
+        if user.email_verified_at is None and user.password_hash is not None:
+            # Nobody ever proved they own this address, so the existing
+            # password may belong to someone who pre-registered the victim's
+            # email. Google has now proven ownership: drop that password and
+            # every session created with it before linking.
+            user.password_hash = None
+            session.execute(delete(AuthSession).where(AuthSession.user_id == user.id))
         user.google_sub = identity.subject
+        user.email_verified_at = user.email_verified_at or utc_now()
     else:
         raise AppError(
             "Google identity conflicts with this account",

@@ -45,8 +45,12 @@ def test_cors_does_not_allow_unconfigured_origin(client: TestClient) -> None:
     assert "access-control-allow-origin" not in response.headers
 
 
-def test_development_cors_allows_private_lan_origin() -> None:
-    settings = Settings(app_environment="development")
+def test_development_cors_allows_private_lan_origin_when_opted_in() -> None:
+    settings = Settings(
+        app_environment="development",
+        cors_allow_local_network=True,
+        worker_enabled=False,
+    )
     app = create_app(settings)
     with TestClient(app) as test_client:
         response = test_client.options(

@@ -19,8 +19,12 @@ class RerankerService:
         batch_size: int,
         device: str = "auto",
         cache_dir: str | None = None,
+        revision: str | None = None,
+        trust_remote_code: bool = False,
     ) -> None:
         self.model_name = model_name
+        self.revision = revision
+        self.trust_remote_code = trust_remote_code
         self.batch_size = batch_size
         self.device = device
         self.cache_dir = cache_dir
@@ -34,7 +38,9 @@ class RerankerService:
             try:
                 from sentence_transformers import CrossEncoder
 
-                kwargs: dict[str, object] = {"trust_remote_code": True}
+                kwargs: dict[str, object] = {"trust_remote_code": self.trust_remote_code}
+                if self.revision:
+                    kwargs["revision"] = self.revision
                 if self.device != "auto":
                     kwargs["device"] = self.device
                 if self.cache_dir:
@@ -92,12 +98,16 @@ def _cached_reranker(
     batch_size: int,
     device: str,
     cache_dir: str | None,
+    revision: str | None = None,
+    trust_remote_code: bool = False,
 ) -> RerankerService:
     return RerankerService(
         model_name,
         batch_size=batch_size,
         device=device,
         cache_dir=cache_dir,
+        revision=revision,
+        trust_remote_code=trust_remote_code,
     )
 
 
@@ -107,4 +117,6 @@ def reranker_service_for(settings: Settings) -> RerankerService:
         settings.reranker_batch_size,
         settings.model_device,
         str(settings.model_cache_dir) if settings.model_cache_dir else None,
+        settings.reranker_model_revision,
+        settings.model_trust_remote_code,
     )
