@@ -1,4 +1,4 @@
-import { ApiError, apiRequest } from './api';
+import { ApiError, apiErrorMessage, apiRequest } from './api';
 import {
   CreateResearchInput,
   ResearchListParams,
@@ -33,10 +33,27 @@ export const createResearch = (payload: CreateResearchInput): Promise<ResearchRe
     body: JSON.stringify(payload),
   });
 
+/** Local generation can take a while, so the answer gets a longer timeout. */
+export const QUERY_REQUEST_TIMEOUT_MS = 5 * 60_000;
+
 export const queryResearch = (
   payload: ResearchQueryRequest
 ): Promise<ResearchQueryResponse> =>
   apiRequest<ResearchQueryResponse>('/research/query', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    timeoutMs: QUERY_REQUEST_TIMEOUT_MS,
+  });
+
+/**
+ * Starts a research run on the server's background worker and returns the
+ * research record straight away. Follow it at /research/:id/progress.
+ */
+export const startResearchJob = (
+  payload: ResearchQueryRequest
+): Promise<ResearchResponse> =>
+  apiRequest<ResearchResponse>('/research/jobs', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -70,6 +87,9 @@ export const getResearchErrorMessage = (
 ): string => {
   if (!(error instanceof ApiError)) return fallback;
 
+  const envelopeMessage = apiErrorMessage(error, '');
+  if (envelopeMessage) return envelopeMessage;
+
   const data = error.data;
   if (typeof data === 'object' && data !== null && 'detail' in data) {
     const detail = (data as { detail?: unknown }).detail;
@@ -97,6 +117,7 @@ export const getResearchErrorMessage = (
 export const researchService = {
   createResearch,
   queryResearch,
+  startResearchJob,
   listResearch,
   getResearch,
   updateResearch,

@@ -6,12 +6,11 @@ import { StatusBadge } from '../components/common/StatusBadge';
 import { EmptyState } from '../components/common/EmptyState';
 import { ErrorState } from '../components/common/ErrorState';
 import { LoadingState } from '../components/common/LoadingState';
-import { mockSuggestedQuestions } from '../data/mockResearch';
 import {
   getResearchErrorMessage,
   researchService,
 } from '../services/research.service';
-import { ArrowUpRight, Clock } from 'lucide-react';
+import { Clock } from 'lucide-react';
 import { ResearchDepth, ResearchResponse } from '../types/research';
 
 const formatUpdatedAt = (value: string): string =>
@@ -24,7 +23,6 @@ const formatUpdatedAt = (value: string): string =>
 export const NewResearch: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const [selectedPrompt, setSelectedPrompt] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [recentResearch, setRecentResearch] = useState<ResearchResponse[]>([]);
@@ -33,7 +31,6 @@ export const NewResearch: React.FC = () => {
   const [recentError, setRecentError] = useState<string | null>(null);
 
   useEffect(() => {
-    setSelectedPrompt('');
     setCreateError(null);
   }, [location.key]);
 
@@ -64,22 +61,18 @@ export const NewResearch: React.FC = () => {
     setIsSubmitting(true);
     setCreateError(null);
     try {
-      const result = await researchService.queryResearch({
+      const research = await researchService.startResearchJob({
         query: payload.question,
         researchDepth: payload.depth,
       });
-      navigate(`/research/${result.researchId}`);
+      navigate(`/research/${research.id}/progress`);
     } catch (error) {
       setCreateError(
-        getResearchErrorMessage(error, 'Research could not be completed. Please try again.')
+        getResearchErrorMessage(error, 'Research could not be started. Please try again.')
       );
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  const handleSelectSuggestion = (question: string) => {
-    setSelectedPrompt(question);
   };
 
   return (
@@ -108,45 +101,17 @@ export const NewResearch: React.FC = () => {
           <div className="mb-10">
             <ResearchComposer
               key={location.key}
-              initialPrompt={selectedPrompt}
               onStartResearch={handleStartResearch}
               isLoading={isSubmitting}
             />
             {createError ? (
               <div className="mt-3">
                 <ErrorState
-                  title="Research could not be completed"
+                  title="Research could not be started"
                   message={createError}
                 />
               </div>
             ) : null}
-          </div>
-
-          <div className="mb-10">
-            <div className="uppercase tracking-wider text-[11px] font-semibold text-[#929792] mb-3">
-              Suggested Research Questions
-            </div>
-
-            <div className="grid grid-cols-1 gap-2">
-              {mockSuggestedQuestions.map((sug) => (
-                <button
-                  key={sug.id}
-                  type="button"
-                  onClick={() => handleSelectSuggestion(sug.question)}
-                  className="w-full text-left p-3.5 bg-white border border-[#e5e7e4] hover:border-[#cbd0ca] hover:bg-[#fcfdfc] rounded-lg transition-all duration-150 flex items-center justify-between group cursor-pointer"
-                >
-                  <div className="min-w-0 pr-4">
-                    <p className="text-[13.5px] font-medium text-[#181a18] group-hover:text-[#163328] transition-colors leading-snug">
-                      {sug.question}
-                    </p>
-                    <span className="text-[11.5px] text-[#929792] mt-0.5 inline-block">
-                      {sug.domain}
-                    </span>
-                  </div>
-                  <ArrowUpRight className="w-4 h-4 text-[#929792] group-hover:text-[#163328] group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all shrink-0" />
-                </button>
-              ))}
-            </div>
           </div>
 
           <div>
