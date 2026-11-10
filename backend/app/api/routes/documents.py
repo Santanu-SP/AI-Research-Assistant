@@ -6,6 +6,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import CurrentUser
+from app.api.uploads import enforce_upload_rate_limit, upload_status_code
 from app.core.errors import AppError
 from app.db.session import get_db
 from app.domain.documents import DocumentStatus, DocumentType
@@ -23,12 +24,26 @@ async def upload_document(
     session: DatabaseSession,
     storage: DocumentStorage,
     request: Request,
+    response: Response,
     user: CurrentUser,
     file: Annotated[UploadFile, File()],
 ) -> DocumentResponse:
-    return await document_service.create_document(
-        session, file, storage, request.app.state.settings, user.id
+    """Store a document and index it.
+
+    Returns ``201`` with the indexed document in inline mode, or ``202`` with
+    an ``uploaded`` document that the background worker will process.
+    """
+    enforce_upload_rate_limit(request, user.id)
+    document = await document_service.create_document(
+        session,
+        file,
+        storage,
+        request.app.state.settings,
+        user.id,
+        notify_worker=request.app.state.job_worker.wake,
     )
+    response.status_code = upload_status_code(document)
+    return document
 
 
 @router.get("", response_model=DocumentListResponse)
@@ -84,12 +99,43 @@ def open_document(
     path = storage.path_for(document.stored_name)
     if not path.is_file():
         raise AppError("Document file not found", status_code=404, code="document_file_not_found")
+    # PDFs open in the browser viewer; Office files are always downloaded.
+    disposition = "inline" if document.file_type == DocumentType.PDF else "attachment"
     return FileResponse(
         path,
         media_type=document.mime_type,
         filename=document.name,
-        content_disposition_type="inline",
+        content_disposition_type=disposition,
+        headers={
+            "Cache-Control": "private, no-store",
+            # The API's default-src 'none' policy would stop the browser's
+            # built-in PDF viewer, so file responses only forbid framing.
+            "Content-Security-Policy": "frame-ancestors 'none'",
+        },
     )
+
+
+@router.post("/{document_id}/retry", response_model=DocumentResponse)
+async def retry_document(
+    document_id: UUID,
+    session: DatabaseSession,
+    storage: DocumentStorage,
+    request: Request,
+    response: Response,
+    user: CurrentUser,
+) -> DocumentResponse:
+    """Process a failed document again without uploading it a second time."""
+    enforce_upload_rate_limit(request, user.id)
+    document = await document_service.retry_document(
+        session,
+        document_id,
+        storage,
+        request.app.state.settings,
+        user.id,
+        notify_worker=request.app.state.job_worker.wake,
+    )
+    response.status_code = upload_status_code(document)
+    return document
 
 
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)

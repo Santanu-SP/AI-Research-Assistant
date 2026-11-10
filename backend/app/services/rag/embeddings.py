@@ -49,6 +49,8 @@ class QwenEmbeddingService:
                 settings.embedding_model_name,
                 cache_folder=cache_folder,
                 device=device,
+                revision=settings.embedding_model_revision,
+                trust_remote_code=settings.model_trust_remote_code,
             )
             logger.info(
                 "Loaded embedding model %s on %s",
@@ -101,6 +103,8 @@ def get_embedding_service(
     cache_dir: str | None,
     batch_size: int,
     dimension: int,
+    revision: str = "main",
+    trust_remote_code: bool = False,
 ) -> QwenEmbeddingService:
     settings = Settings(
         embedding_model_name=model_name,
@@ -108,6 +112,8 @@ def get_embedding_service(
         model_cache_dir=cache_dir,
         embedding_batch_size=batch_size,
         embedding_dimension=dimension,
+        embedding_model_revision=revision,
+        model_trust_remote_code=trust_remote_code,
     )
     service = QwenEmbeddingService(settings)
     service.batch_size = batch_size
@@ -124,4 +130,6 @@ def embedding_service_for(settings: Settings) -> EmbeddingService:
         cache_dir,
         settings.embedding_batch_size,
         settings.embedding_dimension,
+        settings.embedding_model_revision,
+        settings.model_trust_remote_code,
     )

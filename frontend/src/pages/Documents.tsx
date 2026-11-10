@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { TopBar } from '../components/layout/TopBar';
 import { DocumentRow } from '../components/documents/DocumentRow';
 import { UploadDocumentModal } from '../components/documents/UploadDocumentModal';
@@ -6,7 +6,8 @@ import { EmptyState } from '../components/common/EmptyState';
 import { ErrorState } from '../components/common/ErrorState';
 import { PrimaryButton } from '../components/common/PrimaryButton';
 import { CenteredLoadingState } from '../components/common/LoadingState';
-import { documentsService } from '../services/documents.service';
+import { documentsService, getDocumentErrorMessage } from '../services/documents.service';
+import { activeIngestionKey, useBackoffPolling } from '../hooks/useBackoffPolling';
 import { Document } from '../types/document';
 import { apiErrorMessage } from '../services/api';
 import { API_BASE_URL } from '../services/api';
@@ -24,15 +25,9 @@ export const DocumentsPage: React.FC = () => {
   const [retryKey, setRetryKey] = useState(0);
   const [selectedDocument, setSelectedDocument] = useState<Document | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      loadDocuments();
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [searchQuery, selectedFormat, selectedStatus, retryKey]);
-
-  const loadDocuments = async (silent = false) => {
+  const loadDocuments = useCallback(async (silent = false) => {
     if (!silent) {
       setIsLoading(true);
       setLoadError(null);
@@ -56,22 +51,36 @@ export const DocumentsPage: React.FC = () => {
         setIsLoading(false);
       }
     }
-  };
+  }, [searchQuery, selectedFormat, selectedStatus]);
 
-  // Poll for status updates if any document is processing
   useEffect(() => {
-    const hasProcessingDocs = documents.some(
-      (doc) => doc.status === 'uploaded' || doc.status === 'processing'
-    );
+    const timer = setTimeout(() => {
+      void loadDocuments();
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [loadDocuments, retryKey]);
 
-    if (!hasProcessingDocs) return;
+  // Poll with backoff while any document is still being ingested.
+  const pendingKey = activeIngestionKey(documents);
+  const refreshSilently = useCallback(() => loadDocuments(true), [loadDocuments]);
+  const { timedOut: pollingStopped } = useBackoffPolling(
+    pendingKey !== '',
+    refreshSilently,
+    pendingKey,
+  );
 
-    const intervalId = setInterval(() => {
-      loadDocuments(true);
-    }, 4000);
-
-    return () => clearInterval(intervalId);
-  }, [documents, searchQuery, selectedFormat, selectedStatus]);
+  const handleRetryDocument = async (id: string) => {
+    setRetryingId(id);
+    try {
+      await documentsService.retryDocument(id);
+      setActionError(null);
+      await loadDocuments(true);
+    } catch (error) {
+      setActionError(getDocumentErrorMessage(error, 'Could not retry this document.'));
+    } finally {
+      setRetryingId(null);
+    }
+  };
 
   const handleUploadFile = async (file: File) => {
     try {
@@ -172,6 +181,14 @@ export const DocumentsPage: React.FC = () => {
           </div>
 
           {actionError && <p role="alert" className="mb-3 rounded-md border border-[#fecaca] bg-[#fee2e2]/50 p-3 text-xs text-[#b91c1c]">{actionError}</p>}
+          {pollingStopped && (
+            <p role="status" className="mb-3 text-xs text-[#b45309]">
+              Some documents are taking longer than expected. Automatic refresh has paused.{' '}
+              <button type="button" onClick={() => setRetryKey((k) => k + 1)} className="underline font-medium">
+                Refresh now
+              </button>
+            </p>
+          )}
           {isLoading ? (
             <CenteredLoadingState label="Loading workspace documents…" />
           ) : loadError ? (
@@ -208,6 +225,8 @@ export const DocumentsPage: React.FC = () => {
                   document={doc}
                   onDelete={handleDeleteDocument}
                   onOpen={setSelectedDocument}
+                  onRetry={handleRetryDocument}
+                  isRetrying={retryingId === doc.id}
                 />
               ))}
             </div>

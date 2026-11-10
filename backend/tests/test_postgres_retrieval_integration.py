@@ -12,10 +12,12 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.core.errors import AppError
+from app.core.time import utc_now
 from app.domain.documents import DocumentStatus, DocumentType
 from app.models.document import Document, DocumentChunk
 from app.models.project import ResearchProject
 from app.models.user import User
+from app.services.jobs import queue as job_queue
 from app.services.rag.retrieval import keyword_search, retrieve, semantic_search
 
 pytestmark = [pytest.mark.integration, pytest.mark.postgres]
@@ -190,3 +192,25 @@ def test_postgres_project_scoped_vector_fts_and_gin_index(
     )
     assert index_definition is not None
     assert "USING gin" in index_definition
+
+    # Archiving a project removes its chunks from unscoped retrieval.
+    alpha.archived_at = utc_now()
+    postgres_session.commit()
+    assert keyword_search(postgres_session, user_a.id, "transformer attention", 10) == []
+    assert all(
+        item.chunk.document_id != alpha_document.id
+        for item in semantic_search(postgres_session, user_a.id, [1.0] + [0.0] * 1023, 10)
+    )
+
+    # The job queue claims rows with SKIP LOCKED on PostgreSQL.
+    job = job_queue.enqueue(postgres_session, job_queue.INGEST_DOCUMENT, beta_document.id)
+    claimed = job_queue.claim_next(postgres_session)
+    assert claimed is not None and claimed.id == job.id and claimed.attempts == 1
+    assert job_queue.claim_next(postgres_session) is None
+
+    # Deleting an account removes the documents it owns.
+    gamma_id = gamma_document.id
+    postgres_session.delete(postgres_session.get(User, user_b.id))
+    postgres_session.commit()
+    postgres_session.expunge_all()
+    assert postgres_session.get(Document, gamma_id) is None

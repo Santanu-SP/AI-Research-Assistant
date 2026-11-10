@@ -89,4 +89,19 @@ describe('SourceCard', () => {
     render(<SourceCard document={doc} />);
     expect(screen.getByText('48 chunks')).toBeInTheDocument();
   });
+
+  it('offers a retry button only for failed documents', () => {
+    const onRetry = vi.fn();
+    const { rerender } = render(
+      <SourceCard document={makeFailedDocument()} onRetry={onRetry} />
+    );
+    fireEvent.click(screen.getByRole('button', { name: /retry processing/i }));
+    expect(onRetry).toHaveBeenCalledWith('doc-003');
+
+    rerender(<SourceCard document={makeDocument()} onRetry={onRetry} />);
+    expect(screen.queryByRole('button', { name: /retry processing/i })).not.toBeInTheDocument();
+
+    rerender(<SourceCard document={makeFailedDocument()} onRetry={onRetry} isArchived />);
+    expect(screen.queryByRole('button', { name: /retry processing/i })).not.toBeInTheDocument();
+  });
 });

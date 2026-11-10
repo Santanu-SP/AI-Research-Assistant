@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { Suspense, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
+import { CenteredLoadingState } from '../common/LoadingState';
 import { AppSidebar } from './AppSidebar';
 import { AnimatedResearchBackground } from './AnimatedResearchBackground';
 import { ThemeToggle } from './ThemeToggle';
@@ -67,7 +68,9 @@ export const AppLayout: React.FC = () => {
       )}
 
       <div className="app-content-surface relative z-10 lg:pl-[232px] pt-14 lg:pt-0 min-h-screen flex flex-col">
-        <Outlet />
+        <Suspense fallback={<CenteredLoadingState label="Loading…" />}>
+          <Outlet />
+        </Suspense>
       </div>
     </div>
   );

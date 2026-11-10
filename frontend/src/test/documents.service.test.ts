@@ -125,3 +125,34 @@ describe('getDocumentErrorMessage', () => {
     );
   });
 });
+
+describe('retryDocument', () => {
+  it('posts to the retry endpoint', async () => {
+    const failed = makeDocument({ id: 'doc-9', status: 'uploaded', ingestionStatus: 'uploaded' });
+    const fetchMock = mockFetch(failed, 202);
+    vi.stubGlobal('fetch', fetchMock);
+    const result = await documentsService.retryDocument('doc-9');
+    expect(result.status).toBe('uploaded');
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toMatch(/\/documents\/doc-9\/retry$/);
+    expect((init as RequestInit).method).toBe('POST');
+  });
+});
+
+describe('409 codes other than duplicates', () => {
+  it('are not treated as duplicates', () => {
+    const err = new ApiError('Conflict', 409, {
+      error: { code: 'document_not_retryable', message: 'Only failed documents can be retried.' },
+    });
+    expect(isDuplicateDocumentError(err)).toBe(false);
+    expect(getDocumentErrorMessage(err, 'fallback')).toBe(
+      'Only documents that failed processing can be retried.'
+    );
+  });
+
+  it('explains upload rate limits', () => {
+    expect(getDocumentErrorMessage(new ApiError('Too many', 429), 'fallback')).toMatch(
+      /too many uploads/i
+    );
+  });
+});

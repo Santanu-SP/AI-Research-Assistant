@@ -100,14 +100,13 @@ def _project_label(document: Document) -> str | None:
     return str(document.project_id)
 
 
-async def _parse_uploaded_document(
+def _parse_uploaded_document(
     adapter: DocumentIngestionAdapter,
     path: Path,
     document: Document,
     settings: Settings,
 ) -> ParsedDocument:
-    parsed = await run_in_threadpool(
-        adapter.parse,
+    parsed = adapter.parse(
         path,
         document_id=document.id,
         ingestion_version=settings.ingestion_version,
@@ -251,7 +250,35 @@ async def ingest_document(
     embeddings: EmbeddingService | None = None,
     clock: Callable[[], float] = perf_counter,
 ) -> Document:
-    """Parse, embed, and atomically publish one stored document."""
+    """Run :func:`process_document` on a worker thread.
+
+    Parsing, embedding, and the synchronous database work are all blocking,
+    so they must never run on the event loop: one large upload would stall
+    every other request.
+    """
+    return await run_in_threadpool(
+        process_document,
+        session,
+        document,
+        path,
+        settings,
+        adapter=adapter,
+        embeddings=embeddings,
+        clock=clock,
+    )
+
+
+def process_document(
+    session: Session,
+    document: Document,
+    path: Path,
+    settings: Settings,
+    *,
+    adapter: DocumentIngestionAdapter | None = None,
+    embeddings: EmbeddingService | None = None,
+    clock: Callable[[], float] = perf_counter,
+) -> Document:
+    """Parse, embed, and atomically publish one stored document (blocking)."""
 
     active_adapter = adapter or ingestion_adapter_for(settings)
     started = clock()
@@ -261,7 +288,7 @@ async def ingest_document(
 
     try:
         parse_started = clock()
-        parsed = await _parse_uploaded_document(
+        parsed = _parse_uploaded_document(
             active_adapter,
             path,
             document,

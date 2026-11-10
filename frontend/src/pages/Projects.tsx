@@ -58,7 +58,7 @@ export const ProjectsPage: React.FC = () => {
   useEffect(() => {
     const timer = window.setTimeout(() => void load(), searchQuery ? 300 : 0);
     return () => window.clearTimeout(timer);
-  }, [load]);
+  }, [load, searchQuery]);
 
   const handleOpenProject = (project: ResearchProject) => {
     selectProject(project.id);

@@ -9,6 +9,7 @@ from app.schemas.rag import EvidenceItem, ValidatedCitation
 
 
 SOURCE_REFERENCE = re.compile(r"\[S(\d+)\]", re.IGNORECASE)
+SENTENCE_BOUNDARY = re.compile(r"(?<=[.!?])\s+")
 
 
 @dataclass(frozen=True)
@@ -34,9 +35,23 @@ class CitationValidator:
                 cited_ids.append(source_id)
             return f"[{source_id}]"
 
-        sanitized = SOURCE_REFERENCE.sub(replace_reference, answer)
+        kept_lines = []
+        for line in answer.split("\n"):
+            kept_sentences = []
+            for sentence in SENTENCE_BOUNDARY.split(line):
+                markers = SOURCE_REFERENCE.findall(sentence)
+                if markers and not any(
+                    f"S{int(number)}" in evidence_by_id for number in markers
+                ):
+                    # Every source this sentence cites is invented, so the
+                    # claim is not grounded in the evidence: drop it.
+                    continue
+                kept_sentences.append(SOURCE_REFERENCE.sub(replace_reference, sentence))
+            kept_lines.append(" ".join(part for part in kept_sentences if part.strip()))
+        sanitized = "\n".join(kept_lines)
         sanitized = re.sub(r"[ \t]+([,.;:!?])", r"\1", sanitized)
-        sanitized = re.sub(r" {2,}", " ", sanitized).strip()
+        sanitized = re.sub(r" {2,}", " ", sanitized)
+        sanitized = re.sub(r"\n{3,}", "\n\n", sanitized).strip()
         citations = [self._citation(evidence_by_id[source_id]) for source_id in cited_ids]
         return CitationValidationResult(answer=sanitized, citations=citations)
 

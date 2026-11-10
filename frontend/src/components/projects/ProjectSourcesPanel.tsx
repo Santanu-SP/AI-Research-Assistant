@@ -14,7 +14,7 @@ import { ErrorState } from '../common/ErrorState';
 import { LoadingState } from '../common/LoadingState';
 import { PrimaryButton } from '../common/PrimaryButton';
 import { useProjectDocuments } from '../../hooks/useProjectDocuments';
-import { documentsService } from '../../services/documents.service';
+import { documentsService, getDocumentErrorMessage } from '../../services/documents.service';
 import { useToast } from '../../app/ToastContext';
 
 interface ProjectSourcesPanelProps {
@@ -31,13 +31,14 @@ export const ProjectSourcesPanel: React.FC<ProjectSourcesPanelProps> = ({
   const [statusFilter, setStatusFilter] = useState('all');
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isDeletingId, setIsDeletingId] = useState<string | null>(null);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
 
   const params = {
     search: searchQuery.trim() || undefined,
     status: statusFilter !== 'all' ? statusFilter : undefined,
   };
 
-  const { documents, total, isLoading, error, reload } = useProjectDocuments(
+  const { documents, total, isLoading, error, pollingStopped, reload } = useProjectDocuments(
     project.id,
     params
   );
@@ -76,6 +77,26 @@ export const ProjectSourcesPanel: React.FC<ProjectSourcesPanelProps> = ({
         });
       } finally {
         setIsDeletingId(null);
+      }
+    },
+    [reload, addToast]
+  );
+
+  const handleRetry = useCallback(
+    async (id: string) => {
+      setRetryingId(id);
+      try {
+        await documentsService.retryDocument(id);
+        reload();
+        addToast({ type: 'success', title: 'Processing restarted' });
+      } catch (err) {
+        addToast({
+          type: 'error',
+          title: 'Retry failed',
+          description: getDocumentErrorMessage(err, 'Could not retry this document.'),
+        });
+      } finally {
+        setRetryingId(null);
       }
     },
     [reload, addToast]
@@ -141,6 +162,16 @@ export const ProjectSourcesPanel: React.FC<ProjectSourcesPanelProps> = ({
         </p>
       )}
 
+      {pollingStopped && (
+        <p role="status" className="text-xs text-[#b45309]">
+          Some documents are taking longer than expected. Automatic refresh has
+          paused.{' '}
+          <button type="button" onClick={reload} className="underline font-medium">
+            Refresh now
+          </button>
+        </p>
+      )}
+
       {isLoading ? (
         <LoadingState rows={3} />
       ) : error ? (
@@ -183,6 +214,8 @@ export const ProjectSourcesPanel: React.FC<ProjectSourcesPanelProps> = ({
               <SourceCard
                 document={doc}
                 onDelete={!isArchived ? handleDelete : undefined}
+                onRetry={!isArchived ? handleRetry : undefined}
+                isRetrying={retryingId === doc.id}
                 isArchived={isArchived}
               />
               {isDeletingId === doc.id && (

@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, Trash2 } from 'lucide-react';
+import { FileText, RotateCcw, Trash2 } from 'lucide-react';
 import { Document } from '../../types/document';
 import { StatusBadge } from '../common/StatusBadge';
 import { LoadingOrb } from '../common/LoadingOrb';
@@ -8,12 +8,16 @@ interface DocumentRowProps {
   document: Document;
   onDelete: (id: string) => void;
   onOpen: (document: Document) => void;
+  onRetry?: (id: string) => void;
+  isRetrying?: boolean;
 }
 
 export const DocumentRow: React.FC<DocumentRowProps> = ({
   document,
   onDelete,
   onOpen,
+  onRetry,
+  isRetrying = false,
 }) => {
   const formatSize = (bytes: number): string => {
     if (bytes >= 1024 * 1024) {
@@ -100,6 +104,19 @@ export const DocumentRow: React.FC<DocumentRowProps> = ({
           >
             View details
           </button>
+
+          {document.status === 'failed' && onRetry && (
+            <button
+              type="button"
+              onClick={() => onRetry(document.id)}
+              disabled={isRetrying}
+              aria-label={`Retry processing ${document.name}`}
+              className="inline-flex items-center gap-1 text-xs font-medium text-[#163328] bg-white hover:bg-[#f1f6f3] border border-[#d8e5df] px-2.5 py-1.5 rounded-md transition-colors cursor-pointer disabled:opacity-50"
+            >
+              <RotateCcw className={`w-3.5 h-3.5 ${isRetrying ? 'animate-spin' : ''}`} />
+              Retry
+            </button>
+          )}
 
           {document.status === 'processing' && (
             <span className="inline-flex items-center gap-1.5 text-xs text-[#b45309] font-medium px-2 py-1">
