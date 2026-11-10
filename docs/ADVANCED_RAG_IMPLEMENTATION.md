@@ -163,7 +163,7 @@ the API accepts it.
 
 ## Database changes
 
-Current migration head: `0012_canonical_document_metadata`.
+Current migration head: `0013_background_jobs`.
 
 - `0010_research_projects` introduced private research workspaces.
 - `0011_project_scope_and_fts` linked documents and research runs to nullable
@@ -173,6 +173,9 @@ Current migration head: `0012_canonical_document_metadata`.
   columns plus lookup and deduplication indexes.
 - The same revision extends chunks with unique `node_id`, nullable page and
   `page_end`, `section_path`, `token_count`, and node metadata.
+- `0013_background_jobs` adds the `background_jobs` queue, `users.email_verified_at`,
+  indexes on session and OAuth-state expiry, and `ON DELETE CASCADE` from
+  documents and research runs to their owner.
 
 Legacy rows survive unchanged. Existing documents are truthfully backfilled as
 `uploaded_file` and `user_document`; legacy PDF rows receive parser `pypdf` and
