@@ -1,24 +1,34 @@
-from collections.abc import Generator
+from collections.abc import AsyncGenerator
+from typing import Any
+
 from fastapi import Request
 from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, sessionmaker
 
 
-def create_db_engine(database_url: str) -> Engine:
+def create_db_engine(
+    database_url: str,
+    *,
+    pool_size: int | None = None,
+    max_overflow: int | None = None,
+    pool_timeout: float | None = None,
+) -> Engine:
     """Create an engine suitable for SQLite locally and PostgreSQL later."""
 
-    connect_args = (
-        {"check_same_thread": False}
-        if make_url(database_url).get_backend_name() == "sqlite"
-        else {}
-    )
-    engine = create_engine(
-        database_url,
-        connect_args=connect_args,
-        pool_pre_ping=True,
-    )
-    if make_url(database_url).get_backend_name() == "sqlite":
+    is_sqlite = make_url(database_url).get_backend_name() == "sqlite"
+    options: dict[str, Any] = {"pool_pre_ping": True}
+    if is_sqlite:
+        options["connect_args"] = {"check_same_thread": False}
+    else:
+        if pool_size is not None:
+            options["pool_size"] = pool_size
+        if max_overflow is not None:
+            options["max_overflow"] = max_overflow
+        if pool_timeout is not None:
+            options["pool_timeout"] = pool_timeout
+    engine = create_engine(database_url, **options)
+    if is_sqlite:
         # SQLite does not enforce foreign keys unless explicitly enabled for
         # every connection. This keeps local/test cascade behavior truthful.
         @event.listens_for(engine, "connect")
@@ -34,9 +44,19 @@ def create_session_factory(engine: Engine) -> sessionmaker[Session]:
     return sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
 
-def get_db(request: Request) -> Generator[Session, None, None]:
-    """Provide one SQLAlchemy session per request."""
+async def get_db(request: Request) -> AsyncGenerator[Session, None]:
+    """Provide one SQLAlchemy session per request.
+
+    This is deliberately an *async* generator. FastAPI runs sync generator
+    dependencies (and their cleanup) on the shared thread pool; under load
+    every pool thread could be busy waiting for a DB connection while the
+    cleanup that would return one waits for a free thread. Closing the
+    session on the event loop removes that deadlock.
+    """
 
     session_factory = request.app.state.db_session_factory
-    with session_factory() as session:
+    session = session_factory()
+    try:
         yield session
+    finally:
+        session.close()

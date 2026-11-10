@@ -79,7 +79,7 @@ class Research(TimestampMixin, Base):
         primary_key=True,
         default=uuid4,
     )
-    user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     project_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("research_projects.id", ondelete="SET NULL"),
         nullable=True,

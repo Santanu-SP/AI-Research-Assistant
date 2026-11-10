@@ -1,10 +1,11 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Query, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Query, Request, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import CurrentUser
+from app.api.uploads import enforce_upload_rate_limit, upload_status_code
 from app.db.session import get_db
 from app.domain.documents import DocumentStatus, DocumentType
 from app.schemas.documents import DocumentListResponse, DocumentResponse
@@ -29,17 +30,22 @@ async def upload_project_document(
     session: DatabaseSession,
     storage: DocumentStorage,
     request: Request,
+    response: Response,
     user: CurrentUser,
     file: Annotated[UploadFile, File()],
 ) -> DocumentResponse:
-    return await document_service.create_document(
+    enforce_upload_rate_limit(request, user.id)
+    document = await document_service.create_document(
         session,
         file,
         storage,
         request.app.state.settings,
         user.id,
         project_id,
+        notify_worker=request.app.state.job_worker.wake,
     )
+    response.status_code = upload_status_code(document)
+    return document
 
 
 @router.get("", response_model=DocumentListResponse)

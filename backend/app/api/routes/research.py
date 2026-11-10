@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Query, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import CurrentUser
+from app.core import rate_limit
 from app.db.session import get_db
 from app.domain.research import ResearchStatus
 from app.schemas.research import (
@@ -33,6 +34,7 @@ def retrieve_evidence(
     user: CurrentUser,
     request: Request,
 ) -> RetrievalResponse:
+    _enforce_query_rate_limit(request, user.id)
     return RetrievalResponse(
         items=retrieval_service.retrieve(
             session,
@@ -44,6 +46,16 @@ def retrieve_evidence(
     )
 
 
+def _enforce_query_rate_limit(request: Request, user_id: UUID) -> None:
+    rate_limit.enforce(
+        request,
+        "query",
+        key=str(user_id),
+        limit=request.app.state.settings.rate_limit_query_per_minute,
+        window_seconds=60,
+    )
+
+
 @router.post("/query", response_model=ResearchQueryResponse, status_code=status.HTTP_201_CREATED)
 def query_research(
     payload: ResearchQueryRequest,
@@ -51,6 +63,8 @@ def query_research(
     user: CurrentUser,
     request: Request,
 ) -> ResearchQueryResponse:
+    """Answer a question within this request (kept for inline project chat)."""
+    _enforce_query_rate_limit(request, user.id)
     return rag_service.run_query(
         session,
         user.id,
@@ -59,13 +73,32 @@ def query_research(
     )
 
 
+@router.post("/jobs", response_model=ResearchResponse, status_code=status.HTTP_202_ACCEPTED)
+def queue_research_query(
+    payload: ResearchQueryRequest,
+    session: DatabaseSession,
+    user: CurrentUser,
+    request: Request,
+) -> ResearchResponse:
+    """Start a research run in the background and return immediately.
+
+    Poll ``GET /research/{id}/status`` for progress and fetch
+    ``GET /research/{id}/report`` once it has completed.
+    """
+    _enforce_query_rate_limit(request, user.id)
+    record = rag_service.queue_query(session, user.id, payload)
+    request.app.state.job_worker.wake()
+    return research_service.attach_source_counts(session, [record])[0]
+
+
 @router.post("", response_model=ResearchResponse, status_code=status.HTTP_201_CREATED)
 def create_research(
     payload: ResearchCreate,
     session: DatabaseSession,
     user: CurrentUser,
 ) -> ResearchResponse:
-    return research_service.create_research(session, payload, user.id)
+    record = research_service.create_research(session, payload, user.id)
+    return research_service.attach_source_counts(session, [record])[0]
 
 
 @router.get("", response_model=ResearchListResponse)
@@ -97,6 +130,7 @@ def list_research(
         user_id=user.id,
         project_id=project_id,
     )
+    research_service.attach_source_counts(session, items)
     return ResearchListResponse(
         items=items,
         total=total,
@@ -129,7 +163,8 @@ def get_research(
     session: DatabaseSession,
     user: CurrentUser,
 ) -> ResearchResponse:
-    return research_service.get_research(session, research_id, user.id)
+    record = research_service.get_research(session, research_id, user.id)
+    return research_service.attach_source_counts(session, [record])[0]
 
 
 @router.patch("/{research_id}", response_model=ResearchResponse)
@@ -139,7 +174,8 @@ def update_research(
     session: DatabaseSession,
     user: CurrentUser,
 ) -> ResearchResponse:
-    return research_service.update_research(session, research_id, payload, user.id)
+    record = research_service.update_research(session, research_id, payload, user.id)
+    return research_service.attach_source_counts(session, [record])[0]
 
 
 @router.delete("/{research_id}", status_code=status.HTTP_204_NO_CONTENT)

@@ -23,6 +23,8 @@ from app.services.rag.evidence import (
 )
 from app.services.rag.generation import GenerationService, generation_service_for
 from app.services.rag.reranking import RerankerService, reranker_service_for
+from app.models.research import Research
+from app.services.jobs import queue as job_queue
 from app.services.research import reports
 from app.services.research import runs as research
 
@@ -98,6 +100,34 @@ def run_query(
     reranker: RerankerService | None = None,
     generator: GenerationService | None = None,
 ) -> ResearchQueryResponse:
+    """Create a research run and answer it within the current request."""
+    record = _create_started_record(session, user_id, payload)
+    return execute_research(
+        session,
+        record.id,
+        user_id,
+        settings,
+        reranker=reranker,
+        generator=generator,
+    )
+
+
+def queue_query(
+    session: Session,
+    user_id: UUID,
+    payload: ResearchQueryRequest,
+) -> Research:
+    """Create a research run and leave the work to the background worker."""
+    record = _create_started_record(session, user_id, payload)
+    job_queue.enqueue(session, job_queue.RUN_RESEARCH, record.id)
+    return research.get_research(session, record.id, user_id)
+
+
+def _create_started_record(
+    session: Session,
+    user_id: UUID,
+    payload: ResearchQueryRequest,
+) -> Research:
     normalized_query = payload.query.strip()
     if not normalized_query:
         raise AppError(
@@ -105,7 +135,6 @@ def run_query(
             status_code=422,
             code="research_query_required",
         )
-
     record = research.create_research(
         session,
         ResearchCreate(
@@ -116,6 +145,21 @@ def run_query(
         user_id,
     )
     research.start_research(session, record.id)
+    return record
+
+
+def execute_research(
+    session: Session,
+    research_id: UUID,
+    user_id: UUID,
+    settings: Settings,
+    *,
+    reranker: RerankerService | None = None,
+    generator: GenerationService | None = None,
+) -> ResearchQueryResponse:
+    """Run retrieval, reranking, and grounded generation for one research run."""
+    record = research.get_research(session, research_id, user_id)
+    normalized_query = record.question.strip()
     try:
         research.update_research_lifecycle(
             session, record.id, ProjectStatus.PAPERS_SELECTED
@@ -125,7 +169,7 @@ def run_query(
             user_id,
             normalized_query,
             settings,
-            project_id=payload.project_id,
+            project_id=record.project_id,
         )
         research.update_progress_counts(
             session,
@@ -153,10 +197,7 @@ def run_query(
             minimum_count=settings.minimum_evidence_count,
             minimum_relevance=settings.reranker_min_score,
         )
-        if insufficient:
-            answer = INSUFFICIENT_EVIDENCE_ANSWER
-            validated = CitationValidator().validate(answer, evidence)
-        else:
+        if not insufficient:
             research.update_research_lifecycle(
                 session, record.id, ProjectStatus.REVIEW_READY
             )
@@ -164,6 +205,14 @@ def run_query(
                 normalized_query, evidence
             )
             validated = CitationValidator().validate(generated, evidence)
+            if not validated.citations:
+                # An answer that cites none of the evidence is not grounded;
+                # report insufficient evidence instead of an unsupported reply.
+                insufficient = True
+        if insufficient:
+            answer = INSUFFICIENT_EVIDENCE_ANSWER
+            validated = CitationValidator().validate(answer, evidence)
+        else:
             answer = validated.answer
 
         reports.persist_report(
@@ -188,9 +237,11 @@ def run_query(
             insufficient_evidence=insufficient,
         )
     except AppError:
+        session.rollback()
         research.mark_research_failed(session, record.id)
         raise
     except Exception as exc:
+        session.rollback()
         research.mark_research_failed(session, record.id)
         raise AppError(
             "The grounded research request could not be completed",

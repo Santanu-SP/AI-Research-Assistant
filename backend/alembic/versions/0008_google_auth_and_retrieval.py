@@ -43,6 +43,10 @@ def downgrade() -> None:
         op.execute("DROP INDEX IF EXISTS ix_document_chunks_embedding_hnsw")
     op.drop_column("document_chunks", "embedding")
     op.drop_table("oauth_states")
+    # Google-only accounts have no password. The pre-0008 schema requires
+    # one, so give them an unusable marker that can never verify instead of
+    # failing the downgrade (or deleting the accounts).
+    op.execute("UPDATE users SET password_hash = '!google-only' WHERE password_hash IS NULL")
     with op.batch_alter_table("users") as batch:
         batch.drop_index("ix_users_google_sub")
         batch.drop_column("google_sub")

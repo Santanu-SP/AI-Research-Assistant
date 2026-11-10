@@ -12,6 +12,7 @@ from app.domain.research import (
     ResearchStatus,
 )
 from app.domain.states import ProjectStatus
+from app.models.report import Source
 from app.models.research import Research
 from app.schemas.research import (
     ResearchCreate,
@@ -416,3 +417,19 @@ def archive_research(session: Session, research_id: UUID, user_id: UUID | None =
     research.archived_at = archived_at
     research.updated_at = archived_at
     _commit(session)
+
+
+def attach_source_counts(session: Session, records: list[Research]) -> list[Research]:
+    """Fill the response-only ``source_count`` with one grouped query."""
+    if not records:
+        return records
+    counts = dict(
+        session.execute(
+            select(Source.research_id, func.count(Source.id))
+            .where(Source.research_id.in_([record.id for record in records]))
+            .group_by(Source.research_id)
+        ).all()
+    )
+    for record in records:
+        record.source_count = int(counts.get(record.id, 0))  # type: ignore[attr-defined]
+    return records

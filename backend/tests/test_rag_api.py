@@ -97,7 +97,8 @@ def test_query_endpoint_persists_grounded_multi_source_report(
 
     assert response.status_code == 201, response.text
     body = response.json()
-    assert body["answer"] == "The studies report improvement [S1] [S2]. Invalid."
+    # The sentence that only cited an invented source is dropped entirely.
+    assert body["answer"] == "The studies report improvement [S1] [S2]."
     assert body["hybridCandidateCount"] == 2
     assert body["evidenceCount"] == 2
     assert [item["citationId"] for item in body["citations"]] == ["S1", "S2"]
