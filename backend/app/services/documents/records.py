@@ -1,7 +1,9 @@
+from collections.abc import Callable
 from uuid import UUID
 
 from fastapi import UploadFile
-from sqlalchemy import func, select
+from fastapi.concurrency import run_in_threadpool
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -9,9 +11,11 @@ from app.core.config import Settings
 from app.core.errors import AppError
 from app.domain.documents import ContentLevel, DocumentStatus, DocumentType, SourceType
 from app.models.document import Document
+from app.models.project import ResearchProject
 from app.services.rag.embeddings import EmbeddingService
 from app.services.ingestion.pipeline import DocumentIngestionAdapter, ingest_document
-from app.services.documents.storage import LocalDocumentStorage
+from app.services.documents.storage import LocalDocumentStorage, StoredUpload, ValidatedUpload
+from app.services.jobs import queue as job_queue
 from app.services.research import projects as project_service
 
 
@@ -56,12 +60,41 @@ async def create_document(
     *,
     adapter: DocumentIngestionAdapter | None = None,
     embeddings: EmbeddingService | None = None,
+    notify_worker: Callable[[], None] | None = None,
 ) -> Document:
+    # Database calls are blocking, so they run on the thread pool; only the
+    # streamed upload itself is awaited on the event loop.
     if project_id is not None:
-        project_service.get_project(session, project_id, user_id)
+        await run_in_threadpool(project_service.get_project, session, project_id, user_id)
     metadata = storage.validate(upload)
     stored = await storage.save(upload, metadata.extension)
+    document = await run_in_threadpool(
+        _register_upload, session, storage, metadata, stored, user_id, project_id
+    )
+    return await start_ingestion(
+        session,
+        document,
+        storage,
+        settings,
+        adapter=adapter,
+        embeddings=embeddings,
+        notify_worker=notify_worker,
+    )
+
+
+def _register_upload(
+    session: Session,
+    storage: LocalDocumentStorage,
+    metadata: ValidatedUpload,
+    stored: StoredUpload,
+    user_id: UUID,
+    project_id: UUID | None,
+) -> Document:
     duplicate = _find_duplicate(session, user_id, stored.checksum, project_id)
+    if duplicate is not None and duplicate.status == DocumentStatus.FAILED:
+        # A failed copy should never block trying again: replace it.
+        _remove_document(session, duplicate, storage)
+        duplicate = None
     if duplicate is not None:
         storage.delete(stored.stored_name)
         raise AppError(
@@ -97,15 +130,83 @@ async def create_document(
                 code="document_cleanup_error",
             ) from cleanup_error
         raise
+    return document
 
-    return await ingest_document(
+
+async def start_ingestion(
+    session: Session,
+    document: Document,
+    storage: LocalDocumentStorage,
+    settings: Settings,
+    *,
+    adapter: DocumentIngestionAdapter | None = None,
+    embeddings: EmbeddingService | None = None,
+    notify_worker: Callable[[], None] | None = None,
+) -> Document:
+    """Ingest now (inline mode) or hand the document to the background worker."""
+    if settings.ingestion_mode == "inline":
+        return await ingest_document(
+            session,
+            document,
+            storage.path_for(document.stored_name),
+            settings,
+            adapter=adapter,
+            embeddings=embeddings,
+        )
+    def _enqueue() -> Document:
+        job_queue.enqueue(session, job_queue.INGEST_DOCUMENT, document.id)
+        session.refresh(document)
+        return document
+
+    queued = await run_in_threadpool(_enqueue)
+    if notify_worker is not None:
+        notify_worker()
+    return queued
+
+
+async def retry_document(
+    session: Session,
+    document_id: UUID,
+    storage: LocalDocumentStorage,
+    settings: Settings,
+    user_id: UUID,
+    *,
+    adapter: DocumentIngestionAdapter | None = None,
+    embeddings: EmbeddingService | None = None,
+    notify_worker: Callable[[], None] | None = None,
+) -> Document:
+    """Re-run ingestion for a document whose previous attempt failed."""
+    document = await run_in_threadpool(get_document, session, document_id, user_id)
+    if document.status != DocumentStatus.FAILED:
+        raise AppError(
+            "Only documents that failed processing can be retried",
+            status_code=409,
+            code="document_not_retryable",
+        )
+    if not storage.path_for(document.stored_name).is_file():
+        raise AppError(
+            "The stored file for this document is missing; upload it again",
+            status_code=409,
+            code="document_file_missing",
+        )
+    document.status = DocumentStatus.UPLOADED
+    document.processing_error = None
+    await run_in_threadpool(_commit, session, "The document could not be queued for processing")
+    return await start_ingestion(
         session,
         document,
-        storage.path_for(document.stored_name),
+        storage,
         settings,
         adapter=adapter,
         embeddings=embeddings,
+        notify_worker=notify_worker,
     )
+
+
+def _remove_document(session: Session, document: Document, storage: LocalDocumentStorage) -> None:
+    storage.delete(document.stored_name)
+    session.delete(document)
+    _commit(session, "The previous failed copy could not be replaced")
 
 
 def list_documents(
@@ -123,6 +224,19 @@ def list_documents(
     if project_id is not None:
         project_service.get_project(session, project_id, user_id)
         filters.append(Document.project_id == project_id)
+    else:
+        # Documents inside archived projects leave the global library too.
+        filters.append(
+            or_(
+                Document.project_id.is_(None),
+                Document.project_id.in_(
+                    select(ResearchProject.id).where(
+                        ResearchProject.user_id == user_id,
+                        ResearchProject.archived_at.is_(None),
+                    )
+                ),
+            )
+        )
     normalized_search = search.strip() if search else None
     if normalized_search:
         filters.append(Document.name.icontains(normalized_search, autoescape=True))
@@ -171,3 +285,13 @@ def delete_document(
     storage.delete(document.stored_name)
     session.delete(document)
     _commit(session, "The document metadata could not be deleted")
+
+
+def mark_interrupted(session: Session, document_id: UUID, message: str) -> None:
+    """Flag a document whose processing never finished so the user can retry."""
+    document = session.get(Document, document_id)
+    if document is None or document.status == DocumentStatus.INDEXED:
+        return
+    document.status = DocumentStatus.FAILED
+    document.processing_error = message[:1000]
+    _commit(session, "The interrupted document could not be updated")

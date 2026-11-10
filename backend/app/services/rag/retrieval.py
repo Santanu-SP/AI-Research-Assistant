@@ -3,13 +3,14 @@
 from dataclasses import dataclass, replace
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.core.errors import AppError
 from app.domain.documents import DocumentStatus
 from app.models.document import Document, DocumentChunk
+from app.models.project import ResearchProject
 from app.schemas.retrieval import RetrievalCandidate
 from app.services.rag.embeddings import EmbeddingService, embedding_service_for
 from app.services.research import projects as project_service
@@ -37,6 +38,14 @@ def _require_postgres(session: Session) -> None:
         )
 
 
+def _active_project_filter():
+    """Exclude chunks whose document lives in an archived project."""
+    return or_(
+        Document.project_id.is_(None),
+        ResearchProject.archived_at.is_(None),
+    )
+
+
 def _reciprocal_rank(rank: int) -> float:
     return 1 / (RRF_K + rank)
 
@@ -53,12 +62,14 @@ def semantic_search(
         Document.user_id == user_id,
         Document.status == DocumentStatus.INDEXED,
         DocumentChunk.embedding.is_not(None),
+        _active_project_filter(),
     ]
     if project_id is not None:
         filters.append(Document.project_id == project_id)
     rows = session.execute(
         select(DocumentChunk, distance.label("distance"))
         .join(Document)
+        .outerjoin(ResearchProject, ResearchProject.id == Document.project_id)
         .where(*filters)
         .order_by(distance, DocumentChunk.id)
         .limit(limit)
@@ -82,12 +93,14 @@ def keyword_search(
         Document.user_id == user_id,
         Document.status == DocumentStatus.INDEXED,
         DocumentChunk.search_vector.op("@@")(query_expression),
+        _active_project_filter(),
     ]
     if project_id is not None:
         filters.append(Document.project_id == project_id)
     rows = session.execute(
         select(DocumentChunk, rank.label("rank"))
         .join(Document)
+        .outerjoin(ResearchProject, ResearchProject.id == Document.project_id)
         .where(*filters)
         .order_by(rank.desc(), DocumentChunk.id)
         .limit(limit)
