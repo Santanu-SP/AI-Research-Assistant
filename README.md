@@ -16,7 +16,12 @@ producing locally generated answers with traceable source excerpts.
 - Qwen3 embeddings and reranking, PostgreSQL pgvector search, indexed full-text
   search, and Reciprocal Rank Fusion.
 - Local grounded generation through `qwen3.5:9b` in Ollama, evidence
-  sufficiency checks, citation-ID allowlisting, and persisted reports.
+  sufficiency checks, sentence-level citation validation, and persisted reports.
+- A PostgreSQL-backed job queue: uploads return `202 Accepted` and a worker
+  parses and indexes them off the request path, with retries and recovery of
+  jobs interrupted by a crash or restart.
+- Production-safe defaults: secure cookies, Origin checks on unsafe requests,
+  security headers, request size limits, rate limiting, and hidden API docs.
 
 The production retrieval path requires PostgreSQL with pgvector. SQLite is
 kept for ordinary unit tests and non-retrieval development workflows.
@@ -26,7 +31,7 @@ kept for ordinary unit tests and non-retrieval development workflows.
 ```text
 backend/app/
   api/            HTTP routes and request dependencies
-  core/           settings and shared errors
+  core/           settings, errors, logging, middleware, rate limiting
   db/             SQLAlchemy engine and sessions
   domain/         enums and parser-neutral contracts
   models/         tables
@@ -35,6 +40,7 @@ backend/app/
     auth/         password sessions and Google sign-in
     documents/    upload records and local file storage
     ingestion/    Docling, the pypdf fallback, and chunking
+    jobs/         database job queue and the background worker
     rag/          hybrid retrieval, reranking, and generation
     research/     projects, research runs, and reports
 backend/alembic/  schema migrations
@@ -42,6 +48,7 @@ backend/tests/    API and service tests
 frontend/src/
   app/            router and auth, project, and toast state
   components/     layout and feature UI
+  hooks/          data loading and polling with backoff
   pages/          route screens
   services/       typed API clients
   types/          response shapes shared with the API
@@ -53,7 +60,8 @@ docs/             setup notes and design records
 ```text
 Authenticated user and optional owned project
   → PDF/DOCX validation and SHA-256 duplicate check
-  → Docling
+  → 202 Accepted + background job (background_jobs table)
+  → worker: Docling
   → LlamaIndex Document + DoclingNodeParser/HybridChunker
   → canonical document and node contracts
   → Qwen3 embeddings
@@ -90,17 +98,32 @@ npm install
 npm run dev
 ```
 
+### Docker
+
+```bash
+cp .env.example .env        # set POSTGRES_PASSWORD
+docker compose up -d --build
+docker compose exec ollama ollama pull qwen3.5:9b
+```
+
+The web app is served on http://localhost:8080 and proxies `/api` to the
+backend. See [docs/development.md](docs/development.md#docker) for details.
+
 ## Main API areas
 
-- `/api/v1/auth`: registration, login, logout, session restoration, and Google
-  OAuth when configured.
+- `/api/v1/auth`: registration, login, logout, logout from every device
+  (`/auth/logout-all`), session restoration, and Google OAuth when configured.
 - `/api/v1/projects`: private project creation, listing, updates, and archiving.
 - `/api/v1/documents`: compatibility upload/list/read/delete operations across
-  the authenticated user's documents.
+  the authenticated user's documents, plus `POST /documents/{id}/retry` for
+  failed documents.
 - `/api/v1/projects/{project_id}/documents`: exact project-scoped PDF/DOCX
   upload and listing.
 - `/api/v1/research`: research CRUD, project filters, progress, reports, hybrid
-  retrieval inspection, and grounded query execution.
+  retrieval inspection, grounded query execution (`/research/query`, in the
+  request) and background research runs (`/research/jobs`, returns 202).
+- `/api/v1/health/live` and `/api/v1/health/ready`: liveness, and readiness
+  that checks the database, pgvector and the Ollama model.
 
 Existing records with `project_id = NULL` remain supported. Project-scoped
 retrieval uses an exact project filter and excludes null-project and other
@@ -117,8 +140,9 @@ Deferred to later pull requests:
 - secure URL ingestion
 - DOI normalization and Crossref/OpenAlex integrations
 - advanced metadata retrieval filters
-- strict structured generation and stronger citation validation
-- LangGraph orchestration, Ragas evaluation, and background job infrastructure
+- strict structured generation
+- LangGraph orchestration and Ragas evaluation
+- a shared (Redis) rate limiter for multi-process deployments
 
 ## Validation
 
@@ -130,6 +154,10 @@ npm run typecheck
 npm run lint
 npm run build
 ```
+
+CI (`.github/workflows/ci.yml`) runs the backend suite, the PostgreSQL +
+pgvector integration suite including migration downgrade, the frontend lint,
+typecheck, tests and build, and `pip-audit`, `npm audit` and a secret scan.
 
 The PostgreSQL integration test requires a dedicated disposable database named
 with `test` through `POSTGRES_TEST_DATABASE_URL`. Never point it at shared
