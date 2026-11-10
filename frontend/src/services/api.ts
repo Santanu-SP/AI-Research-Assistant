@@ -1,7 +1,7 @@
 /**
  * Requests go to VITE_API_BASE_URL when it is set. It may be absolute
- * (http://localhost:8000/api/v1) or a same-origin path (/api/v1, used by the
- * Docker image where nginx proxies the API). Otherwise they use the page
+ * (http://localhost:8000/api/v1) or a same-origin path (/api/v1, when a
+ * reverse proxy serves the API). Otherwise they use the page
  * hostname on port 8000, so a LAN address stays on the same host.
  */
 

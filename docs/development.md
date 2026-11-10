@@ -219,24 +219,3 @@ pip install pip-audit && pip-audit -r backend/requirements.txt
 cd frontend && npm audit --omit=dev
 gitleaks git . --redact
 ```
-
-## Docker
-
-`docker-compose.yml` runs the whole stack on one machine:
-
-| Service | Image | Notes |
-|---------|-------|-------|
-| `db` | `pgvector/pgvector:pg16` | data in the `db-data` volume |
-| `ollama` | `ollama/ollama` | pull the model once: `docker compose exec ollama ollama pull qwen3.5:9b` |
-| `api` | `backend/Dockerfile` | runs `alembic upgrade head`, then uvicorn with the in-process worker; not published |
-| `worker` | `backend/Dockerfile` | optional (`--profile worker`); use with `API_WORKER_ENABLED=false` |
-| `web` | `frontend/Dockerfile` | nginx on port 8080, proxies `/api` to `api` |
-
-```bash
-cp .env.example .env          # set POSTGRES_PASSWORD; PUBLIC_URL defaults to http://localhost:8080
-docker compose up -d --build
-docker compose exec ollama ollama pull qwen3.5:9b
-curl -s http://localhost:8080/api/v1/health/ready
-```
-
-The containers run as non-root users. Uploads and Hugging Face models live in the `uploads` and `models` volumes; models download on first use (set `MODEL_WARMUP_ON_STARTUP=true` to load them at start). The backend image uses CPU PyTorch; build with `--build-arg TORCH_INDEX_URL=https://download.pytorch.org/whl/cu124` for CUDA. Cookies are `Secure` in production, which browsers accept on `http://localhost`; for any other host put TLS in front of the `web` container. For Google sign-in, register `${PUBLIC_URL}/api/v1/auth/google/callback` as the redirect URI.

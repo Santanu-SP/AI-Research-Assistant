@@ -31,8 +31,6 @@ npm run lint      # eslint with react-hooks rules; CI uses --max-warnings=0
 npm run build
 ```
 
-`docker build -t ara-web .` builds the nginx image (see `Dockerfile` and `nginx.conf`).
-
 ## Layout
 
 ```text
@@ -54,7 +52,7 @@ Routes worth knowing:
 - `/research`, `/research/new`, `/research/:id`, `/research/:id/progress`
 - `/documents`
 
-Authenticated requests send the session cookie. The API base URL is resolved in `src/services/api.ts`; it may be absolute or a same-origin path such as `/api/v1` (the Docker image).
+Authenticated requests send the session cookie. The API base URL is resolved in `src/services/api.ts`; it may be absolute or a same-origin path such as `/api/v1` (behind a reverse proxy).
 
 Every request has a timeout (30 s by default, 5 minutes for uploads and inline answers). Errors are read from the backend envelope `{ "error": { "code", "message", "details" } }`. Signed-in pages are code-split with `React.lazy` and wrapped in an error boundary that resets on navigation.
 

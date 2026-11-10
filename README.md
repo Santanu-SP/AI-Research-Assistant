@@ -98,17 +98,6 @@ npm install
 npm run dev
 ```
 
-### Docker
-
-```bash
-cp .env.example .env        # set POSTGRES_PASSWORD
-docker compose up -d --build
-docker compose exec ollama ollama pull qwen3.5:9b
-```
-
-The web app is served on http://localhost:8080 and proxies `/api` to the
-backend. See [docs/development.md](docs/development.md#docker) for details.
-
 ## Main API areas
 
 - `/api/v1/auth`: registration, login, logout, logout from every device
