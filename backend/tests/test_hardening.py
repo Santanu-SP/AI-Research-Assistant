@@ -66,7 +66,10 @@ def _register_and_login(client: TestClient, email: str = "user@example.com") -> 
 # --- settings & secure defaults ------------------------------------------
 
 
-def test_settings_default_to_production_with_secure_cookies() -> None:
+def test_settings_default_to_production_with_secure_cookies(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Check the built-in defaults, not whatever the shell or CI exports.
+    for field_name in Settings.model_fields:
+        monkeypatch.delenv(field_name.upper(), raising=False)
     settings = Settings(_env_file=None)
     assert settings.app_environment == "production"
     assert settings.auth_cookie_secure is True
