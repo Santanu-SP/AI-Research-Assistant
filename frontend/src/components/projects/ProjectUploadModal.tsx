@@ -56,18 +56,18 @@ const validateFile = (
 const StatusIcon: React.FC<{ status: FileItemStatus }> = ({ status }) => {
   switch (status) {
     case 'done':
-      return <CheckCircle2 className="w-4 h-4 text-[#163328]" />;
+      return <CheckCircle2 className="w-4 h-4 text-accent" />;
     case 'duplicate':
-      return <AlertCircle className="w-4 h-4 text-[#b45309]" />;
+      return <AlertCircle className="w-4 h-4 text-warning" />;
     case 'failed':
-      return <AlertCircle className="w-4 h-4 text-[#b91c1c]" />;
+      return <AlertCircle className="w-4 h-4 text-danger" />;
     case 'uploading':
     case 'processing':
       return (
-        <span className="w-4 h-4 border-2 border-[#163328]/30 border-t-[#163328] rounded-full animate-spin block" />
+        <span className="w-4 h-4 border-2 border-accent/30 border-t-accent rounded-full animate-spin block" />
       );
     default:
-      return <Clock className="w-4 h-4 text-[#929792]" />;
+      return <Clock className="w-4 h-4 text-ink-muted" />;
   }
 };
 
@@ -232,18 +232,18 @@ export const ProjectUploadModal: React.FC<ProjectUploadModalProps> = ({
         role="dialog"
         aria-modal="true"
         aria-labelledby="upload-modal-title"
-        className="w-full max-w-lg bg-white rounded-xl shadow-xl border border-[#e5e7e4] overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+        className="w-full max-w-lg bg-panel rounded-xl shadow-xl border border-line overflow-hidden animate-in fade-in zoom-in-95 duration-150"
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <div className="px-6 py-4 border-b border-[#e5e7e4] flex items-center justify-between">
+        <div className="px-6 py-4 border-b border-line flex items-center justify-between">
           <div>
             <h3
               id="upload-modal-title"
-              className="font-semibold text-base text-[#181a18]"
+              className="font-semibold text-base text-ink"
             >
               Upload Documents
             </h3>
-            <p className="text-xs text-[#6b706c] mt-0.5">
+            <p className="text-xs text-ink-soft mt-0.5">
               PDF and DOCX files supported · Max 100 MB per file
             </p>
           </div>
@@ -251,7 +251,7 @@ export const ProjectUploadModal: React.FC<ProjectUploadModalProps> = ({
             type="button"
             onClick={onClose}
             aria-label="Close upload dialog"
-            className="text-[#929792] hover:text-[#181a18] p-1.5 rounded-md hover:bg-[#f5f5f2] transition-colors"
+            className="text-ink-muted hover:text-ink p-1.5 rounded-md hover:bg-subtle transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -274,8 +274,8 @@ export const ProjectUploadModal: React.FC<ProjectUploadModalProps> = ({
             aria-label="Choose PDF or DOCX documents"
             className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-150 ${
               dragOver
-                ? 'border-[#163328] bg-[#f1f6f3]/60 scale-[1.01]'
-                : 'border-[#d0d7d2] hover:border-[#163328]/50 hover:bg-[#fafaf8]'
+                ? 'border-accent bg-accent-soft/60 scale-[1.01]'
+                : 'border-line-strong hover:border-accent/50 hover:bg-canvas'
             }`}
           >
             <input
@@ -286,13 +286,13 @@ export const ProjectUploadModal: React.FC<ProjectUploadModalProps> = ({
               onChange={handleFileChange}
               className="hidden"
             />
-            <div className="w-12 h-12 rounded-full bg-[#f1f6f3] text-[#163328] flex items-center justify-center mb-3">
+            <div className="w-12 h-12 rounded-full bg-accent-soft text-accent flex items-center justify-center mb-3">
               <UploadCloud className="w-6 h-6 stroke-[1.75]" />
             </div>
-            <p className="font-medium text-sm text-[#181a18] mb-1">
+            <p className="font-medium text-sm text-ink mb-1">
               Click to browse or drag and drop
             </p>
-            <p className="text-xs text-[#929792]">PDF and DOCX</p>
+            <p className="text-xs text-ink-muted">PDF and DOCX</p>
           </div>
 
           {queue.length > 0 && (
@@ -300,15 +300,15 @@ export const ProjectUploadModal: React.FC<ProjectUploadModalProps> = ({
               {queue.map((item) => (
                 <div
                   key={item.id}
-                  className="flex items-center gap-3 px-3 py-2 bg-[#fafaf8] border border-[#e5e7e4] rounded-lg"
+                  className="flex items-center gap-3 px-3 py-2 bg-canvas border border-line rounded-lg"
                 >
                   <StatusIcon status={item.status} />
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium text-[#181a18] truncate">
+                    <p className="text-xs font-medium text-ink truncate">
                       {item.file.name}
                     </p>
                     {item.errorMessage && (
-                      <p className="text-[11px] text-[#b91c1c] leading-snug mt-0.5">
+                      <p className="text-[11px] text-danger leading-snug mt-0.5">
                         {item.errorMessage}
                       </p>
                     )}
@@ -316,12 +316,12 @@ export const ProjectUploadModal: React.FC<ProjectUploadModalProps> = ({
                   <span
                     className={`text-[10px] font-medium shrink-0 ${
                       item.status === 'done'
-                        ? 'text-[#163328]'
+                        ? 'text-accent'
                         : item.status === 'failed'
-                        ? 'text-[#b91c1c]'
+                        ? 'text-danger'
                         : item.status === 'duplicate'
-                        ? 'text-[#b45309]'
-                        : 'text-[#929792]'
+                        ? 'text-warning'
+                        : 'text-ink-muted'
                     }`}
                   >
                     {STATUS_LABELS[item.status]}
@@ -332,11 +332,11 @@ export const ProjectUploadModal: React.FC<ProjectUploadModalProps> = ({
           )}
         </div>
 
-        <div className="px-6 py-3.5 bg-[#fafaf8] border-t border-[#e5e7e4] flex items-center justify-end gap-2.5">
+        <div className="px-6 py-3.5 bg-canvas border-t border-line flex items-center justify-end gap-2.5">
           <button
             type="button"
             onClick={onClose}
-            className="text-xs font-medium text-[#6b706c] hover:text-[#181a18] px-3.5 py-2 rounded-md hover:bg-white transition-colors"
+            className="text-xs font-medium text-ink-soft hover:text-ink px-3.5 py-2 rounded-md hover:bg-panel transition-colors"
           >
             {allDone ? 'Done' : 'Cancel'}
           </button>

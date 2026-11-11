@@ -55,21 +55,21 @@ export const SourceCard: React.FC<SourceCardProps> = ({
 
   return (
     <div
-      className="bg-white border border-[#e5e7e4] rounded-xl p-4 flex flex-col sm:flex-row sm:items-start gap-4 hover:border-[#cbd0ca] hover:shadow-xs transition-all duration-150"
+      className="bg-panel border border-line rounded-xl p-4 flex flex-col sm:flex-row sm:items-start gap-4 hover:border-line-strong hover:shadow-xs transition-all duration-150"
       data-document-id={document.id}
     >
-      <div className="w-9 h-9 rounded-lg bg-[#f1f6f3] flex items-center justify-center shrink-0">
-        <FileText className="w-5 h-5 text-[#163328]" />
+      <div className="w-9 h-9 rounded-lg bg-accent-soft flex items-center justify-center shrink-0">
+        <FileText className="w-5 h-5 text-accent" />
       </div>
 
       <div className="flex-1 min-w-0">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-[#181a18] leading-snug truncate">
+            <p className="text-sm font-semibold text-ink leading-snug truncate">
               {displayName}
             </p>
             {showFileName && (
-              <p className="text-[11px] text-[#929792] truncate mt-0.5">
+              <p className="text-[11px] text-ink-muted truncate mt-0.5">
                 {document.name}
               </p>
             )}
@@ -83,7 +83,7 @@ export const SourceCard: React.FC<SourceCardProps> = ({
               title="Retry processing"
               disabled={isRetrying}
               onClick={() => onRetry(document.id)}
-              className="shrink-0 p-1.5 text-[#929792] hover:text-[#163328] hover:bg-[#f1f6f3] rounded-md transition-colors disabled:opacity-50"
+              className="shrink-0 p-1.5 text-ink-muted hover:text-accent hover:bg-accent-soft rounded-md transition-colors disabled:opacity-50"
             >
               <RotateCcw className={`w-3.5 h-3.5 ${isRetrying ? 'animate-spin' : ''}`} />
             </button>
@@ -93,7 +93,7 @@ export const SourceCard: React.FC<SourceCardProps> = ({
               type="button"
               aria-label={`Delete document: ${displayName}`}
               onClick={() => onDelete(document.id)}
-              className="shrink-0 p-1.5 text-[#929792] hover:text-[#b91c1c] hover:bg-[#fee2e2]/40 rounded-md transition-colors"
+              className="shrink-0 p-1.5 text-ink-muted hover:text-danger hover:bg-danger-soft rounded-md transition-colors"
             >
               <Trash2 className="w-3.5 h-3.5" />
             </button>
@@ -109,13 +109,13 @@ export const SourceCard: React.FC<SourceCardProps> = ({
           <SourceTypeLabel sourceType={document.sourceType} />
           <ContentLevelLabel contentLevel={document.contentLevel} />
           {document.type && (
-            <span className="text-[10px] font-medium text-[#929792] uppercase tracking-wide">
+            <span className="text-[10px] font-medium text-ink-muted uppercase tracking-wide">
               {document.type}
             </span>
           )}
         </div>
 
-        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[#929792]">
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-ink-muted">
           <span>{formatSize(document.size)}</span>
           {document.pageCount && document.pageCount > 0 && (
             <span>{document.pageCount} pages</span>
@@ -128,7 +128,7 @@ export const SourceCard: React.FC<SourceCardProps> = ({
               href={`https://doi.org/${document.doi}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-[#163328] hover:underline"
+              className="text-accent hover:underline"
               onClick={(e) => e.stopPropagation()}
             >
               DOI: {document.doi}

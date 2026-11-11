@@ -52,20 +52,20 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ className = '' }) => {
 
   const navLinkClass = ({ isActive }: { isActive: boolean }) =>
     isActive
-      ? 'bg-[#f1f6f3] text-[#163328] font-medium rounded-md px-3 py-2 flex items-center gap-2.5 relative text-[13.5px] transition-colors duration-150'
-      : 'text-[#6b706c] hover:text-[#181a18] hover:bg-[#f5f5f2] px-3 py-2 rounded-md flex items-center gap-2.5 text-[13.5px] font-normal transition-colors duration-150';
+      ? 'bg-accent-soft text-accent font-medium rounded-md px-3 py-2 flex items-center gap-2.5 relative text-[13.5px] transition-colors duration-150'
+      : 'text-ink-soft hover:text-ink hover:bg-subtle px-3 py-2 rounded-md flex items-center gap-2.5 text-[13.5px] font-normal transition-colors duration-150';
 
   const ActiveIndicator = () => (
-    <div className="absolute left-0 top-1.5 bottom-1.5 w-[2px] bg-[#163328] rounded-r-full" />
+    <div className="absolute left-0 top-1.5 bottom-1.5 w-[2px] bg-solid rounded-r-full" />
   );
 
   return (
     <aside
-      className={`app-chrome-surface fixed left-0 top-0 h-full w-[232px] z-50 flex flex-col justify-between border-r border-[#e5e7e4] select-none ${className}`}
+      className={`app-chrome-surface fixed left-0 top-0 h-full w-[232px] z-50 flex flex-col justify-between border-r border-line select-none ${className}`}
     >
       <div className="flex flex-col overflow-y-auto flex-1">
-        <div className="h-14 px-4 flex items-center gap-2.5 border-b border-[#e5e7e4] shrink-0">
-          <div className="w-6 h-6 flex items-center justify-center shrink-0 text-[#163328]">
+        <div className="h-14 px-4 flex items-center gap-2.5 border-b border-line shrink-0">
+          <div className="w-6 h-6 flex items-center justify-center shrink-0 text-accent">
             <svg
               className="w-5 h-5"
               fill="none"
@@ -80,7 +80,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ className = '' }) => {
               />
             </svg>
           </div>
-          <span className="font-semibold text-[14.5px] tracking-tight text-[#181a18]">
+          <span className="font-semibold text-[14.5px] tracking-tight text-ink">
             Research Assistant
           </span>
         </div>
@@ -140,7 +140,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ className = '' }) => {
 
         {recentProjects.length > 0 && (
           <div className="px-2 mt-3">
-            <div className="uppercase tracking-wider text-[10.5px] text-[#929792] font-semibold px-3 mb-1.5">
+            <div className="uppercase tracking-wider text-[10.5px] text-ink-muted font-semibold px-3 mb-1.5">
               Recent Projects
             </div>
             <nav aria-label="Recent projects" className="flex flex-col gap-0.5">
@@ -153,13 +153,13 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ className = '' }) => {
                       to={`/projects/${project.id}`}
                       className={`text-[13px] truncate px-3 py-1.5 rounded-md transition-colors duration-150 block ${
                         isActive || isCurrentProject
-                          ? 'bg-[#f1f6f3] text-[#163328] font-medium'
-                          : 'text-[#6b706c] hover:text-[#181a18] hover:bg-[#f5f5f2]'
+                          ? 'bg-accent-soft text-accent font-medium'
+                          : 'text-ink-soft hover:text-ink hover:bg-subtle'
                       }`}
                     >
                       {project.name}
                     </NavLink>
-                    <div className="pointer-events-none absolute left-[98%] top-1/2 -translate-y-1/2 ml-2 z-50 bg-[#181a18] text-white text-[11px] px-2.5 py-1 rounded shadow-md whitespace-nowrap opacity-0 group-hover/tooltip:opacity-100 transition-opacity duration-150">
+                    <div className="pointer-events-none absolute left-[98%] top-1/2 -translate-y-1/2 ml-2 z-50 bg-inverse text-on-inverse text-[11px] px-2.5 py-1 rounded shadow-md whitespace-nowrap opacity-0 group-hover/tooltip:opacity-100 transition-opacity duration-150">
                       Open workspace
                     </div>
                   </div>
@@ -171,7 +171,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ className = '' }) => {
 
         {recentItems.length > 0 && (
           <div className="px-2 mt-3">
-            <div className="uppercase tracking-wider text-[10.5px] text-[#929792] font-semibold px-3 mb-1.5">
+            <div className="uppercase tracking-wider text-[10.5px] text-ink-muted font-semibold px-3 mb-1.5">
               Recent Research
             </div>
             <nav aria-label="Recent research" className="flex flex-col gap-0.5">
@@ -197,13 +197,13 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ className = '' }) => {
                       to={targetPath}
                       className={`text-[13px] truncate px-3 py-1.5 rounded-md transition-colors duration-150 block ${
                         isActive
-                          ? 'bg-[#f1f6f3] text-[#163328] font-medium'
-                          : 'text-[#6b706c] hover:text-[#181a18] hover:bg-[#f5f5f2]'
+                          ? 'bg-accent-soft text-accent font-medium'
+                          : 'text-ink-soft hover:text-ink hover:bg-subtle'
                       }`}
                     >
                       {item.title}
                     </NavLink>
-                    <div className="pointer-events-none absolute left-[98%] top-1/2 -translate-y-1/2 ml-2 z-50 bg-[#181a18] text-white text-[11px] px-2.5 py-1 rounded shadow-md whitespace-nowrap opacity-0 group-hover/tooltip:opacity-100 transition-opacity duration-150">
+                    <div className="pointer-events-none absolute left-[98%] top-1/2 -translate-y-1/2 ml-2 z-50 bg-inverse text-on-inverse text-[11px] px-2.5 py-1 rounded shadow-md whitespace-nowrap opacity-0 group-hover/tooltip:opacity-100 transition-opacity duration-150">
                       {tooltipText}
                     </div>
                   </div>
@@ -214,10 +214,10 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ className = '' }) => {
         )}
       </div>
 
-      <div className="border-t border-[#e5e7e4] p-2 shrink-0">
+      <div className="border-t border-line p-2 shrink-0">
         {profileOpen && (
-          <div className="mb-2 rounded-md border border-[#e5e7e4] bg-white p-2">
-            <p className="px-2 py-1 text-[11px] text-[#6b706c] truncate">
+          <div className="mb-2 rounded-md border border-line bg-panel p-2">
+            <p className="px-2 py-1 text-[11px] text-ink-soft truncate">
               {user?.email}
             </p>
             <button
@@ -232,12 +232,12 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ className = '' }) => {
                     );
                   });
               }}
-              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs text-[#181a18] hover:bg-[#f5f5f2]"
+              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs text-ink hover:bg-subtle"
             >
               <LogOut className="w-4 h-4" /> Logout
             </button>
             {logoutError && (
-              <p role="alert" className="text-xs text-[#b91c1c] px-2">
+              <p role="alert" className="text-xs text-danger px-2">
                 {logoutError}
               </p>
             )}
@@ -249,17 +249,17 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ className = '' }) => {
           aria-expanded={profileOpen}
           aria-label="Account menu"
           onClick={() => setProfileOpen((open) => !open)}
-          className="w-full flex items-center justify-between p-2 rounded-md hover:bg-[#f5f5f2] transition-colors duration-150"
+          className="w-full flex items-center justify-between p-2 rounded-md hover:bg-subtle transition-colors duration-150"
         >
           <div className="flex items-center gap-2.5 overflow-hidden">
-            <div className="w-8 h-8 rounded-full bg-[#e2e8e4] text-[#163328] font-semibold text-xs flex items-center justify-center border border-[#d0d7d2] shrink-0">
+            <div className="w-8 h-8 rounded-full bg-accent-muted text-accent font-semibold text-xs flex items-center justify-center border border-line-strong shrink-0">
               {user?.name.slice(0, 1).toUpperCase() || 'R'}
             </div>
             <div className="flex flex-col min-w-0 text-left">
-              <span className="text-[13px] font-semibold text-[#181a18] truncate leading-tight">
+              <span className="text-[13px] font-semibold text-ink truncate leading-tight">
                 {user?.name || 'Researcher'}
               </span>
-              <span className="text-[11px] text-[#929792] truncate leading-tight">
+              <span className="text-[11px] text-ink-muted truncate leading-tight">
                 Account
               </span>
             </div>

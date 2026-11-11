@@ -76,13 +76,13 @@ export const NewResearch: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#fafaf8] flex flex-col">
+    <div className="min-h-screen bg-canvas flex flex-col">
       <TopBar
         breadcrumbs={
           <div className="flex items-center gap-2">
-            <span className="text-[#6b706c]">Research</span>
-            <span className="text-[#929792]">/</span>
-            <span className="text-[#181a18] font-medium">New Research</span>
+            <span className="text-ink-soft">Research</span>
+            <span className="text-ink-muted">/</span>
+            <span className="text-ink font-medium">New Research</span>
           </div>
         }
       />
@@ -90,10 +90,10 @@ export const NewResearch: React.FC = () => {
       <main className="flex-1 pt-14 pb-16 px-4 sm:px-6">
         <div className="max-w-3xl mx-auto py-10">
           <div className="mb-8 text-center sm:text-left">
-            <h1 className="font-serif text-3xl sm:text-4xl text-[#181a18] tracking-tight font-normal mb-2.5">
+            <h1 className="font-serif text-3xl sm:text-4xl text-ink tracking-tight font-normal mb-2.5">
               What would you like to investigate?
             </h1>
-            <p className="text-sm sm:text-[15px] text-[#6b706c] max-w-2xl leading-relaxed">
+            <p className="text-sm sm:text-[15px] text-ink-soft max-w-2xl leading-relaxed">
               Search your indexed papers and generate a locally grounded answer with validated citations.
             </p>
           </div>
@@ -116,12 +116,12 @@ export const NewResearch: React.FC = () => {
 
           <div>
             <div className="flex items-center justify-between mb-3">
-              <span className="uppercase tracking-wider text-[11px] font-semibold text-[#929792]">
+              <span className="uppercase tracking-wider text-[11px] font-semibold text-ink-muted">
                 Recent Research
               </span>
               <Link
                 to="/research"
-                className="text-xs font-medium text-[#163328] hover:underline"
+                className="text-xs font-medium text-accent hover:underline"
               >
                 View all ({recentTotal})
               </Link>
@@ -154,22 +154,22 @@ export const NewResearch: React.FC = () => {
                   <Link
                     key={item.id}
                     to={targetPath}
-                    className="p-4 bg-white border border-[#e5e7e4] hover:border-[#cbd0ca] hover:shadow-xs rounded-lg transition-all duration-150 flex flex-col justify-between group"
+                    className="p-4 bg-panel border border-line hover:border-line-strong hover:shadow-xs rounded-lg transition-all duration-150 flex flex-col justify-between group"
                   >
                     <div>
                       <div className="flex items-center justify-between gap-2 mb-2">
-                        <span className="text-[11px] font-medium text-[#6b706c] truncate">
+                        <span className="text-[11px] font-medium text-ink-soft truncate">
                           {item.domain || 'General research'}
                         </span>
                         <StatusBadge status={item.status} size="sm" />
                       </div>
 
-                      <h4 className="text-[13.5px] font-medium text-[#181a18] group-hover:text-[#163328] transition-colors line-clamp-2 leading-snug mb-3">
+                      <h4 className="text-[13.5px] font-medium text-ink group-hover:text-accent transition-colors line-clamp-2 leading-snug mb-3">
                         {item.title}
                       </h4>
                     </div>
 
-                    <div className="flex items-center justify-between text-[11px] text-[#929792] pt-2 border-t border-[#f5f5f2]">
+                    <div className="flex items-center justify-between text-[11px] text-ink-muted pt-2 border-t border-line">
                       <span>{item.sourceCount} sources</span>
                       <span className="flex items-center gap-1">
                         <Clock className="w-3 h-3" />

@@ -90,11 +90,11 @@ export const ProjectsPage: React.FC = () => {
   const archivedProjects = projects.filter((p) => p.archivedAt);
 
   return (
-    <div className="min-h-screen bg-[#fafaf8] flex flex-col">
+    <div className="min-h-screen bg-canvas flex flex-col">
       <TopBar
         breadcrumbs={
           <div className="flex items-center gap-2">
-            <span className="text-[#181a18] font-medium">Projects</span>
+            <span className="text-ink font-medium">Projects</span>
           </div>
         }
         rightActions={
@@ -113,18 +113,18 @@ export const ProjectsPage: React.FC = () => {
         <div className="max-w-5xl mx-auto py-8">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
             <div>
-              <h1 className="font-serif text-2xl sm:text-3xl text-[#181a18] font-normal tracking-tight">
+              <h1 className="font-serif text-2xl sm:text-3xl text-ink font-normal tracking-tight">
                 Research Projects
               </h1>
-              <p className="text-xs sm:text-sm text-[#6b706c] mt-1">
+              <p className="text-xs sm:text-sm text-ink-soft mt-1">
                 Organize your documents and research within isolated workspaces.
               </p>
             </div>
           </div>
 
-          <div className="p-3 bg-white border border-[#e5e7e4] rounded-xl mb-6 flex flex-wrap items-center gap-3 shadow-xs">
+          <div className="p-3 bg-panel border border-line rounded-xl mb-6 flex flex-wrap items-center gap-3 shadow-xs">
             <div className="relative flex-1 min-w-[220px]">
-              <Search className="w-4 h-4 text-[#929792] absolute left-3 top-1/2 -translate-y-1/2" />
+              <Search className="w-4 h-4 text-ink-muted absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
                 aria-label="Search projects"
@@ -132,16 +132,16 @@ export const ProjectsPage: React.FC = () => {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search projects by name…"
-                className="w-full bg-[#fafaf8] border border-[#e5e7e4] rounded-md pl-9 pr-3 py-1.5 text-xs text-[#181a18] placeholder:text-[#929792] focus:outline-none focus:ring-1 focus:ring-[#163328] focus:border-[#163328] transition-colors"
+                className="w-full bg-canvas border border-line rounded-md pl-9 pr-3 py-1.5 text-xs text-ink placeholder:text-ink-muted focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent transition-colors"
               />
             </div>
 
-            <label className="flex items-center gap-2 text-xs text-[#6b706c] cursor-pointer select-none">
+            <label className="flex items-center gap-2 text-xs text-ink-soft cursor-pointer select-none">
               <input
                 type="checkbox"
                 checked={showArchived}
                 onChange={(e) => setShowArchived(e.target.checked)}
-                className="rounded border-[#d0d7d2] text-[#163328] focus:ring-[#163328]"
+                className="rounded border-line-strong text-accent focus:ring-accent"
               />
               <span className="flex items-center gap-1.5">
                 <Archive className="w-3.5 h-3.5" />
@@ -179,7 +179,7 @@ export const ProjectsPage: React.FC = () => {
               {activeProjects.length > 0 && (
                 <section>
                   {showArchived && (
-                    <h2 className="text-[11px] font-semibold uppercase tracking-wider text-[#929792] mb-3">
+                    <h2 className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted mb-3">
                       Active ({activeProjects.length})
                     </h2>
                   )}
@@ -199,7 +199,7 @@ export const ProjectsPage: React.FC = () => {
 
               {showArchived && archivedProjects.length > 0 && (
                 <section>
-                  <h2 className="text-[11px] font-semibold uppercase tracking-wider text-[#929792] mb-3">
+                  <h2 className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted mb-3">
                     Archived ({archivedProjects.length})
                   </h2>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -219,7 +219,7 @@ export const ProjectsPage: React.FC = () => {
           )}
 
           {!isLoading && !error && total > 0 && (
-            <div className="mt-4 text-xs text-[#929792] text-right">
+            <div className="mt-4 text-xs text-ink-muted text-right">
               {total} project{total !== 1 ? 's' : ''}
             </div>
           )}

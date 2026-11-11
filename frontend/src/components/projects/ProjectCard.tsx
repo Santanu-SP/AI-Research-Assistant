@@ -42,10 +42,10 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
   return (
     <>
       <div
-        className={`group relative rounded-xl border bg-white transition-all duration-150 ${
+        className={`group relative rounded-xl border bg-panel transition-all duration-150 ${
           isArchived
-            ? 'border-[#e5e7e4] opacity-70'
-            : 'border-[#e5e7e4] hover:border-[#cbd0ca] hover:shadow-sm cursor-pointer'
+            ? 'border-line opacity-70'
+            : 'border-line hover:border-line-strong hover:shadow-sm cursor-pointer'
         }`}
         onClick={() => !isArchived && onOpen(project)}
         onKeyDown={handleKeyDown}
@@ -58,7 +58,7 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap mb-1">
                 {isArchived && (
-                  <span className="inline-flex items-center gap-1 text-[10px] font-medium text-[#929792] bg-[#f5f5f2] border border-[#e5e7e4] px-1.5 py-0.5 rounded">
+                  <span className="inline-flex items-center gap-1 text-[10px] font-medium text-ink-muted bg-subtle border border-line px-1.5 py-0.5 rounded">
                     <Archive className="w-2.5 h-2.5" />
                     Archived
                   </span>
@@ -67,8 +67,8 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
               <h3
                 className={`font-semibold text-sm leading-snug ${
                   isArchived
-                    ? 'text-[#6b706c]'
-                    : 'text-[#181a18] group-hover:text-[#163328] transition-colors'
+                    ? 'text-ink-soft'
+                    : 'text-ink group-hover:text-accent transition-colors'
                 }`}
               >
                 {project.name}
@@ -81,7 +81,7 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
                 aria-label="Project actions"
                 aria-expanded={menuOpen}
                 onClick={() => setMenuOpen((o) => !o)}
-                className="p-1.5 rounded-md text-[#929792] hover:text-[#181a18] hover:bg-[#f5f5f2] transition-colors"
+                className="p-1.5 rounded-md text-ink-muted hover:text-ink hover:bg-subtle transition-colors"
               >
                 <MoreHorizontal className="w-4 h-4" />
               </button>
@@ -92,16 +92,16 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
                     className="fixed inset-0 z-10"
                     onClick={() => setMenuOpen(false)}
                   />
-                  <div className="absolute right-0 top-full mt-1 w-44 bg-white rounded-lg border border-[#e5e7e4] shadow-lg z-20 overflow-hidden py-1">
+                  <div className="absolute right-0 top-full mt-1 w-44 bg-panel rounded-lg border border-line shadow-lg z-20 overflow-hidden py-1">
                     <button
                       type="button"
                       onClick={() => {
                         setMenuOpen(false);
                         onOpen(project);
                       }}
-                      className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-[#181a18] hover:bg-[#fafaf8] transition-colors"
+                      className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-ink hover:bg-canvas transition-colors"
                     >
-                      <ExternalLink className="w-3.5 h-3.5 shrink-0 text-[#929792]" />
+                      <ExternalLink className="w-3.5 h-3.5 shrink-0 text-ink-muted" />
                       Open workspace
                     </button>
                     <button
@@ -110,9 +110,9 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
                         setMenuOpen(false);
                         setIsEditOpen(true);
                       }}
-                      className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-[#181a18] hover:bg-[#fafaf8] transition-colors"
+                      className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-ink hover:bg-canvas transition-colors"
                     >
-                      <Pencil className="w-3.5 h-3.5 shrink-0 text-[#929792]" />
+                      <Pencil className="w-3.5 h-3.5 shrink-0 text-ink-muted" />
                       Edit project
                     </button>
                     {!isArchived && (
@@ -122,7 +122,7 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
                           setMenuOpen(false);
                           setIsArchiveOpen(true);
                         }}
-                        className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-[#b91c1c] hover:bg-[#fee2e2]/40 transition-colors"
+                        className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-danger hover:bg-danger-soft transition-colors"
                       >
                         <Archive className="w-3.5 h-3.5 shrink-0" />
                         Archive project
@@ -135,13 +135,13 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
           </div>
 
           {project.description && (
-            <p className="text-xs text-[#6b706c] mt-2 line-clamp-2 leading-relaxed">
+            <p className="text-xs text-ink-soft mt-2 line-clamp-2 leading-relaxed">
               {project.description}
             </p>
           )}
         </div>
 
-        <div className="px-5 pb-4 pt-2 border-t border-[#f5f5f2] flex items-center justify-between text-[11px] text-[#929792]">
+        <div className="px-5 pb-4 pt-2 border-t border-line flex items-center justify-between text-[11px] text-ink-muted">
           <span>Updated {formatDate(project.updatedAt)}</span>
           <span>Created {formatDate(project.createdAt)}</span>
         </div>

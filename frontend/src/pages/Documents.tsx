@@ -108,13 +108,13 @@ export const DocumentsPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#fafaf8] flex flex-col">
+    <div className="min-h-screen bg-canvas flex flex-col">
       <TopBar
         breadcrumbs={
           <div className="flex items-center gap-2">
-            <span className="text-[#6b706c]">Research</span>
-            <span className="text-[#929792]">/</span>
-            <span className="text-[#181a18] font-medium">Documents</span>
+            <span className="text-ink-soft">Research</span>
+            <span className="text-ink-muted">/</span>
+            <span className="text-ink font-medium">Documents</span>
           </div>
         }
       />
@@ -123,10 +123,10 @@ export const DocumentsPage: React.FC = () => {
         <div className="max-w-5xl mx-auto py-8">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
             <div>
-              <h1 className="font-serif text-2xl sm:text-3xl text-[#181a18] font-normal tracking-tight">
+              <h1 className="font-serif text-2xl sm:text-3xl text-ink font-normal tracking-tight">
                 Documents
               </h1>
-              <p className="text-xs sm:text-sm text-[#6b706c] mt-1">
+              <p className="text-xs sm:text-sm text-ink-soft mt-1">
                 Internal whitepapers, empirical benchmarks, and uploaded datasets available for cross-synthesis.
               </p>
             </div>
@@ -140,16 +140,16 @@ export const DocumentsPage: React.FC = () => {
             </PrimaryButton>
           </div>
 
-          <div className="p-3 bg-white border border-[#e5e7e4] rounded-xl mb-6 flex flex-wrap items-center justify-between gap-3 shadow-xs">
+          <div className="p-3 bg-panel border border-line rounded-xl mb-6 flex flex-wrap items-center justify-between gap-3 shadow-xs">
             <div className="relative flex-1 min-w-[240px]">
-              <Search className="w-4 h-4 text-[#929792] absolute left-3 top-1/2 -translate-y-1/2" />
+              <Search className="w-4 h-4 text-ink-muted absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
                 aria-label="Search documents"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search documents by name or keyword…"
-                className="w-full bg-[#fafaf8] border border-[#e5e7e4] rounded-md pl-9 pr-3 py-1.5 text-xs text-[#181a18] placeholder:text-[#929792] focus:outline-none focus:ring-1 focus:ring-[#163328] focus:border-[#163328] transition-colors"
+                className="w-full bg-canvas border border-line rounded-md pl-9 pr-3 py-1.5 text-xs text-ink placeholder:text-ink-muted focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent transition-colors"
               />
             </div>
 
@@ -158,7 +158,7 @@ export const DocumentsPage: React.FC = () => {
                 aria-label="Filter documents by type"
                 value={selectedFormat}
                 onChange={(e) => setSelectedFormat(e.target.value)}
-                className="bg-[#fafaf8] border border-[#e5e7e4] text-[#6b706c] hover:text-[#181a18] text-xs rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#163328]"
+                className="bg-canvas border border-line text-ink-soft hover:text-ink text-xs rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-accent"
               >
                 <option value="all">All formats</option>
                 <option value="pdf">PDF</option>
@@ -169,7 +169,7 @@ export const DocumentsPage: React.FC = () => {
                 aria-label="Filter documents by status"
                 value={selectedStatus}
                 onChange={(e) => setSelectedStatus(e.target.value)}
-                className="bg-[#fafaf8] border border-[#e5e7e4] text-[#6b706c] hover:text-[#181a18] text-xs rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#163328]"
+                className="bg-canvas border border-line text-ink-soft hover:text-ink text-xs rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-accent"
               >
                 <option value="all">All statuses</option>
                 <option value="uploaded">Uploaded</option>
@@ -180,9 +180,9 @@ export const DocumentsPage: React.FC = () => {
             </div>
           </div>
 
-          {actionError && <p role="alert" className="mb-3 rounded-md border border-[#fecaca] bg-[#fee2e2]/50 p-3 text-xs text-[#b91c1c]">{actionError}</p>}
+          {actionError && <p role="alert" className="mb-3 rounded-md border border-danger-line bg-danger-soft p-3 text-xs text-danger">{actionError}</p>}
           {pollingStopped && (
-            <p role="status" className="mb-3 text-xs text-[#b45309]">
+            <p role="status" className="mb-3 text-xs text-warning">
               Some documents are taking longer than expected. Automatic refresh has paused.{' '}
               <button type="button" onClick={() => setRetryKey((k) => k + 1)} className="underline font-medium">
                 Refresh now
@@ -232,7 +232,7 @@ export const DocumentsPage: React.FC = () => {
             </div>
           )}
 
-          <div className="mt-3 text-right text-xs text-[#929792]">
+          <div className="mt-3 text-right text-xs text-ink-muted">
             Showing {documents.length} of {totalDocuments} documents
           </div>
         </div>
@@ -244,18 +244,18 @@ export const DocumentsPage: React.FC = () => {
         onUploadFile={handleUploadFile}
       />
       {selectedDocument && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onMouseDown={() => setSelectedDocument(null)}>
-        <div role="dialog" aria-modal="true" aria-labelledby="document-details-title" className="w-full max-w-md rounded-xl border border-[#e5e7e4] bg-white p-6 shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
-          <h2 id="document-details-title" className="font-serif text-2xl text-[#181a18]">{selectedDocument.title || selectedDocument.name}</h2>
-          <dl className="mt-4 space-y-2 text-sm text-[#6b706c]">
-            <div><dt className="inline font-medium text-[#181a18]">File: </dt><dd className="inline">{selectedDocument.name}</dd></div>
-            <div><dt className="inline font-medium text-[#181a18]">Status: </dt><dd className="inline">{selectedDocument.status}</dd></div>
-            <div><dt className="inline font-medium text-[#181a18]">Pages: </dt><dd className="inline">{selectedDocument.pageCount ?? 'Unavailable'}</dd></div>
-            <div><dt className="inline font-medium text-[#181a18]">Chunks: </dt><dd className="inline">{selectedDocument.chunkCount}</dd></div>
-            {selectedDocument.doi && <div><dt className="inline font-medium text-[#181a18]">DOI: </dt><dd className="inline">{selectedDocument.doi}</dd></div>}
+        <div role="dialog" aria-modal="true" aria-labelledby="document-details-title" className="w-full max-w-md rounded-xl border border-line bg-panel p-6 shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
+          <h2 id="document-details-title" className="font-serif text-2xl text-ink">{selectedDocument.title || selectedDocument.name}</h2>
+          <dl className="mt-4 space-y-2 text-sm text-ink-soft">
+            <div><dt className="inline font-medium text-ink">File: </dt><dd className="inline">{selectedDocument.name}</dd></div>
+            <div><dt className="inline font-medium text-ink">Status: </dt><dd className="inline">{selectedDocument.status}</dd></div>
+            <div><dt className="inline font-medium text-ink">Pages: </dt><dd className="inline">{selectedDocument.pageCount ?? 'Unavailable'}</dd></div>
+            <div><dt className="inline font-medium text-ink">Chunks: </dt><dd className="inline">{selectedDocument.chunkCount}</dd></div>
+            {selectedDocument.doi && <div><dt className="inline font-medium text-ink">DOI: </dt><dd className="inline">{selectedDocument.doi}</dd></div>}
           </dl>
           <div className="mt-6 flex items-center gap-3">
-            <a href={`${API_BASE_URL}/documents/${selectedDocument.id}/file`} target="_blank" rel="noopener noreferrer" className="rounded-md bg-[#163328] px-4 py-2 text-xs font-medium text-white">Open document</a>
-            <button type="button" onClick={() => setSelectedDocument(null)} className="rounded-md border border-[#e5e7e4] px-4 py-2 text-xs font-medium text-[#181a18]">Close</button>
+            <a href={`${API_BASE_URL}/documents/${selectedDocument.id}/file`} target="_blank" rel="noopener noreferrer" className="rounded-md bg-solid px-4 py-2 text-xs font-medium text-on-solid">Open document</a>
+            <button type="button" onClick={() => setSelectedDocument(null)} className="rounded-md border border-line px-4 py-2 text-xs font-medium text-ink">Close</button>
           </div>
         </div>
       </div>}

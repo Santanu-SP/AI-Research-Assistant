@@ -81,13 +81,13 @@ export const EditProjectDialog: React.FC<EditProjectDialogProps> = ({
         role="dialog"
         aria-modal="true"
         aria-labelledby="edit-project-title"
-        className="w-full max-w-md bg-white rounded-xl shadow-xl border border-[#e5e7e4] overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+        className="w-full max-w-md bg-panel rounded-xl shadow-xl border border-line overflow-hidden animate-in fade-in zoom-in-95 duration-150"
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <div className="px-6 py-4 border-b border-[#e5e7e4] flex items-center justify-between">
+        <div className="px-6 py-4 border-b border-line flex items-center justify-between">
           <h3
             id="edit-project-title"
-            className="font-semibold text-base text-[#181a18]"
+            className="font-semibold text-base text-ink"
           >
             Edit Project
           </h3>
@@ -95,7 +95,7 @@ export const EditProjectDialog: React.FC<EditProjectDialogProps> = ({
             type="button"
             onClick={onClose}
             aria-label="Close dialog"
-            className="text-[#929792] hover:text-[#181a18] p-1.5 rounded-md hover:bg-[#f5f5f2] transition-colors"
+            className="text-ink-muted hover:text-ink p-1.5 rounded-md hover:bg-subtle transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -105,9 +105,9 @@ export const EditProjectDialog: React.FC<EditProjectDialogProps> = ({
           <div>
             <label
               htmlFor="edit-project-name"
-              className="block text-xs font-medium text-[#181a18] mb-1.5"
+              className="block text-xs font-medium text-ink mb-1.5"
             >
-              Project name <span aria-hidden="true" className="text-[#b91c1c]">*</span>
+              Project name <span aria-hidden="true" className="text-danger">*</span>
             </label>
             <input
               ref={nameRef}
@@ -118,17 +118,17 @@ export const EditProjectDialog: React.FC<EditProjectDialogProps> = ({
               maxLength={200}
               required
               autoComplete="off"
-              className="w-full border border-[#e5e7e4] rounded-lg px-3 py-2 text-sm text-[#181a18] placeholder:text-[#929792] focus:outline-none focus:ring-1 focus:ring-[#163328] focus:border-[#163328] transition-colors"
+              className="w-full border border-line rounded-lg px-3 py-2 text-sm text-ink placeholder:text-ink-muted focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent transition-colors"
             />
           </div>
 
           <div>
             <label
               htmlFor="edit-project-description"
-              className="block text-xs font-medium text-[#181a18] mb-1.5"
+              className="block text-xs font-medium text-ink mb-1.5"
             >
               Description{' '}
-              <span className="text-[#929792] font-normal">(optional)</span>
+              <span className="text-ink-muted font-normal">(optional)</span>
             </label>
             <textarea
               id="edit-project-description"
@@ -136,21 +136,21 @@ export const EditProjectDialog: React.FC<EditProjectDialogProps> = ({
               onChange={(e) => setDescription(e.target.value)}
               maxLength={5000}
               rows={3}
-              className="w-full border border-[#e5e7e4] rounded-lg px-3 py-2 text-sm text-[#181a18] placeholder:text-[#929792] focus:outline-none focus:ring-1 focus:ring-[#163328] focus:border-[#163328] transition-colors resize-none"
+              className="w-full border border-line rounded-lg px-3 py-2 text-sm text-ink placeholder:text-ink-muted focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent transition-colors resize-none"
             />
           </div>
 
           {error && (
             <p
               role="alert"
-              className="text-xs text-[#b91c1c] bg-[#fee2e2]/50 border border-[#fecaca] rounded-lg px-3 py-2"
+              className="text-xs text-danger bg-danger-soft border border-danger-line rounded-lg px-3 py-2"
             >
               {error}
             </p>
           )}
 
           {isDirty && !error && (
-            <p className="text-[11px] text-[#929792]">
+            <p className="text-[11px] text-ink-muted">
               You have unsaved changes.
             </p>
           )}
@@ -159,7 +159,7 @@ export const EditProjectDialog: React.FC<EditProjectDialogProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="text-xs font-medium text-[#6b706c] hover:text-[#181a18] px-3.5 py-2 rounded-md hover:bg-[#f5f5f2] transition-colors"
+              className="text-xs font-medium text-ink-soft hover:text-ink px-3.5 py-2 rounded-md hover:bg-subtle transition-colors"
             >
               Cancel
             </button>

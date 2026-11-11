@@ -22,21 +22,21 @@ export const PrimaryButton: React.FC<PrimaryButtonProps> = ({
   ...props
 }) => {
   const baseStyles =
-    'inline-flex items-center justify-center font-medium rounded-md transition-all duration-150 cursor-pointer select-none group focus:outline-none focus:ring-2 focus:ring-[#163328] focus:ring-offset-1';
+    'inline-flex items-center justify-center font-medium rounded-md transition-all duration-150 cursor-pointer select-none group focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-1';
 
   let sizeStyles = 'px-3.5 py-2 text-xs gap-1.5';
   if (size === 'sm') sizeStyles = 'px-2.5 py-1.5 text-xs gap-1';
   if (size === 'lg') sizeStyles = 'px-4 py-2.5 text-sm gap-2';
 
   let variantStyles =
-    'bg-[#163328] text-white hover:bg-[#214f40] active:scale-[0.99] border border-transparent shadow-none';
+    'bg-solid text-on-solid hover:bg-solid-hover active:scale-[0.99] border border-transparent shadow-none';
 
   if (variant === 'secondary') {
     variantStyles =
-      'bg-[#f1f6f3] text-[#163328] hover:bg-[#e4eee7] border border-[#cbe0d5] active:scale-[0.99]';
+      'bg-accent-soft text-accent hover:bg-accent-muted border border-accent-line active:scale-[0.99]';
   } else if (variant === 'outline') {
     variantStyles =
-      'bg-white text-[#181a18] hover:bg-[#f5f5f2] border border-[#e5e7e4] hover:border-[#d0d7d2] active:scale-[0.99]';
+      'bg-panel text-ink hover:bg-subtle border border-line hover:border-line-strong active:scale-[0.99]';
   }
 
   const disabledStyles = disabled || isLoading

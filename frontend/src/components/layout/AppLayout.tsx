@@ -26,30 +26,30 @@ export const AppLayout: React.FC = () => {
         : 'workspace';
 
   return (
-    <div className="relative isolate min-h-screen overflow-x-clip bg-[#fafaf8] text-[#181a18]">
+    <div className="relative isolate min-h-screen overflow-x-clip bg-canvas text-ink">
       <AnimatedResearchBackground mode={motionMode} />
 
       <div className="hidden lg:block">
         <AppSidebar />
       </div>
 
-      <div className="app-chrome-surface lg:hidden fixed top-0 left-0 right-0 h-14 border-b border-[#e5e7e4] z-50 flex items-center justify-between px-4">
+      <div className="app-chrome-surface lg:hidden fixed top-0 left-0 right-0 h-14 border-b border-line z-50 flex items-center justify-between px-4">
         <button
           type="button"
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          className="p-1.5 rounded-md text-[#181a18] hover:bg-[#f1f6f3] transition-colors"
+          className="p-1.5 rounded-md text-ink hover:bg-accent-soft transition-colors"
           aria-label="Toggle navigation menu"
         >
           {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
         </button>
 
-        <span className="font-semibold text-sm tracking-tight text-[#181a18]">
+        <span className="font-semibold text-sm tracking-tight text-ink">
           Research Assistant
         </span>
 
         <div className="flex items-center gap-2">
           <ThemeToggle className="inline-flex lg:hidden" />
-          <div className="w-8 h-8 rounded-full bg-[#e2e8e4] text-[#163328] font-semibold text-xs flex items-center justify-center border border-[#d0d7d2]">
+          <div className="w-8 h-8 rounded-full bg-accent-muted text-accent font-semibold text-xs flex items-center justify-center border border-line-strong">
             {user?.name.slice(0, 1).toUpperCase() || 'R'}
           </div>
         </div>
@@ -61,8 +61,8 @@ export const AppLayout: React.FC = () => {
             className="fixed inset-0 bg-black/40 backdrop-blur-xs transition-opacity"
             onClick={() => setMobileMenuOpen(false)}
           />
-          <div className="relative w-[280px] h-full bg-[#fafaf8] shadow-2xl z-10 animate-in slide-in-from-left duration-200">
-            <AppSidebar className="w-full relative shadow-none border-r border-[#e5e7e4]" />
+          <div className="relative w-[280px] h-full bg-canvas shadow-2xl z-10 animate-in slide-in-from-left duration-200">
+            <AppSidebar className="w-full relative shadow-none border-r border-line" />
           </div>
         </div>
       )}

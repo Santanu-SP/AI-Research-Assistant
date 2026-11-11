@@ -28,7 +28,7 @@ export const SourceTypeLabel: React.FC<SourceTypeLabelProps> = ({
   const Icon = config.icon;
 
   return (
-    <span className="inline-flex items-center gap-1 text-[10px] text-[#929792]">
+    <span className="inline-flex items-center gap-1 text-[10px] text-ink-muted">
       <Icon className="w-3 h-3 shrink-0" />
       <span>{config.label}</span>
     </span>
@@ -56,7 +56,7 @@ export const ContentLevelLabel: React.FC<ContentLevelLabelProps> = ({
     String(contentLevel).replace(/_/g, ' ');
 
   return (
-    <span className="text-[10px] text-[#929792]" title="Content coverage level">
+    <span className="text-[10px] text-ink-muted" title="Content coverage level">
       {label}
     </span>
   );

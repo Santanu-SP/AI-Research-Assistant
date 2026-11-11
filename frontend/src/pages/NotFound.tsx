@@ -8,10 +8,10 @@ export const NotFoundPage: React.FC = () => {
   const navigate = useNavigate();
 
   return (
-    <div className="min-h-screen bg-[#fafaf8] flex flex-col">
+    <div className="min-h-screen bg-canvas flex flex-col">
       <TopBar
         breadcrumbs={
-          <span className="text-[#181a18] font-medium">Not Found</span>
+          <span className="text-ink font-medium">Not Found</span>
         }
       />
       <main className="flex-1 flex flex-col items-center justify-center p-6">

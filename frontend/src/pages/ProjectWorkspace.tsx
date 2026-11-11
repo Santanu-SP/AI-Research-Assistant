@@ -33,7 +33,7 @@ export const ProjectWorkspacePage: React.FC = () => {
 
   if (projectLoading) {
     return (
-      <div className="min-h-screen bg-[#fafaf8] flex items-center justify-center">
+      <div className="min-h-screen bg-canvas flex items-center justify-center">
         <CenteredLoadingState label="Loading project workspace…" />
       </div>
     );
@@ -41,11 +41,11 @@ export const ProjectWorkspacePage: React.FC = () => {
 
   if (projectError) {
     return (
-      <div className="min-h-screen bg-[#fafaf8] flex flex-col">
+      <div className="min-h-screen bg-canvas flex flex-col">
         <TopBar
           breadcrumbs={
             <div className="flex items-center gap-2">
-              <Link to="/projects" className="text-[#6b706c] hover:text-[#181a18]">
+              <Link to="/projects" className="text-ink-soft hover:text-ink">
                 Projects
               </Link>
             </div>
@@ -65,23 +65,23 @@ export const ProjectWorkspacePage: React.FC = () => {
   if (!selectedProject) return null;
 
   return (
-    <div className="min-h-screen bg-[#fafaf8] flex flex-col">
+    <div className="min-h-screen bg-canvas flex flex-col">
       <TopBar
         breadcrumbs={
           <div className="flex items-center gap-2 text-xs">
             <Link
               to="/projects"
-              className="text-[#6b706c] hover:text-[#181a18] flex items-center gap-1 shrink-0"
+              className="text-ink-soft hover:text-ink flex items-center gap-1 shrink-0"
             >
               <ArrowLeft className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Projects</span>
             </Link>
-            <span className="text-[#929792]">/</span>
-            <span className="text-[#181a18] font-medium truncate">
+            <span className="text-ink-muted">/</span>
+            <span className="text-ink font-medium truncate">
               {selectedProject.name}
             </span>
             {isArchived && (
-              <span className="inline-flex items-center gap-1 text-[10px] font-medium text-[#929792] bg-[#f5f5f2] border border-[#e5e7e4] px-1.5 py-0.5 rounded shrink-0">
+              <span className="inline-flex items-center gap-1 text-[10px] font-medium text-ink-muted bg-subtle border border-line px-1.5 py-0.5 rounded shrink-0">
                 <Archive className="w-2.5 h-2.5" />
                 Archived
               </span>
@@ -98,7 +98,7 @@ export const ProjectWorkspacePage: React.FC = () => {
             onArchived={() => navigate('/projects')}
           />
 
-          <div className="border-b border-[#e5e7e4] mt-6 mb-0 flex items-center gap-0">
+          <div className="border-b border-line mt-6 mb-0 flex items-center gap-0">
             <button
               type="button"
               id="tab-sources"
@@ -108,8 +108,8 @@ export const ProjectWorkspacePage: React.FC = () => {
               onClick={() => setActiveTab('sources')}
               className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
                 activeTab === 'sources'
-                  ? 'border-[#163328] text-[#163328]'
-                  : 'border-transparent text-[#6b706c] hover:text-[#181a18] hover:border-[#d0d7d2]'
+                  ? 'border-accent text-accent'
+                  : 'border-transparent text-ink-soft hover:text-ink hover:border-line-strong'
               }`}
             >
               <FileText className="w-4 h-4" />
@@ -124,8 +124,8 @@ export const ProjectWorkspacePage: React.FC = () => {
               onClick={() => setActiveTab('research')}
               className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
                 activeTab === 'research'
-                  ? 'border-[#163328] text-[#163328]'
-                  : 'border-transparent text-[#6b706c] hover:text-[#181a18] hover:border-[#d0d7d2]'
+                  ? 'border-accent text-accent'
+                  : 'border-transparent text-ink-soft hover:text-ink hover:border-line-strong'
               }`}
             >
               <Compass className="w-4 h-4" />

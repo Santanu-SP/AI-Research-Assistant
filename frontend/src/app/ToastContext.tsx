@@ -74,24 +74,24 @@ export const useToast = (): ToastContextValue => {
 
 
 const ICONS: Record<ToastType, React.ReactNode> = {
-  success: <Check className="w-4 h-4 text-[#163328]" />,
-  error: <AlertCircle className="w-4 h-4 text-[#b91c1c]" />,
-  info: <Info className="w-4 h-4 text-[#0369a1]" />,
-  warning: <AlertTriangle className="w-4 h-4 text-[#b45309]" />,
+  success: <Check className="w-4 h-4 text-accent" />,
+  error: <AlertCircle className="w-4 h-4 text-danger" />,
+  info: <Info className="w-4 h-4 text-info" />,
+  warning: <AlertTriangle className="w-4 h-4 text-warning" />,
 };
 
 const BG: Record<ToastType, string> = {
-  success: 'bg-white border-[#d8e5df]',
-  error: 'bg-white border-[#fecaca]',
-  info: 'bg-white border-[#bae6fd]',
-  warning: 'bg-white border-[#fde68a]',
+  success: 'bg-panel border-accent-line',
+  error: 'bg-panel border-danger-line',
+  info: 'bg-panel border-info-line',
+  warning: 'bg-panel border-warning-line',
 };
 
 const TITLE_COLOR: Record<ToastType, string> = {
-  success: 'text-[#163328]',
-  error: 'text-[#b91c1c]',
-  info: 'text-[#0369a1]',
-  warning: 'text-[#b45309]',
+  success: 'text-accent',
+  error: 'text-danger',
+  info: 'text-info',
+  warning: 'text-warning',
 };
 
 interface ToastContainerProps {
@@ -125,7 +125,7 @@ const ToastContainer: React.FC<ToastContainerProps> = ({
               {toast.title}
             </p>
             {toast.description && (
-              <p className="text-xs text-[#6b706c] mt-0.5 leading-relaxed">
+              <p className="text-xs text-ink-soft mt-0.5 leading-relaxed">
                 {toast.description}
               </p>
             )}
@@ -134,7 +134,7 @@ const ToastContainer: React.FC<ToastContainerProps> = ({
             type="button"
             aria-label="Dismiss notification"
             onClick={() => onDismiss(toast.id)}
-            className="shrink-0 mt-0.5 text-[#929792] hover:text-[#181a18] transition-colors"
+            className="shrink-0 mt-0.5 text-ink-muted hover:text-ink transition-colors"
           >
             <X className="w-3.5 h-3.5" />
           </button>

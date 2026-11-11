@@ -50,13 +50,13 @@ export const ResearchProgressPage: React.FC = () => {
   if (error) {
     if (error instanceof ApiError && error.status === 404) {
       return (
-        <div className="min-h-screen bg-[#fafaf8] flex items-center justify-center">
+        <div className="min-h-screen bg-canvas flex items-center justify-center">
           <ErrorState title="Not Found" message="This research investigation does not exist." onRetry={() => navigate('/research')} />
         </div>
       );
     }
     return (
-      <div className="min-h-screen bg-[#fafaf8] flex items-center justify-center">
+      <div className="min-h-screen bg-canvas flex items-center justify-center">
         <ErrorState title="Connection Error" message={error.message} onRetry={() => window.location.reload()} />
       </div>
     );
@@ -64,7 +64,7 @@ export const ResearchProgressPage: React.FC = () => {
 
   if (!progress) {
     return (
-      <div className="min-h-screen bg-[#fafaf8] flex items-center justify-center">
+      <div className="min-h-screen bg-canvas flex items-center justify-center">
         <CenteredLoadingState label="Loading investigation state…" />
       </div>
     );
@@ -74,15 +74,15 @@ export const ResearchProgressPage: React.FC = () => {
   const isFailed = progress.status === 'failed';
 
   return (
-    <div className="min-h-screen bg-[#fafaf8] flex flex-col">
+    <div className="min-h-screen bg-canvas flex flex-col">
       <TopBar
         breadcrumbs={
           <div className="flex items-center gap-2">
-            <Link to="/research" className="text-[#6b706c] hover:text-[#181a18]">
+            <Link to="/research" className="text-ink-soft hover:text-ink">
               Research
             </Link>
-            <span className="text-[#929792]">/</span>
-            <div className="flex items-center gap-1.5 text-[#163328] font-medium">
+            <span className="text-ink-muted">/</span>
+            <div className="flex items-center gap-1.5 text-accent font-medium">
               {progress.status === 'researching' && (
                 <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse" />
               )}
@@ -96,7 +96,7 @@ export const ResearchProgressPage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => navigate(`/research/${progress.id}`)}
-                className="bg-[#163328] hover:bg-[#1a3d30] text-white px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
+                className="bg-solid hover:bg-solid-hover text-on-solid px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
               >
                 View Report
               </button>
@@ -108,19 +108,19 @@ export const ResearchProgressPage: React.FC = () => {
       <main className="flex-1 pt-14 pb-16 px-4 sm:px-6">
         <div className="max-w-5xl mx-auto py-8">
           <div className="mb-6">
-            <div className="flex flex-wrap items-center gap-2 text-xs text-[#6b706c] mb-2 font-mono">
-              <span className="text-[#163328] font-semibold">{progress.id}</span>
-              <span className="text-[#929792]">·</span>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-ink-soft mb-2 font-mono">
+              <span className="text-accent font-semibold">{progress.id}</span>
+              <span className="text-ink-muted">·</span>
               <span className="capitalize">Depth: {progress.researchDepth}</span>
               {progress.startedAt && (
                 <>
-                  <span className="text-[#929792]">·</span>
+                  <span className="text-ink-muted">·</span>
                   <span>Started {new Date(progress.startedAt).toLocaleString()}</span>
                 </>
               )}
             </div>
 
-            <h1 className="font-serif text-2xl sm:text-3xl text-[#181a18] font-normal leading-snug">
+            <h1 className="font-serif text-2xl sm:text-3xl text-ink font-normal leading-snug">
               {progress.question}
             </h1>
           </div>

@@ -96,15 +96,15 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
         role="dialog"
         aria-modal="true"
         aria-labelledby="upload-document-title"
-        className="w-full max-w-lg bg-white rounded-xl shadow-xl border border-[#e5e7e4] overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+        className="w-full max-w-lg bg-panel rounded-xl shadow-xl border border-line overflow-hidden animate-in fade-in zoom-in-95 duration-150"
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <div className="px-6 py-4 border-b border-[#e5e7e4] flex items-center justify-between">
+        <div className="px-6 py-4 border-b border-line flex items-center justify-between">
           <div>
-            <h3 id="upload-document-title" className="font-semibold text-base text-[#181a18]">
+            <h3 id="upload-document-title" className="font-semibold text-base text-ink">
               Upload Knowledge Document
             </h3>
-            <p className="text-xs text-[#6b706c] mt-0.5">
+            <p className="text-xs text-ink-soft mt-0.5">
               Add internal whitepapers, memos, or empirical studies to your workspace.
             </p>
           </div>
@@ -112,7 +112,7 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
             type="button"
             onClick={onClose}
             aria-label="Close upload dialog"
-            className="text-[#929792] hover:text-[#181a18] p-1.5 rounded-md hover:bg-[#f5f5f2] transition-colors"
+            className="text-ink-muted hover:text-ink p-1.5 rounded-md hover:bg-subtle transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -143,22 +143,22 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
             aria-label="Choose a PDF or DOCX document"
             className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-150 ${
               dragOver
-                ? 'border-[#163328] bg-[#f1f6f3]/60 scale-[1.01]'
+                ? 'border-accent bg-accent-soft/60 scale-[1.01]'
                 : selectedFile
-                ? 'border-[#163328]/40 bg-[#f1f6f3]/30'
-                : 'border-[#d0d7d2] hover:border-[#163328]/50 hover:bg-[#fafaf8]'
+                ? 'border-accent/40 bg-accent-soft/30'
+                : 'border-line-strong hover:border-accent/50 hover:bg-canvas'
             }`}
           >
-            <div className="w-12 h-12 rounded-full bg-[#f1f6f3] text-[#163328] flex items-center justify-center mb-3">
+            <div className="w-12 h-12 rounded-full bg-accent-soft text-accent flex items-center justify-center mb-3">
               <UploadCloud className="w-6 h-6 stroke-[1.75]" />
             </div>
 
             {selectedFile ? (
               <div>
-                <span className="font-semibold text-sm text-[#181a18] block mb-1">
+                <span className="font-semibold text-sm text-ink block mb-1">
                   {selectedFile.name}
                 </span>
-                <span className="text-xs text-[#6b706c]">
+                <span className="text-xs text-ink-soft">
                   {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB · Ready to add
                 </span>
                 <button
@@ -167,17 +167,17 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
                     e.stopPropagation();
                     setSelectedFile(null);
                   }}
-                  className="mt-2 text-xs text-[#b91c1c] underline block mx-auto"
+                  className="mt-2 text-xs text-danger underline block mx-auto"
                 >
                   Choose a different file
                 </button>
               </div>
             ) : (
               <div>
-                <span className="font-medium text-sm text-[#181a18] block mb-1">
+                <span className="font-medium text-sm text-ink block mb-1">
                   Click to browse or drag and drop document
                 </span>
-                <p className="text-xs text-[#929792] max-w-xs">
+                <p className="text-xs text-ink-muted max-w-xs">
                   Supported formats: PDF and DOCX
                 </p>
               </div>
@@ -185,26 +185,26 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
           </div>
 
           {uploadError && (
-            <div className="mt-3 flex items-center gap-2 text-xs text-[#b91c1c] bg-[#fee2e2]/50 p-2.5 rounded-lg border border-[#fecaca]">
+            <div className="mt-3 flex items-center gap-2 text-xs text-danger bg-danger-soft p-2.5 rounded-lg border border-danger-line">
               <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{uploadError}</span>
             </div>
           )}
 
-          <div className="mt-4 p-3 bg-[#fafaf8] border border-[#e5e7e4] rounded-lg text-xs text-[#6b706c] flex items-start gap-2">
-            <Check className="w-4 h-4 text-[#163328] shrink-0 mt-0.5" />
+          <div className="mt-4 p-3 bg-canvas border border-line rounded-lg text-xs text-ink-soft flex items-start gap-2">
+            <Check className="w-4 h-4 text-accent shrink-0 mt-0.5" />
             <div>
-              <span className="font-medium text-[#181a18]">Secure upload:</span>{' '}
+              <span className="font-medium text-ink">Secure upload:</span>{' '}
               Documents are processed securely and used only for your research.
             </div>
           </div>
         </div>
 
-        <div className="px-6 py-3.5 bg-[#fafaf8] border-t border-[#e5e7e4] flex items-center justify-end gap-2.5">
+        <div className="px-6 py-3.5 bg-canvas border-t border-line flex items-center justify-end gap-2.5">
           <button
             type="button"
             onClick={onClose}
-            className="text-xs font-medium text-[#6b706c] hover:text-[#181a18] px-3.5 py-2 rounded-md hover:bg-white transition-colors"
+            className="text-xs font-medium text-ink-soft hover:text-ink px-3.5 py-2 rounded-md hover:bg-panel transition-colors"
           >
             Cancel
           </button>

@@ -30,48 +30,48 @@ export const DocumentRow: React.FC<DocumentRowProps> = ({
   const isDocx = document.type === 'docx';
 
   return (
-    <div className="p-4 bg-white border border-[#e5e7e4] rounded-lg hover:border-[#cbd0ca] hover:shadow-xs transition-all duration-150 flex flex-col sm:flex-row sm:items-center justify-between gap-3 group">
+    <div className="p-4 bg-panel border border-line rounded-lg hover:border-line-strong hover:shadow-xs transition-all duration-150 flex flex-col sm:flex-row sm:items-center justify-between gap-3 group">
       <div className="flex items-start gap-3 min-w-0">
         <div
           className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 border ${
             isPdf
-              ? 'bg-[#fee2e2]/40 text-[#b91c1c] border-[#fecaca]'
+              ? 'bg-danger-soft text-danger border-danger-line'
               : isDocx
-              ? 'bg-[#e0f2fe]/50 text-[#0369a1] border-[#bae6fd]'
-              : 'bg-[#f5f5f2] text-[#6b706c] border-[#e5e7e4]'
+              ? 'bg-info-soft text-info border-info-line'
+              : 'bg-subtle text-ink-soft border-line'
           }`}
         >
           <FileText className="w-5 h-5 stroke-[1.75]" />
         </div>
 
         <div className="min-w-0 flex-1">
-          <h4 className="text-[13.5px] font-semibold text-[#181a18] truncate leading-tight group-hover:text-[#163328] transition-colors">
+          <h4 className="text-[13.5px] font-semibold text-ink truncate leading-tight group-hover:text-accent transition-colors">
             {document.title || document.name}
           </h4>
           
           {document.title && document.title !== document.name && (
-            <div className="text-[11px] text-[#929792] truncate mt-0.5">
+            <div className="text-[11px] text-ink-muted truncate mt-0.5">
               {document.name}
             </div>
           )}
 
-          <div className="flex flex-wrap items-center gap-1.5 mt-1.5 text-xs text-[#6b706c]">
-            <span className="font-medium text-[#181a18] uppercase">{document.type}</span>
-            <span className="text-[#929792]">·</span>
+          <div className="flex flex-wrap items-center gap-1.5 mt-1.5 text-xs text-ink-soft">
+            <span className="font-medium text-ink uppercase">{document.type}</span>
+            <span className="text-ink-muted">·</span>
             <span>{formatSize(document.size)}</span>
-            <span className="text-[#929792]">·</span>
+            <span className="text-ink-muted">·</span>
             <span>{new Date(document.uploadedAt || document.createdAt).toLocaleDateString()}</span>
             
             {document.pageCount ? (
               <>
-                <span className="text-[#929792]">·</span>
+                <span className="text-ink-muted">·</span>
                 <span>{document.pageCount} pages</span>
               </>
             ) : null}
             
             {document.authors && document.authors.length > 0 ? (
               <>
-                <span className="text-[#929792]">·</span>
+                <span className="text-ink-muted">·</span>
                 <span className="truncate max-w-[180px]" title={document.authors.join(', ')}>
                   By {document.authors.join(', ')}
                 </span>
@@ -80,7 +80,7 @@ export const DocumentRow: React.FC<DocumentRowProps> = ({
 
             {document.doi ? (
               <>
-                <span className="text-[#929792]">·</span>
+                <span className="text-ink-muted">·</span>
                 <span className="truncate max-w-[120px]" title={document.doi}>
                   DOI: {document.doi}
                 </span>
@@ -90,7 +90,7 @@ export const DocumentRow: React.FC<DocumentRowProps> = ({
         </div>
       </div>
 
-      <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-[#f5f5f2]">
+      <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-line">
         <StatusBadge 
           status={document.status} 
           title={document.status === 'failed' && document.processingError ? document.processingError : undefined}
@@ -100,7 +100,7 @@ export const DocumentRow: React.FC<DocumentRowProps> = ({
           <button
             type="button"
             onClick={() => onOpen(document)}
-            className="text-xs font-medium text-[#163328] bg-[#f1f6f3] hover:bg-[#e4eee7] border border-[#d8e5df] px-3 py-1.5 rounded-md transition-colors cursor-pointer"
+            className="text-xs font-medium text-accent bg-accent-soft hover:bg-accent-muted border border-accent-line px-3 py-1.5 rounded-md transition-colors cursor-pointer"
           >
             View details
           </button>
@@ -111,7 +111,7 @@ export const DocumentRow: React.FC<DocumentRowProps> = ({
               onClick={() => onRetry(document.id)}
               disabled={isRetrying}
               aria-label={`Retry processing ${document.name}`}
-              className="inline-flex items-center gap-1 text-xs font-medium text-[#163328] bg-white hover:bg-[#f1f6f3] border border-[#d8e5df] px-2.5 py-1.5 rounded-md transition-colors cursor-pointer disabled:opacity-50"
+              className="inline-flex items-center gap-1 text-xs font-medium text-accent bg-panel hover:bg-accent-soft border border-accent-line px-2.5 py-1.5 rounded-md transition-colors cursor-pointer disabled:opacity-50"
             >
               <RotateCcw className={`w-3.5 h-3.5 ${isRetrying ? 'animate-spin' : ''}`} />
               Retry
@@ -119,7 +119,7 @@ export const DocumentRow: React.FC<DocumentRowProps> = ({
           )}
 
           {document.status === 'processing' && (
-            <span className="inline-flex items-center gap-1.5 text-xs text-[#b45309] font-medium px-2 py-1">
+            <span className="inline-flex items-center gap-1.5 text-xs text-warning font-medium px-2 py-1">
               <LoadingOrb size={15} />
               Processing…
             </span>
@@ -130,7 +130,7 @@ export const DocumentRow: React.FC<DocumentRowProps> = ({
             onClick={() => onDelete(document.id)}
             title="Delete document"
             aria-label={`Delete ${document.name}`}
-            className="p-1.5 rounded-md text-[#929792] hover:text-[#b91c1c] hover:bg-[#fee2e2]/40 transition-colors cursor-pointer"
+            className="p-1.5 rounded-md text-ink-muted hover:text-danger hover:bg-danger-soft transition-colors cursor-pointer"
           >
             <Trash2 className="w-4 h-4" />
           </button>
