@@ -35,7 +35,7 @@ export const LandingNav: React.FC = () => {
 
         <div className="hidden items-center gap-7 md:flex">
           {NAV_ITEMS.map(([label, href]) => (
-            <a key={href} href={href} onClick={scrollToHash} className="rounded-sm text-[13px] text-ink-soft transition-colors hover:text-ink">
+            <a key={href} href={href} onClick={scrollToHash} className="landing-nav-link rounded-sm text-[13px] text-ink-soft transition-colors hover:text-ink">
               {label}
             </a>
           ))}
@@ -50,7 +50,7 @@ export const LandingNav: React.FC = () => {
           </Link>
           <Link
             to="/register"
-            className="inline-flex h-9 items-center rounded-md bg-solid px-3.5 text-[13px] font-medium text-on-solid shadow-xs transition-colors hover:bg-solid-hover"
+            className="landing-btn inline-flex h-9 items-center rounded-md bg-solid px-3.5 text-[13px] font-medium text-on-solid shadow-xs transition-colors hover:bg-solid-hover"
           >
             Get started
           </Link>

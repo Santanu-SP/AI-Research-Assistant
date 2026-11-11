@@ -1,6 +1,8 @@
 import React from 'react';
 import { ChevronRight, FileText, Search } from 'lucide-react';
 
+const step = (ms: number) => ({ '--step-delay': `${ms}ms` }) as React.CSSProperties;
+
 /**
  * A static rendering of the report screen, used on the landing page.
  * It mirrors the real layout so the preview never drifts into a mock-up of
@@ -19,26 +21,28 @@ export const ProductPreview: React.FC = () => (
 
     <div className="grid md:grid-cols-[minmax(0,1fr)_300px]">
       <div className="px-6 py-7 sm:px-10 sm:py-9">
-        <p className="text-xs text-ink-muted">Asked across 14 papers in “Retrieval methods”</p>
-        <h3 className="mt-2 font-serif text-[22px] leading-snug tracking-[-0.01em] text-ink sm:text-[26px]">
+        <p className="preview-step text-xs text-ink-muted" style={step(800)}>Asked across 14 papers in “Retrieval methods”</p>
+        <h3 style={step(880)} className="preview-step mt-2 font-serif text-[22px] leading-snug tracking-[-0.01em] text-ink sm:text-[26px]">
           Does reranking improve citation accuracy in retrieval-augmented answers?
         </h3>
 
         <div className="mt-6 space-y-4 font-serif text-[15px] leading-[1.75] text-ink sm:text-base">
-          <p>
-            Adding a cross-encoder reranker after hybrid retrieval raised the share of correctly
-            cited sentences from 71% to 86% on the evaluated question set
+          <p className="preview-step" style={step(960)}>
+            <span className="preview-highlight">
+              Adding a cross-encoder reranker after hybrid retrieval raised the share of correctly
+              cited sentences from 71% to 86% on the evaluated question set
+            </span>
             <Marker n={1} active />. The gain was largest for questions whose answer sat in a
             single table or figure caption <Marker n={2} />.
           </p>
-          <p>
+          <p className="preview-step" style={step(1040)}>
             Two of the papers note that reranking adds latency per query and recommend limiting it to
             the top 50 candidates <Marker n={3} />.
           </p>
         </div>
 
-        <div className="mt-6 flex items-center gap-2 rounded-md border border-line bg-subtle/50 px-3 py-2 text-xs text-ink-soft">
-          <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+        <div style={step(1120)} className="preview-step mt-6 flex items-center gap-2 rounded-md border border-line bg-subtle/50 px-3 py-2 text-xs text-ink-soft">
+          <span className="preview-breathe h-1.5 w-1.5 rounded-full bg-accent" />
           Citations are checked sentence by sentence before the answer is saved.
         </div>
       </div>
@@ -54,7 +58,7 @@ export const ProductPreview: React.FC = () => (
           </div>
         </div>
         <div className="space-y-1 p-3">
-          <div className="rounded-lg border border-accent-line bg-panel p-3.5 shadow-sm ring-1 ring-accent-line">
+          <div style={step(1100)} className="preview-source rounded-lg border border-accent-line bg-panel p-3.5 shadow-sm ring-1 ring-accent-line">
             <div className="flex items-center gap-1.5 text-[11px] text-ink-muted">
               <span className="flex h-5 min-w-5 items-center justify-center rounded bg-solid px-1 font-mono text-[11px] text-on-solid">1</span>
               reranking-eval.pdf · p. 7
@@ -68,8 +72,8 @@ export const ProductPreview: React.FC = () => (
           {[
             ['2', 'table-qa-study.pdf · p. 12', 'Answering from tables and captions'],
             ['3', 'latency-notes.docx · p. 3', 'Cost of reranking in practice'],
-          ].map(([n, meta, title]) => (
-            <div key={n} className="flex items-start gap-2.5 rounded-lg px-3 py-2.5">
+          ].map(([n, meta, title], index) => (
+            <div key={n} style={step(1180 + index * 80)} className="preview-source flex items-start gap-2.5 rounded-lg px-3 py-2.5">
               <span className="mt-0.5 flex h-5 min-w-5 items-center justify-center rounded bg-subtle font-mono text-[11px] text-ink-soft">{n}</span>
               <div className="min-w-0">
                 <p className="truncate text-[11px] text-ink-muted">{meta}</p>
@@ -85,7 +89,7 @@ export const ProductPreview: React.FC = () => (
 
 const Marker: React.FC<{ n: number; active?: boolean }> = ({ n, active = false }) => (
   <span
-    className={`ml-1 inline-flex h-[18px] min-w-[18px] -translate-y-px items-center justify-center rounded px-1 align-middle font-mono text-[11px] font-medium leading-none ${
+    className={`${active ? 'preview-marker-ping ' : ''}ml-1 inline-flex h-[18px] min-w-[18px] -translate-y-px items-center justify-center rounded px-1 align-middle font-mono text-[11px] font-medium leading-none ${
       active ? 'bg-solid text-on-solid' : 'bg-accent-soft text-accent'
     }`}
   >
@@ -95,7 +99,7 @@ const Marker: React.FC<{ n: number; active?: boolean }> = ({ n, active = false }
 
 /** Small project list used beside the "projects" feature copy. */
 export const ProjectsPreview: React.FC = () => (
-  <div className="overflow-hidden rounded-xl border border-line bg-panel shadow-md" aria-hidden="true">
+  <div className="landing-card overflow-hidden rounded-xl border border-line bg-panel shadow-md" aria-hidden="true">
     <div className="grid grid-cols-[minmax(0,1fr)_72px] gap-3 border-b border-line bg-subtle/50 px-4 py-2 text-[11px] font-medium text-ink-muted">
       <span>Document</span>
       <span>Status</span>
@@ -120,6 +124,7 @@ export const ProjectsPreview: React.FC = () => (
               : 'border-warning-line bg-warning-soft text-warning'
           }`}
         >
+          {status === 'Indexing' && <span className="preview-breathe h-1.5 w-1.5 rounded-full bg-current" />}
           {status}
         </span>
       </div>
@@ -130,7 +135,7 @@ export const ProjectsPreview: React.FC = () => (
 /** The notice shown when the documents do not hold enough evidence. */
 export const EvidencePreview: React.FC = () => (
   <div className="space-y-3" aria-hidden="true">
-    <div className="rounded-xl border border-line bg-panel p-5 shadow-md">
+    <div className="landing-card rounded-xl border border-line bg-panel p-5 shadow-md">
       <p className="text-xs text-ink-muted">Question</p>
       <p className="mt-1 text-[14px] font-medium text-ink">What dose was used in the phase III trial?</p>
       <div className="mt-4 rounded-lg border border-info-line bg-info-soft px-3.5 py-3 text-[13px] leading-relaxed text-info">

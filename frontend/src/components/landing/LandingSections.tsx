@@ -99,14 +99,14 @@ export const Hero: React.FC = () => {
         <div style={loadDelay(375)} className="landing-load mt-8 flex flex-wrap items-center gap-3">
           <Link
             to="/register"
-            className="group inline-flex h-11 items-center gap-2 rounded-md bg-solid px-5 text-sm font-medium text-on-solid shadow-sm transition-colors hover:bg-solid-hover"
+            className="landing-btn group inline-flex h-11 items-center gap-2 rounded-md bg-solid px-5 text-sm font-medium text-on-solid shadow-sm transition-colors hover:bg-solid-hover"
           >
             Create an account
-            <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+            <ArrowRight className="h-4 w-4" />
           </Link>
           <Link
             to="/login"
-            className="inline-flex h-11 items-center rounded-md border border-line-strong bg-panel px-5 text-sm font-medium text-ink shadow-xs transition-colors hover:bg-subtle"
+            className="landing-btn inline-flex h-11 items-center rounded-md border border-line-strong bg-panel px-5 text-sm font-medium text-ink shadow-xs transition-colors hover:bg-subtle"
           >
             Sign in
           </Link>
@@ -147,8 +147,8 @@ export const HowItWorks: React.FC = () => (
 
       <ol className="mt-14 grid gap-px overflow-hidden rounded-xl border border-line bg-line md:grid-cols-3">
         {STEPS.map((step, index) => (
-          <Reveal as="li" key={step.title} delay={index * 80} className="bg-panel p-6 sm:p-8">
-            <span className="font-mono text-xs text-ink-muted">0{index + 1}</span>
+          <Reveal as="li" key={step.title} delay={index * 80} className="landing-step bg-panel p-6 sm:p-8">
+            <span className="landing-step-num font-mono text-xs text-ink-muted">0{index + 1}</span>
             <h3 className="mt-4 text-base font-semibold text-ink">{step.title}</h3>
             <p className="mt-2 text-[14px] leading-relaxed text-ink-soft">{step.body}</p>
           </Reveal>
@@ -224,7 +224,7 @@ export const Features: React.FC = () => (
 
       <div className="mt-20 grid gap-x-10 gap-y-10 border-t border-line pt-14 sm:grid-cols-2 lg:grid-cols-3">
         {FEATURES.map(({ icon: Icon, title, body }, index) => (
-          <Reveal key={title} delay={(index % 3) * 80}>
+          <Reveal key={title} delay={(index % 3) * 80} className="landing-feature">
             <Icon className="h-5 w-5 text-accent" strokeWidth={1.75} aria-hidden="true" />
             <h3 className="mt-4 text-[15px] font-semibold text-ink">{title}</h3>
             <p className="mt-1.5 text-[14px] leading-relaxed text-ink-soft">{body}</p>
@@ -261,7 +261,7 @@ export const Pipeline: React.FC = () => (
               as="li"
               key={stage}
               delay={160 + index * 60}
-              className="grid grid-cols-[36px_96px_minmax(0,1fr)] items-baseline gap-3 border-b border-line px-5 py-3.5 last:border-b-0 sm:grid-cols-[40px_120px_minmax(0,1fr)]"
+              className="landing-row grid grid-cols-[36px_96px_minmax(0,1fr)] items-baseline gap-3 border-b border-line px-5 py-3.5 last:border-b-0 sm:grid-cols-[40px_120px_minmax(0,1fr)]"
             >
               <span className="font-mono text-xs tabular-nums text-ink-muted">{String(index + 1).padStart(2, '0')}</span>
               <span className="text-[14px] font-medium text-ink">{stage}</span>
@@ -309,12 +309,12 @@ const FaqItem: React.FC<{ question: string; answer: string; index: number }> = (
           aria-expanded={open}
           aria-controls={panelId}
           onClick={() => setOpen((value) => !value)}
-          className="flex w-full cursor-pointer items-center justify-between gap-6 rounded-sm py-4 text-left text-[15px] font-medium text-ink"
+          className="landing-faq-question flex w-full cursor-pointer items-center justify-between gap-6 rounded-sm py-4 text-left text-[15px] font-medium text-ink"
         >
           {question}
           <span
             aria-hidden="true"
-            className={`relative h-3.5 w-3.5 shrink-0 text-ink-muted transition-transform duration-300 before:absolute before:left-0 before:top-1/2 before:h-px before:w-full before:bg-current after:absolute after:left-1/2 after:top-0 after:h-full after:w-px after:bg-current after:transition-transform after:duration-300 ${
+            className={`landing-faq-icon relative h-3.5 w-3.5 shrink-0 text-ink-muted before:absolute before:left-0 before:top-1/2 before:h-px before:w-full before:bg-current after:absolute after:left-1/2 after:top-0 after:h-full after:w-px after:bg-current ${
               open ? 'rotate-180 after:scale-y-0' : ''
             }`}
           />
@@ -359,14 +359,14 @@ export const FinalCta: React.FC = () => (
         <div className="flex flex-wrap gap-3">
           <Link
             to="/register"
-            className="group inline-flex h-11 items-center gap-2 rounded-md bg-solid px-5 text-sm font-medium text-on-solid shadow-sm transition-colors hover:bg-solid-hover"
+            className="landing-btn group inline-flex h-11 items-center gap-2 rounded-md bg-solid px-5 text-sm font-medium text-on-solid shadow-sm transition-colors hover:bg-solid-hover"
           >
             Create an account
-            <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+            <ArrowRight className="h-4 w-4" />
           </Link>
           <Link
             to="/login"
-            className="inline-flex h-11 items-center rounded-md border border-line-strong bg-panel px-5 text-sm font-medium text-ink transition-colors hover:bg-subtle"
+            className="landing-btn inline-flex h-11 items-center rounded-md border border-line-strong bg-panel px-5 text-sm font-medium text-ink transition-colors hover:bg-subtle"
           >
             Sign in
           </Link>
