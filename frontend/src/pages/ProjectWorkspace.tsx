@@ -33,7 +33,7 @@ export const ProjectWorkspacePage: React.FC = () => {
 
   if (projectLoading) {
     return (
-      <div className="min-h-screen bg-canvas flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center">
         <CenteredLoadingState label="Loading project workspace…" />
       </div>
     );
@@ -41,7 +41,7 @@ export const ProjectWorkspacePage: React.FC = () => {
 
   if (projectError) {
     return (
-      <div className="min-h-screen bg-canvas flex flex-col">
+      <div className="min-h-screen flex flex-col">
         <TopBar
           breadcrumbs={
             <div className="flex items-center gap-2">
@@ -65,7 +65,7 @@ export const ProjectWorkspacePage: React.FC = () => {
   if (!selectedProject) return null;
 
   return (
-    <div className="min-h-screen bg-canvas flex flex-col">
+    <div className="min-h-screen flex flex-col">
       <TopBar
         breadcrumbs={
           <div className="flex min-w-0 items-center gap-2">

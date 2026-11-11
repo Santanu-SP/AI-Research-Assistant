@@ -100,7 +100,7 @@ export const MyResearchPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-canvas flex flex-col">
+    <div className="min-h-screen flex flex-col">
       <TopBar
         breadcrumbs={<span className="font-medium text-ink">My research</span>}
       />

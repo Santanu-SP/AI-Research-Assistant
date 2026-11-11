@@ -2,6 +2,7 @@ import React, { Suspense, useCallback, useEffect, useMemo, useState } from 'reac
 import { Outlet, useLocation } from 'react-router-dom';
 import { CenteredLoadingState } from '../common/LoadingState';
 import { AppSidebar } from './AppSidebar';
+import { AnimatedResearchBackground } from './AnimatedResearchBackground';
 import { MobileNavContext } from './MobileNavContext';
 
 export const AppLayout: React.FC = () => {
@@ -22,18 +23,28 @@ export const AppLayout: React.FC = () => {
     return () => window.removeEventListener('keydown', onKey);
   }, [mobileMenuOpen]);
 
+  const motionMode = location.pathname.endsWith('/progress')
+    ? 'progress'
+    : location.pathname === '/research/new'
+      ? 'composer'
+      : /^\/research\/[^/]+$/.test(location.pathname)
+        ? 'reading'
+        : 'workspace';
+
   const toggle = useCallback(() => setMobileMenuOpen((open) => !open), []);
   const mobileNav = useMemo(() => ({ open: mobileMenuOpen, toggle }), [mobileMenuOpen, toggle]);
 
   return (
     <MobileNavContext.Provider value={mobileNav}>
-      <div className="relative min-h-screen overflow-x-clip bg-canvas text-ink">
+      <div className="relative isolate min-h-screen overflow-x-clip bg-canvas text-ink">
         <a
           href="#main-content"
           className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[100] focus:rounded-md focus:bg-panel focus:px-3 focus:py-2 focus:text-sm focus:shadow-md"
         >
           Skip to content
         </a>
+
+        <AnimatedResearchBackground mode={motionMode} />
 
         <div className="hidden lg:block">
           <AppSidebar />
@@ -51,7 +62,7 @@ export const AppLayout: React.FC = () => {
           </div>
         )}
 
-        <div id="main-content" className="relative flex min-h-screen flex-col lg:pl-[248px]">
+        <div id="main-content" className="app-content-surface relative z-10 flex min-h-screen flex-col lg:pl-[248px]">
           <Suspense fallback={<CenteredLoadingState label="Loading…" />}>
             <Outlet />
           </Suspense>

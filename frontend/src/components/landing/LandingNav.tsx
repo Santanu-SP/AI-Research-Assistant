@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Menu, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { BrandMark } from '../common/BrandMark';
+import { scrollToHash } from './Motion';
 
 const NAV_ITEMS = [
   ['How it works', '#how-it-works'],
@@ -15,7 +16,7 @@ export const LandingNav: React.FC = () => {
   const [scrolled, setScrolled] = useState(false);
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 8);
+    const onScroll = () => setScrolled(window.scrollY > 40);
     onScroll();
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
@@ -23,18 +24,18 @@ export const LandingNav: React.FC = () => {
 
   return (
     <header
-      className={`sticky top-0 z-40 border-b transition-colors ${
+      className={`landing-nav-enter sticky top-0 z-40 border-b transition-[background-color,border-color,backdrop-filter] duration-300 ${
         scrolled || open ? 'border-line bg-canvas/90 backdrop-blur-md' : 'border-transparent bg-canvas'
       }`}
     >
-      <nav className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5 sm:px-8" aria-label="Primary">
+      <nav className={`mx-auto flex max-w-6xl transition-[height] duration-300 ${scrolled ? 'h-14' : 'h-16'} items-center justify-between px-5 sm:px-8`} aria-label="Primary">
         <Link to="/" className="rounded-md" aria-label="Research Assistant home">
           <BrandMark />
         </Link>
 
         <div className="hidden items-center gap-7 md:flex">
           {NAV_ITEMS.map(([label, href]) => (
-            <a key={href} href={href} className="rounded-sm text-[13px] text-ink-soft transition-colors hover:text-ink">
+            <a key={href} href={href} onClick={scrollToHash} className="rounded-sm text-[13px] text-ink-soft transition-colors hover:text-ink">
               {label}
             </a>
           ))}
@@ -74,7 +75,10 @@ export const LandingNav: React.FC = () => {
               <a
                 key={href}
                 href={href}
-                onClick={() => setOpen(false)}
+                onClick={(event) => {
+                  setOpen(false);
+                  scrollToHash(event);
+                }}
                 className="border-b border-line py-3 text-[15px] text-ink"
               >
                 {label}
