@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { MoreHorizontal, Pencil, Archive, ExternalLink } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { MoreHorizontal, Pencil, Archive, ExternalLink, Folder } from 'lucide-react';
 import { ResearchProject } from '../../types/project';
 import { EditProjectDialog } from './EditProjectDialog';
 import { ArchiveProjectDialog } from './ArchiveProjectDialog';
@@ -21,6 +21,7 @@ const formatDate = (iso: string): string =>
         : 'numeric',
   }).format(new Date(iso));
 
+/** One project in the projects list. Renders as a table-like row. */
 export const ProjectCard: React.FC<ProjectCardProps> = ({
   project,
   onOpen,
@@ -30,9 +31,27 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
   const [menuOpen, setMenuOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isArchiveOpen, setIsArchiveOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
   const isArchived = Boolean(project.archivedAt);
 
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = (event: MouseEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) setMenuOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMenuOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', close);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [menuOpen]);
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.target !== e.currentTarget) return;
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       onOpen(project);
@@ -42,10 +61,8 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
   return (
     <>
       <div
-        className={`group relative rounded-xl border bg-panel transition-all duration-150 ${
-          isArchived
-            ? 'border-line opacity-70'
-            : 'border-line hover:border-line-strong hover:shadow-sm cursor-pointer'
+        className={`group relative grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-4 py-3.5 transition-colors sm:grid-cols-[minmax(0,1fr)_110px_110px_40px] sm:px-5 ${
+          isArchived ? 'opacity-70' : 'cursor-pointer hover:bg-subtle/60'
         }`}
         onClick={() => !isArchived && onOpen(project)}
         onKeyDown={handleKeyDown}
@@ -53,97 +70,96 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
         tabIndex={isArchived ? undefined : 0}
         aria-label={`Open project: ${project.name}`}
       >
-        <div className="p-5 pb-3">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-wrap mb-1">
-                {isArchived && (
-                  <span className="inline-flex items-center gap-1 text-[10px] font-medium text-ink-muted bg-subtle border border-line px-1.5 py-0.5 rounded">
-                    <Archive className="w-2.5 h-2.5" />
-                    Archived
-                  </span>
-                )}
-              </div>
-              <h3
-                className={`font-semibold text-sm leading-snug ${
-                  isArchived
-                    ? 'text-ink-soft'
-                    : 'text-ink group-hover:text-accent transition-colors'
-                }`}
-              >
-                {project.name}
-              </h3>
+        <div className="flex min-w-0 items-start gap-3">
+          <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-line bg-subtle text-ink-soft">
+            <Folder className="h-4 w-4" strokeWidth={1.75} />
+          </span>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <h3 className="truncate text-sm font-medium text-ink">{project.name}</h3>
+              {isArchived && (
+                <span className="inline-flex shrink-0 items-center gap-1 rounded border border-line bg-subtle px-1.5 py-px text-[11px] font-medium text-ink-muted">
+                  <Archive className="h-3 w-3" />
+                  Archived
+                </span>
+              )}
             </div>
+            <p className="mt-0.5 truncate text-[13px] text-ink-muted">
+              {project.description || 'No description'}
+            </p>
+            <p className="mt-1 text-xs text-ink-muted sm:hidden">
+              Updated {formatDate(project.updatedAt)}
+            </p>
+          </div>
+        </div>
 
-            <div className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
+        <span className="hidden text-[13px] tabular-nums text-ink-soft sm:block">
+          {formatDate(project.updatedAt)}
+        </span>
+        <span className="hidden text-[13px] tabular-nums text-ink-muted sm:block">
+          {formatDate(project.createdAt)}
+        </span>
+
+        <div ref={menuRef} className="relative justify-self-end" onClick={(e) => e.stopPropagation()}>
+          <button
+            type="button"
+            aria-label="Project actions"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((o) => !o)}
+            className="flex h-8 w-8 items-center justify-center rounded-md text-ink-muted transition-colors hover:bg-sunken hover:text-ink"
+          >
+            <MoreHorizontal className="h-4 w-4" />
+          </button>
+
+          {menuOpen && (
+            <div
+              role="menu"
+              className="absolute right-0 top-full z-20 mt-1 w-48 overflow-hidden rounded-lg border border-line bg-panel py-1 shadow-lg"
+            >
               <button
                 type="button"
-                aria-label="Project actions"
-                aria-expanded={menuOpen}
-                onClick={() => setMenuOpen((o) => !o)}
-                className="p-1.5 rounded-md text-ink-muted hover:text-ink hover:bg-subtle transition-colors"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false);
+                  onOpen(project);
+                }}
+                className="flex w-full items-center gap-2.5 px-3 py-2 text-[13px] text-ink hover:bg-subtle"
               >
-                <MoreHorizontal className="w-4 h-4" />
+                <ExternalLink className="h-4 w-4 shrink-0 text-ink-muted" />
+                Open workspace
               </button>
-
-              {menuOpen && (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false);
+                  setIsEditOpen(true);
+                }}
+                className="flex w-full items-center gap-2.5 px-3 py-2 text-[13px] text-ink hover:bg-subtle"
+              >
+                <Pencil className="h-4 w-4 shrink-0 text-ink-muted" />
+                Rename or edit
+              </button>
+              {!isArchived && (
                 <>
-                  <div
-                    className="fixed inset-0 z-10"
-                    onClick={() => setMenuOpen(false)}
-                  />
-                  <div className="absolute right-0 top-full mt-1 w-44 bg-panel rounded-lg border border-line shadow-lg z-20 overflow-hidden py-1">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setMenuOpen(false);
-                        onOpen(project);
-                      }}
-                      className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-ink hover:bg-canvas transition-colors"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5 shrink-0 text-ink-muted" />
-                      Open workspace
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setMenuOpen(false);
-                        setIsEditOpen(true);
-                      }}
-                      className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-ink hover:bg-canvas transition-colors"
-                    >
-                      <Pencil className="w-3.5 h-3.5 shrink-0 text-ink-muted" />
-                      Edit project
-                    </button>
-                    {!isArchived && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setMenuOpen(false);
-                          setIsArchiveOpen(true);
-                        }}
-                        className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-danger hover:bg-danger-soft transition-colors"
-                      >
-                        <Archive className="w-3.5 h-3.5 shrink-0" />
-                        Archive project
-                      </button>
-                    )}
-                  </div>
+                  <div className="my-1 h-px bg-line" />
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      setIsArchiveOpen(true);
+                    }}
+                    className="flex w-full items-center gap-2.5 px-3 py-2 text-[13px] text-danger hover:bg-danger-soft"
+                  >
+                    <Archive className="h-4 w-4 shrink-0" />
+                    Archive project
+                  </button>
                 </>
               )}
             </div>
-          </div>
-
-          {project.description && (
-            <p className="text-xs text-ink-soft mt-2 line-clamp-2 leading-relaxed">
-              {project.description}
-            </p>
           )}
-        </div>
-
-        <div className="px-5 pb-4 pt-2 border-t border-line flex items-center justify-between text-[11px] text-ink-muted">
-          <span>Updated {formatDate(project.updatedAt)}</span>
-          <span>Created {formatDate(project.createdAt)}</span>
         </div>
       </div>
 

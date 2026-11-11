@@ -74,14 +74,14 @@ export const EditProjectDialog: React.FC<EditProjectDialogProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 overlay-enter"
       onMouseDown={onClose}
     >
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="edit-project-title"
-        className="w-full max-w-md bg-panel rounded-xl shadow-xl border border-line overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+        className="w-full max-w-md bg-panel rounded-xl shadow-xl border border-line overflow-hidden dialog-enter"
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="px-6 py-4 border-b border-line flex items-center justify-between">
@@ -105,7 +105,7 @@ export const EditProjectDialog: React.FC<EditProjectDialogProps> = ({
           <div>
             <label
               htmlFor="edit-project-name"
-              className="block text-xs font-medium text-ink mb-1.5"
+              className="field-label"
             >
               Project name <span aria-hidden="true" className="text-danger">*</span>
             </label>
@@ -118,14 +118,14 @@ export const EditProjectDialog: React.FC<EditProjectDialogProps> = ({
               maxLength={200}
               required
               autoComplete="off"
-              className="w-full border border-line rounded-lg px-3 py-2 text-sm text-ink placeholder:text-ink-muted focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent transition-colors"
+              className="field"
             />
           </div>
 
           <div>
             <label
               htmlFor="edit-project-description"
-              className="block text-xs font-medium text-ink mb-1.5"
+              className="field-label"
             >
               Description{' '}
               <span className="text-ink-muted font-normal">(optional)</span>
@@ -136,14 +136,14 @@ export const EditProjectDialog: React.FC<EditProjectDialogProps> = ({
               onChange={(e) => setDescription(e.target.value)}
               maxLength={5000}
               rows={3}
-              className="w-full border border-line rounded-lg px-3 py-2 text-sm text-ink placeholder:text-ink-muted focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent transition-colors resize-none"
+              className="field resize-none"
             />
           </div>
 
           {error && (
             <p
               role="alert"
-              className="text-xs text-danger bg-danger-soft border border-danger-line rounded-lg px-3 py-2"
+              className="rounded-md border border-danger-line bg-danger-soft px-3 py-2 text-xs text-danger"
             >
               {error}
             </p>
@@ -159,7 +159,7 @@ export const EditProjectDialog: React.FC<EditProjectDialogProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="text-xs font-medium text-ink-soft hover:text-ink px-3.5 py-2 rounded-md hover:bg-subtle transition-colors"
+              className="inline-flex h-9 items-center rounded-md px-3.5 text-[13px] font-medium text-ink-soft transition-colors hover:bg-subtle hover:text-ink"
             >
               Cancel
             </button>

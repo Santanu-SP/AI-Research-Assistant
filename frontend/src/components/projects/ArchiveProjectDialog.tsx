@@ -55,7 +55,7 @@ export const ArchiveProjectDialog: React.FC<ArchiveProjectDialogProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 overlay-enter"
       onMouseDown={onClose}
     >
       <div
@@ -63,12 +63,12 @@ export const ArchiveProjectDialog: React.FC<ArchiveProjectDialogProps> = ({
         aria-modal="true"
         aria-labelledby="archive-project-title"
         aria-describedby="archive-project-description"
-        className="w-full max-w-sm bg-panel rounded-xl shadow-xl border border-line overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+        className="w-full max-w-sm bg-panel rounded-xl shadow-xl border border-line overflow-hidden dialog-enter"
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="px-6 py-5">
           <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 rounded-full bg-danger-soft flex items-center justify-center shrink-0">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-danger-line bg-danger-soft">
               <Archive className="w-5 h-5 text-danger" />
             </div>
             <h3
@@ -110,7 +110,7 @@ export const ArchiveProjectDialog: React.FC<ArchiveProjectDialogProps> = ({
               type="button"
               onClick={onClose}
               disabled={isArchiving}
-              className="flex-1 text-sm font-medium text-ink-soft hover:text-ink border border-line hover:bg-subtle px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
+              className="inline-flex h-9 flex-1 items-center justify-center rounded-md border border-line-strong bg-panel px-4 text-[13px] font-medium text-ink shadow-xs transition-colors hover:bg-subtle disabled:opacity-50"
             >
               Cancel
             </button>
@@ -118,7 +118,7 @@ export const ArchiveProjectDialog: React.FC<ArchiveProjectDialogProps> = ({
               type="button"
               onClick={() => void handleArchive()}
               disabled={isArchiving}
-              className="flex-1 text-sm font-medium text-on-solid bg-danger-solid hover:bg-danger-solid-hover px-4 py-2 rounded-lg transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
+              className="inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-md bg-danger-solid px-4 text-[13px] font-medium text-on-solid shadow-xs transition-colors hover:bg-danger-solid-hover disabled:opacity-60"
             >
               {isArchiving ? (
                 <>

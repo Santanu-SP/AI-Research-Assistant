@@ -75,8 +75,8 @@ export const SourcesPanel: React.FC<SourcesPanelProps> = ({
       <div className="p-4 border-b border-line shrink-0 bg-panel">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <h3 className="font-semibold text-sm text-ink">
-              Sources ({sources.length} cited)
+            <h3 className="text-sm font-medium text-ink">
+              Sources <span className="tabular-nums text-ink-muted">{sources.length}</span>
             </h3>
           </div>
 
@@ -98,8 +98,8 @@ export const SourcesPanel: React.FC<SourcesPanelProps> = ({
             onClick={() => setActiveTab('sources')}
             className={`font-medium pb-1 relative transition-colors ${
               activeTab === 'sources'
-                ? 'text-accent'
-                : 'text-ink-soft hover:text-ink'
+                ? 'text-ink'
+                : 'text-ink-muted hover:text-ink'
             }`}
           >
             <span className="flex items-center gap-1.5">
@@ -107,7 +107,7 @@ export const SourcesPanel: React.FC<SourcesPanelProps> = ({
               <span>Sources</span>
             </span>
             {activeTab === 'sources' && (
-              <div className="absolute bottom-[-9px] left-0 right-0 h-[2px] bg-solid rounded-full" />
+              <div className="absolute bottom-[-9px] left-0 right-0 h-[2px] bg-ink rounded-full" />
             )}
           </button>
 
@@ -116,8 +116,8 @@ export const SourcesPanel: React.FC<SourcesPanelProps> = ({
             onClick={() => setActiveTab('notes')}
             className={`font-medium pb-1 relative transition-colors ${
               activeTab === 'notes'
-                ? 'text-accent'
-                : 'text-ink-soft hover:text-ink'
+                ? 'text-ink'
+                : 'text-ink-muted hover:text-ink'
             }`}
           >
             <span className="flex items-center gap-1.5">
@@ -125,7 +125,7 @@ export const SourcesPanel: React.FC<SourcesPanelProps> = ({
               <span>Notes</span>
             </span>
             {activeTab === 'notes' && (
-              <div className="absolute bottom-[-9px] left-0 right-0 h-[2px] bg-solid rounded-full" />
+              <div className="absolute bottom-[-9px] left-0 right-0 h-[2px] bg-ink rounded-full" />
             )}
           </button>
         </div>
@@ -138,8 +138,8 @@ export const SourcesPanel: React.FC<SourcesPanelProps> = ({
               aria-label="Filter sources"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Filter sources…"
-              className="w-full bg-canvas border border-line rounded-md pl-8 pr-3 py-1.5 text-xs text-ink placeholder:text-ink-muted focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent transition-colors"
+              placeholder="Filter sources"
+              className="field h-9 pl-8 text-[13px]"
             />
             {searchQuery && (
               <button
@@ -162,8 +162,8 @@ export const SourcesPanel: React.FC<SourcesPanelProps> = ({
               aria-label="Research notes"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              className="w-full flex-1 p-3 text-xs leading-relaxed text-ink bg-canvas border border-line rounded-lg focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent resize-none"
-              placeholder="Record synthesis notes, cross-cutting insights, or follow-up items..."
+              className="field flex-1 text-xs leading-relaxed resize-none"
+              placeholder="Notes for yourself: open questions, things to check, follow-ups…"
             />
             <div className="text-[11px] text-ink-muted mt-2 flex items-center justify-between">
               <span>Saved in this browser</span>
@@ -171,7 +171,7 @@ export const SourcesPanel: React.FC<SourcesPanelProps> = ({
             </div>
           </div>
         ) : (
-          <div className="flex flex-col gap-2.5">
+          <div className="flex flex-col gap-1">
             {displayedSources.length === 0 ? (
               <div className="py-12 text-center text-xs text-ink-soft">
                 No sources match &ldquo;{searchQuery}&rdquo;
@@ -195,9 +195,9 @@ export const SourcesPanel: React.FC<SourcesPanelProps> = ({
               <button
                 type="button"
                 onClick={() => setShowAllSources(true)}
-                className="w-full mt-2 py-2 px-3 text-xs font-medium text-accent bg-accent-soft hover:bg-accent-muted border border-accent-line rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                className="mt-2 flex h-8 w-full cursor-pointer items-center justify-center gap-1.5 rounded-md border border-line text-xs font-medium text-ink-soft transition-colors hover:bg-subtle hover:text-ink"
               >
-                <span>View {filteredSources.length - 7} additional references</span>
+                <span>Show {filteredSources.length - 7} more</span>
                 <ChevronDown className="w-3.5 h-3.5" />
               </button>
             )}

@@ -19,39 +19,39 @@ export const ExpandedSource: React.FC<ExpandedSourceProps> = ({ source }) => {
   return (
     <div
       id={`source-${source.number}`}
-      className="bg-canvas border-2 border-accent rounded-lg p-3.5 shadow-xs transition-all duration-200"
+      className="rounded-lg border border-accent-line bg-panel p-4 shadow-sm ring-1 ring-accent-line"
     >
       <div className="flex items-center justify-between gap-2 mb-1.5 text-xs">
-        <div className="flex items-center gap-1.5 font-medium text-accent">
-          <span className="font-bold">[S{source.number}]</span>
+        <div className="flex min-w-0 items-center gap-1.5 text-ink-muted">
+          <span className="flex h-5 min-w-5 items-center justify-center rounded bg-solid px-1 font-mono text-[11px] font-medium text-on-solid">{source.number}</span>
           {source.publisher && <span>{source.publisher}</span>}
           {source.publisher && source.year && <span className="text-ink-muted">·</span>}
           {source.year && <span>{source.year}</span>}
         </div>
 
-        <span className="text-[10px] font-medium uppercase tracking-wider bg-accent-soft text-accent border border-accent-line px-2 py-0.5 rounded-full">
+        <span className="shrink-0 rounded border border-line bg-subtle px-1.5 py-px text-[11px] font-medium capitalize text-ink-soft">
           {source.sourceType.replace('-', ' ')}
         </span>
       </div>
 
-      <h4 className="text-[13.5px] font-semibold text-ink leading-snug mb-1">
+      <h4 className="mb-1 mt-2 text-sm font-semibold leading-snug text-ink">
         {source.title || 'Untitled uploaded source'}
       </h4>
 
       {source.authors.length > 0 && (
-        <p className="text-xs text-ink-soft mb-3">
+        <p className="mb-3 text-xs text-ink-muted">
           {source.authors.join(', ')}
         </p>
       )}
 
-      <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-ink-soft mb-3">
-        {source.page && <span>Page {source.page}</span>}
-        {source.section && <span>Section: {source.section}</span>}
-        {source.doi && <span>DOI: {source.doi}</span>}
+      <div className="mb-3 flex flex-wrap gap-x-3 gap-y-1 text-xs text-ink-soft">
+        {source.page && <span className="tabular-nums">Page {source.page}</span>}
+        {source.section && <span>{source.section}</span>}
+        {source.doi && <span className="font-mono text-[11px]">{source.doi}</span>}
       </div>
 
       {source.relevantExcerpt && (
-        <div className="bg-canvas border-l-2 border-accent pl-3 py-2 pr-2 text-xs text-ink-soft italic rounded-r mb-3 leading-relaxed">
+        <div className="mb-3 rounded-r border-l-2 border-accent-line bg-subtle/60 py-2 pl-3 pr-2 font-serif text-[13px] italic leading-relaxed text-ink-soft">
           &ldquo;{source.relevantExcerpt}&rdquo;
         </div>
       )}
@@ -68,12 +68,7 @@ export const ExpandedSource: React.FC<ExpandedSourceProps> = ({ source }) => {
               <span>Open source</span>
               <ExternalLink className="w-3 h-3" />
             </a>
-          ) : (
-            <span className="text-ink-soft font-medium inline-flex items-center gap-1 cursor-default">
-              <span>View source</span>
-              <ExternalLink className="w-3 h-3" />
-            </span>
-          )}
+          ) : null}
 
           {source.bibtex && <button
             type="button"
@@ -82,8 +77,8 @@ export const ExpandedSource: React.FC<ExpandedSourceProps> = ({ source }) => {
           >
             {isCopied ? (
               <>
-                <Check className="w-3 h-3 text-emerald-600" />
-                <span className="text-emerald-700">Copied!</span>
+                <Check className="w-3 h-3 text-accent" />
+                <span className="text-accent">Copied</span>
               </>
             ) : (
               <>

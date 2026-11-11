@@ -89,14 +89,14 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 overlay-enter"
       onMouseDown={onClose}
     >
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="upload-document-title"
-        className="w-full max-w-lg bg-panel rounded-xl shadow-xl border border-line overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+        className="w-full max-w-lg bg-panel rounded-xl shadow-xl border border-line overflow-hidden dialog-enter"
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="px-6 py-4 border-b border-line flex items-center justify-between">
@@ -141,16 +141,16 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
             role="button"
             tabIndex={0}
             aria-label="Choose a PDF or DOCX document"
-            className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-150 ${
+            className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed px-6 py-8 text-center transition-colors duration-150 ${
               dragOver
-                ? 'border-accent bg-accent-soft/60 scale-[1.01]'
+                ? 'border-accent bg-accent-soft'
                 : selectedFile
                 ? 'border-accent/40 bg-accent-soft/30'
-                : 'border-line-strong hover:border-accent/50 hover:bg-canvas'
+                : 'border-line-strong bg-subtle/40 hover:border-ink-muted hover:bg-subtle'
             }`}
           >
-            <div className="w-12 h-12 rounded-full bg-accent-soft text-accent flex items-center justify-center mb-3">
-              <UploadCloud className="w-6 h-6 stroke-[1.75]" />
+            <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg border border-line bg-panel text-ink-soft shadow-xs">
+              <UploadCloud className="h-5 w-5" strokeWidth={1.75} />
             </div>
 
             {selectedFile ? (
@@ -175,7 +175,7 @@ export const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
             ) : (
               <div>
                 <span className="font-medium text-sm text-ink block mb-1">
-                  Click to browse or drag and drop document
+                  Drop files here or click to browse document
                 </span>
                 <p className="text-xs text-ink-muted max-w-xs">
                   Supported formats: PDF and DOCX

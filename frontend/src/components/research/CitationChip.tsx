@@ -31,38 +31,39 @@ export const CitationChip: React.FC<CitationChipProps> = ({
         onFocus={() => setIsHovered(true)}
         onBlur={() => setIsHovered(false)}
         aria-label={`Citation [S${number}] - ${source?.title || 'Source reference'}`}
-        className={`inline-flex items-center justify-center min-w-[20px] h-[18px] px-1 text-[11px] font-semibold rounded-[4px] border transition-all duration-150 select-none cursor-pointer ${
+        className={`inline-flex h-[18px] min-w-[18px] -translate-y-px cursor-pointer select-none items-center justify-center rounded px-1 align-middle font-mono text-[11px] font-medium leading-none transition-colors duration-150 ${
           isSelected
-            ? 'bg-solid text-on-solid border-accent ring-2 ring-accent/20'
-            : 'bg-accent-soft text-accent border-accent-line hover:bg-solid hover:text-on-solid hover:border-accent'
+            ? 'bg-solid text-on-solid'
+            : 'bg-accent-soft text-accent hover:bg-accent-muted'
         }`}
       >
-        [S{number}]
+        {number}
       </button>
 
       {isHovered && source && (
-        <div
-          className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-72 p-3 bg-inverse text-on-inverse rounded-lg shadow-xl z-50 pointer-events-none text-left text-xs animate-in fade-in zoom-in-95 duration-150"
-          style={{ transformOrigin: 'bottom center' }}
+        <span
+          role="tooltip"
+          className="dialog-enter pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 block w-72 -translate-x-1/2 rounded-lg border border-line bg-panel p-3 text-left font-sans text-xs shadow-lg"
         >
-          <div className="flex items-center justify-between text-[10.5px] text-ink-muted mb-1">
-            <span className="font-semibold text-emerald-400">[S{source.number}] {source.publisher || 'Uploaded source'}</span>
-            <span>{source.year || ''}</span>
-          </div>
-          <div className="font-medium text-white text-[12.5px] leading-snug mb-1 line-clamp-2">
+          <span className="mb-1 flex items-center justify-between text-[11px] text-ink-muted">
+            <span>
+              <span className="font-mono font-medium text-accent">{source.number}</span>
+              {' · '}
+              {source.publisher || 'Uploaded source'}
+            </span>
+            <span className="tabular-nums">{source.year || ''}</span>
+          </span>
+          <span className="mb-1 line-clamp-2 block text-[13px] font-medium leading-snug text-ink">
             {source.title || 'Untitled uploaded source'}
-          </div>
-          <div className="text-[11px] text-ink-muted truncate">
-            {source.authors.join(', ')}
-          </div>
-          <div className="mt-2 pt-1.5 border-t border-white/10 text-[10px] text-emerald-300 flex items-center justify-between">
-            <span>Click to inspect in Sources panel</span>
+          </span>
+          <span className="block truncate text-xs text-ink-muted">{source.authors.join(', ')}</span>
+          <span className="mt-2 flex items-center justify-between border-t border-line pt-2 text-[11px] text-ink-muted">
+            <span>Click to open in sources</span>
             {source.citationCount !== undefined && (
-              <span>Cited {source.citationCount} times</span>
+              <span className="tabular-nums">Cited {source.citationCount}×</span>
             )}
-          </div>
-          <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-ink" />
-        </div>
+          </span>
+        </span>
       )}
     </span>
   );

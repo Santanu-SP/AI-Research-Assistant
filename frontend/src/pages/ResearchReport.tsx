@@ -10,11 +10,12 @@ import { reportService } from '../services/report.service';
 import { ResearchReportResponse, SourceResponse } from '../types/report';
 import { ApiError } from '../services/api';
 import {
-  Share2,
-  Download,
-  Check,
-  Clock,
   BookOpen,
+  Check,
+  ChevronRight,
+  Clock,
+  Download,
+  Link2,
 } from 'lucide-react';
 
 const buildReportMarkdown = (
@@ -109,19 +110,19 @@ export const ResearchReportPage: React.FC = () => {
   if (error) {
     if (error instanceof ApiError && error.status === 404) {
       return (
-        <div className="min-h-screen bg-canvas flex items-center justify-center">
+        <div className="flex min-h-screen items-center justify-center px-4">
           <ErrorState 
             title="Report not available yet" 
-            message="This research has not produced a synthesis report." 
+            message="This research has not finished yet. Open its progress page to follow along." 
             onRetry={() => navigate(`/research/${id}/progress`)} 
           />
         </div>
       );
     }
     return (
-      <div className="min-h-screen bg-canvas flex items-center justify-center">
+      <div className="flex min-h-screen items-center justify-center px-4">
         <ErrorState 
-          title="Connection Error" 
+          title="Could not load the report" 
           message={error.message} 
           onRetry={() => window.location.reload()} 
         />
@@ -131,8 +132,8 @@ export const ResearchReportPage: React.FC = () => {
 
   if (!report) {
     return (
-      <div className="min-h-screen bg-canvas flex items-center justify-center">
-        <CenteredLoadingState label="Loading research synthesis…" />
+      <div className="flex min-h-screen items-center justify-center px-4">
+        <CenteredLoadingState label="Loading report…" />
       </div>
     );
   }
@@ -143,111 +144,97 @@ export const ResearchReportPage: React.FC = () => {
   );
 
   return (
-    <div className="report-reading-page min-h-screen bg-canvas flex flex-col">
+    <div className="report-reading-page flex min-h-screen flex-col">
       <TopBar
         breadcrumbs={
-          <div className="flex items-center gap-2 text-xs truncate">
+          <div className="flex min-w-0 items-center gap-2">
             <Link
               to="/research"
-              className="text-ink-soft hover:text-ink shrink-0"
+              className="shrink-0 rounded-sm text-ink-soft hover:text-ink"
             >
-              My Research
+              My research
             </Link>
-            <span className="text-ink-muted">/</span>
-            <span className="text-ink font-medium truncate">
-              Synthesis Memo
-            </span>
-            <span className="text-ink-muted hidden sm:inline">·</span>
-            <span className="font-mono text-[11px] text-ink-muted hidden sm:inline">
+            <ChevronRight className="h-3.5 w-3.5 shrink-0 text-ink-muted" />
+            <span className="truncate font-medium text-ink">Report</span>
+            <span className="hidden font-mono text-[11px] text-ink-muted sm:inline">
               {report.dossierRef}
             </span>
           </div>
         }
         rightActions={
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
             <button
               type="button"
               onClick={() => setIsMobileSourcesOpen(true)}
-              className="xl:hidden text-xs font-medium text-accent bg-accent-soft border border-accent-line px-2.5 py-1.5 rounded-md flex items-center gap-1.5"
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line-strong bg-panel px-2.5 text-[13px] font-medium text-ink shadow-xs xl:hidden"
             >
-              <BookOpen className="w-3.5 h-3.5" />
-              <span>Sources ({sources.length})</span>
+              <BookOpen className="h-4 w-4" />
+              <span>Sources</span>
+              <span className="tabular-nums text-ink-muted">{sources.length}</span>
             </button>
 
             <button
               type="button"
               onClick={() => void handleShare()}
-              className="text-xs text-ink-soft hover:text-ink border border-line hover:bg-subtle px-2.5 py-1.5 rounded-md flex items-center gap-1 transition-colors cursor-pointer"
+              aria-label={copiedShare ? 'Link copied' : 'Copy link'}
+              className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[13px] font-medium text-ink-soft transition-colors hover:bg-subtle hover:text-ink"
             >
-              <Share2 className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">
-                {copiedShare ? 'Link copied' : 'Copy link'}
-              </span>
+              {copiedShare ? <Check className="h-4 w-4 text-accent" /> : <Link2 className="h-4 w-4" />}
+              <span className="hidden md:inline">{copiedShare ? 'Copied' : 'Copy link'}</span>
             </button>
 
             <button
               type="button"
               onClick={handleExport}
-              className="text-xs text-ink-soft hover:text-ink border border-line hover:bg-subtle px-2.5 py-1.5 rounded-md flex items-center gap-1 transition-colors cursor-pointer"
+              aria-label="Export as Markdown"
+              className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[13px] font-medium text-ink-soft transition-colors hover:bg-subtle hover:text-ink"
             >
-              <Download className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Export</span>
+              <Download className="h-4 w-4" />
+              <span className="hidden md:inline">Export</span>
             </button>
-
-            <div className="hidden sm:flex items-center gap-1 text-xs text-accent bg-accent-soft border border-accent-line px-2.5 py-1 rounded-md">
-              <Check className="w-3 h-3 text-accent" />
-              <span className="font-medium">Saved</span>
-            </div>
           </div>
         }
       />
 
-      <div className="flex-1 pt-14 flex overflow-hidden">
-        <main className="report-document-scroll flex-1 overflow-y-auto px-4 sm:px-8 py-10">
-          <div className="report-reading-paper max-w-3xl mx-auto">
-            <div className="pb-6 mb-8 border-b border-line">
-              <div className="font-mono text-xs text-ink-muted tracking-wider uppercase mb-2">
-                {report.dossierRef}
+      <div className="flex flex-1 pt-14">
+        <main className="min-w-0 flex-1 bg-panel px-5 py-10 sm:px-10 lg:py-14">
+          <div className="mx-auto max-w-[680px]">
+            <header className="mb-10 border-b border-line pb-8">
+              <div className="mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-muted">
+                <StatusBadge status={report.status} size="sm" />
+                <span className="tabular-nums">{report.sourceCount} sources</span>
+                <span aria-hidden="true">·</span>
+                <span className="tabular-nums">{report.readingTimeMinutes} min read</span>
+                <span aria-hidden="true">·</span>
+                <span className="flex items-center gap-1">
+                  <Clock className="h-3 w-3" />
+                  Updated {new Date(report.updatedAt).toLocaleDateString(undefined, { dateStyle: 'medium' })}
+                </span>
               </div>
 
-              <h1 className="font-serif text-3xl sm:text-4xl text-ink font-normal leading-[1.2] mb-4">
+              <h1 className="font-serif text-[30px] leading-[1.2] tracking-[-0.015em] text-ink sm:text-[36px]">
                 {report.title}
               </h1>
-
-              <div className="flex flex-wrap items-center gap-3 text-xs text-ink-soft">
-                <span className="font-medium text-ink">
-                  {report.sourceCount} sources cited
-                </span>
-                <span className="text-ink-muted">·</span>
-                <span className="flex items-center gap-1">
-                  <Clock className="w-3 h-3" />
-                  <span>Updated {new Date(report.updatedAt).toLocaleDateString()}</span>
-                </span>
-                <span className="text-ink-muted">·</span>
-                <span>{report.readingTimeMinutes} min read</span>
-                <span className="text-ink-muted">·</span>
-                <StatusBadge status={report.status} size="sm" />
-              </div>
-            </div>
+            </header>
 
             <article className="space-y-10">
               {report.summary && showSummary && (
                 <section>
-                  <h2 className="font-serif text-2xl text-ink font-normal mb-3">
-                    Executive Summary
+                  <h2 className="mb-3 text-[13px] font-semibold uppercase tracking-[0.06em] text-ink-muted">
+                    Summary
                   </h2>
-                  <div className="font-serif text-[17.5px] sm:text-[18.5px] leading-[1.7] text-ink">
+                  <p className="font-serif text-[18px] leading-[1.75] text-ink">
                     {report.summary}
-                  </div>
+                  </p>
                 </section>
               )}
 
               {report.sections.map((section) => (
                 <section key={section.id}>
-                  <h2 className="font-serif text-2xl text-ink font-normal mb-3">
+                  <h2 className="mb-3 text-lg font-semibold tracking-[-0.01em] text-ink">
                     {section.heading}
                   </h2>
-                  <div className="font-serif text-[17.5px] sm:text-[18.5px] leading-[1.7] text-ink mb-4">
+                  <div className="font-serif text-[17px] leading-[1.8] text-ink sm:text-[18px]">
                     {section.content}{' '}
                     {section.citations && section.citations.length > 0 && section.citations.map((citation, idx) => (
                       <React.Fragment key={citation.id}>
@@ -263,11 +250,9 @@ export const ResearchReportPage: React.FC = () => {
                   </div>
 
                   {section.quote && (
-                    <div className="my-6 p-4 bg-canvas border-l-3 border-accent rounded-r-lg">
-                      <div className="font-serif italic text-[16px] text-ink-soft leading-relaxed">
-                        &ldquo;{section.quote}&rdquo;
-                      </div>
-                    </div>
+                    <blockquote className="my-6 border-l-2 border-accent-line pl-5 font-serif text-[17px] italic leading-relaxed text-ink-soft">
+                      &ldquo;{section.quote}&rdquo;
+                    </blockquote>
                   )}
                 </section>
               ))}
@@ -275,7 +260,7 @@ export const ResearchReportPage: React.FC = () => {
           </div>
         </main>
 
-        <aside className="hidden xl:block w-[400px] shrink-0 h-full">
+        <aside className="sticky top-14 hidden h-[calc(100vh-3.5rem)] w-[380px] shrink-0 self-start xl:block">
           <SourcesPanel
             reportId={report.id}
             sources={sources}
@@ -288,10 +273,10 @@ export const ResearchReportPage: React.FC = () => {
       {isMobileSourcesOpen && (
         <div className="fixed inset-0 z-50 xl:hidden flex">
           <div
-            className="fixed inset-0 bg-black/40 backdrop-blur-xs"
+            className="fixed inset-0 bg-black/40 overlay-enter"
             onClick={() => setIsMobileSourcesOpen(false)}
           />
-          <div className="relative ml-auto w-full max-w-sm bg-panel h-full shadow-2xl z-10 animate-in slide-in-from-right duration-200">
+          <div className="relative z-10 ml-auto h-full w-full max-w-sm bg-panel shadow-xl">
             <SourcesPanel
               reportId={report.id}
               sources={sources}

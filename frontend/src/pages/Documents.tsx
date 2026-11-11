@@ -5,7 +5,8 @@ import { UploadDocumentModal } from '../components/documents/UploadDocumentModal
 import { EmptyState } from '../components/common/EmptyState';
 import { ErrorState } from '../components/common/ErrorState';
 import { PrimaryButton } from '../components/common/PrimaryButton';
-import { CenteredLoadingState } from '../components/common/LoadingState';
+import { PageHeader } from '../components/common/PageHeader';
+import { LoadingState } from '../components/common/LoadingState';
 import { documentsService, getDocumentErrorMessage } from '../services/documents.service';
 import { activeIngestionKey, useBackoffPolling } from '../hooks/useBackoffPolling';
 import { Document } from '../types/document';
@@ -110,46 +111,32 @@ export const DocumentsPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-canvas flex flex-col">
       <TopBar
-        breadcrumbs={
-          <div className="flex items-center gap-2">
-            <span className="text-ink-soft">Research</span>
-            <span className="text-ink-muted">/</span>
-            <span className="text-ink font-medium">Documents</span>
-          </div>
-        }
+        breadcrumbs={<span className="font-medium text-ink">Documents</span>}
       />
 
-      <main className="flex-1 pt-14 pb-16 px-4 sm:px-6">
-        <div className="max-w-5xl mx-auto py-8">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-            <div>
-              <h1 className="font-serif text-2xl sm:text-3xl text-ink font-normal tracking-tight">
-                Documents
-              </h1>
-              <p className="text-xs sm:text-sm text-ink-soft mt-1">
-                Internal whitepapers, empirical benchmarks, and uploaded datasets available for cross-synthesis.
-              </p>
-            </div>
+      <main className="flex-1 px-4 pb-16 pt-14 sm:px-6 lg:px-10">
+        <div className="mx-auto max-w-5xl py-8 sm:py-10">
+          <PageHeader
+            title="Documents"
+            description="Every PDF and DOCX you have uploaded, across all projects. Only indexed documents are searched."
+            actions={
+              <PrimaryButton onClick={() => setIsUploadOpen(true)}>
+                <Upload className="h-4 w-4" />
+                Upload
+              </PrimaryButton>
+            }
+          />
 
-            <PrimaryButton
-              onClick={() => setIsUploadOpen(true)}
-              className="gap-1.5"
-            >
-              <Upload className="w-3.5 h-3.5" />
-              <span>Upload document</span>
-            </PrimaryButton>
-          </div>
-
-          <div className="p-3 bg-panel border border-line rounded-xl mb-6 flex flex-wrap items-center justify-between gap-3 shadow-xs">
-            <div className="relative flex-1 min-w-[240px]">
-              <Search className="w-4 h-4 text-ink-muted absolute left-3 top-1/2 -translate-y-1/2" />
+          <div className="mb-4 mt-8 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="relative w-full sm:max-w-xs">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted" />
               <input
-                type="text"
+                type="search"
                 aria-label="Search documents"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search documents by name or keyword…"
-                className="w-full bg-canvas border border-line rounded-md pl-9 pr-3 py-1.5 text-xs text-ink placeholder:text-ink-muted focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent transition-colors"
+                placeholder="Search by file name or title"
+                className="field h-9 pl-9 text-[13px]"
               />
             </div>
 
@@ -158,7 +145,7 @@ export const DocumentsPage: React.FC = () => {
                 aria-label="Filter documents by type"
                 value={selectedFormat}
                 onChange={(e) => setSelectedFormat(e.target.value)}
-                className="bg-canvas border border-line text-ink-soft hover:text-ink text-xs rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-accent"
+                className="field h-9 w-auto pr-8 text-[13px]"
               >
                 <option value="all">All formats</option>
                 <option value="pdf">PDF</option>
@@ -169,7 +156,7 @@ export const DocumentsPage: React.FC = () => {
                 aria-label="Filter documents by status"
                 value={selectedStatus}
                 onChange={(e) => setSelectedStatus(e.target.value)}
-                className="bg-canvas border border-line text-ink-soft hover:text-ink text-xs rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-accent"
+                className="field h-9 w-auto pr-8 text-[13px]"
               >
                 <option value="all">All statuses</option>
                 <option value="uploaded">Uploaded</option>
@@ -190,7 +177,7 @@ export const DocumentsPage: React.FC = () => {
             </p>
           )}
           {isLoading ? (
-            <CenteredLoadingState label="Loading workspace documents…" />
+            <LoadingState rows={4} />
           ) : loadError ? (
             <ErrorState
               title="Failed to load documents"
@@ -201,7 +188,7 @@ export const DocumentsPage: React.FC = () => {
             <EmptyState
               icon={FolderUp}
               title="No documents found"
-              description="Adjust your filters or search query to find documents."
+              description="Try a different search term, format or status."
               primaryActionLabel="Clear filters"
               onPrimaryAction={() => {
                 setSearchQuery('');
@@ -213,12 +200,12 @@ export const DocumentsPage: React.FC = () => {
             <EmptyState
               icon={FolderUp}
               title="No documents yet"
-              description="Upload documents to include your own material in research."
+              description="Upload PDF or DOCX papers. They are parsed and indexed in the background, then included in your questions."
               primaryActionLabel="Upload documents"
               onPrimaryAction={() => setIsUploadOpen(true)}
             />
           ) : (
-            <div className="flex flex-col gap-2.5">
+            <div className="divide-y divide-line overflow-hidden rounded-lg border border-line bg-panel shadow-xs">
               {documents.map((doc) => (
                 <DocumentRow
                   key={doc.id}
@@ -232,9 +219,11 @@ export const DocumentsPage: React.FC = () => {
             </div>
           )}
 
-          <div className="mt-3 text-right text-xs text-ink-muted">
-            Showing {documents.length} of {totalDocuments} documents
-          </div>
+          {!isLoading && !loadError && totalDocuments > 0 && (
+            <div className="mt-3 text-right text-xs tabular-nums text-ink-muted">
+              {documents.length} of {totalDocuments} documents
+            </div>
+          )}
         </div>
       </main>
 
@@ -243,22 +232,27 @@ export const DocumentsPage: React.FC = () => {
         onClose={() => setIsUploadOpen(false)}
         onUploadFile={handleUploadFile}
       />
-      {selectedDocument && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onMouseDown={() => setSelectedDocument(null)}>
-        <div role="dialog" aria-modal="true" aria-labelledby="document-details-title" className="w-full max-w-md rounded-xl border border-line bg-panel p-6 shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
-          <h2 id="document-details-title" className="font-serif text-2xl text-ink">{selectedDocument.title || selectedDocument.name}</h2>
-          <dl className="mt-4 space-y-2 text-sm text-ink-soft">
-            <div><dt className="inline font-medium text-ink">File: </dt><dd className="inline">{selectedDocument.name}</dd></div>
-            <div><dt className="inline font-medium text-ink">Status: </dt><dd className="inline">{selectedDocument.status}</dd></div>
-            <div><dt className="inline font-medium text-ink">Pages: </dt><dd className="inline">{selectedDocument.pageCount ?? 'Unavailable'}</dd></div>
-            <div><dt className="inline font-medium text-ink">Chunks: </dt><dd className="inline">{selectedDocument.chunkCount}</dd></div>
-            {selectedDocument.doi && <div><dt className="inline font-medium text-ink">DOI: </dt><dd className="inline">{selectedDocument.doi}</dd></div>}
-          </dl>
-          <div className="mt-6 flex items-center gap-3">
-            <a href={`${API_BASE_URL}/documents/${selectedDocument.id}/file`} target="_blank" rel="noopener noreferrer" className="rounded-md bg-solid px-4 py-2 text-xs font-medium text-on-solid">Open document</a>
-            <button type="button" onClick={() => setSelectedDocument(null)} className="rounded-md border border-line px-4 py-2 text-xs font-medium text-ink">Close</button>
+      {selectedDocument && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 overlay-enter" onMouseDown={() => setSelectedDocument(null)}>
+          <div role="dialog" aria-modal="true" aria-labelledby="document-details-title" className="dialog-enter w-full max-w-md overflow-hidden rounded-xl border border-line bg-panel shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="border-b border-line px-6 py-4">
+              <p className="eyebrow">Document</p>
+              <h2 id="document-details-title" className="mt-1 text-base font-semibold leading-snug text-ink">{selectedDocument.title || selectedDocument.name}</h2>
+            </div>
+            <dl className="grid grid-cols-[96px_minmax(0,1fr)] gap-x-4 gap-y-2.5 px-6 py-5 text-[13px]">
+              <dt className="text-ink-muted">File</dt><dd className="truncate text-ink">{selectedDocument.name}</dd>
+              <dt className="text-ink-muted">Status</dt><dd className="capitalize text-ink">{selectedDocument.status}</dd>
+              <dt className="text-ink-muted">Pages</dt><dd className="tabular-nums text-ink">{selectedDocument.pageCount ?? 'Unavailable'}</dd>
+              <dt className="text-ink-muted">Chunks</dt><dd className="tabular-nums text-ink">{selectedDocument.chunkCount}</dd>
+              {selectedDocument.doi && <><dt className="text-ink-muted">DOI</dt><dd className="truncate font-mono text-xs text-ink">{selectedDocument.doi}</dd></>}
+            </dl>
+            <div className="flex items-center justify-end gap-2 border-t border-line bg-subtle/50 px-6 py-3">
+              <button type="button" onClick={() => setSelectedDocument(null)} className="inline-flex h-9 items-center rounded-md px-3.5 text-[13px] font-medium text-ink-soft hover:bg-subtle hover:text-ink">Close</button>
+              <a href={`${API_BASE_URL}/documents/${selectedDocument.id}/file`} target="_blank" rel="noopener noreferrer" className="inline-flex h-9 items-center rounded-md bg-solid px-3.5 text-[13px] font-medium text-on-solid shadow-xs hover:bg-solid-hover">Open document</a>
+            </div>
           </div>
         </div>
-      </div>}
+      )}
     </div>
   );
 };
