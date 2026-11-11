@@ -1,30 +1,31 @@
 import React from 'react';
 import { LandingNav } from '../components/landing/LandingNav';
-import { HeroSection } from '../components/landing/HeroSection';
-import { PrinciplePanel, ProductShowcase } from '../components/landing/ProductShowcase';
-import { BenefitsSection, PrivacySection, WorkflowSection } from '../components/landing/WorkflowSections';
-import { UseCasesCarousel } from '../components/landing/UseCasesCarousel';
-import { FAQSection } from '../components/landing/FAQSection';
-import { FinalCTA, LandingFooter } from '../components/landing/FinalSections';
-import '../components/landing/landing.css';
+import {
+  FAQ,
+  Features,
+  FinalCta,
+  Hero,
+  HowItWorks,
+  LandingFooter,
+  Pipeline,
+} from '../components/landing/LandingSections';
 
 export const LandingPage: React.FC = () => (
-  <div className="landing-page">
-    <div className="landing-announcement" role="status">
-      <span>Research with evidence, not guesswork.</span>
-      <small>Upload papers. Ask questions. Trace every answer.</small>
-    </div>
+  <div className="min-h-screen bg-canvas text-ink">
+    <a
+      href="#main"
+      className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[100] focus:rounded-md focus:bg-panel focus:px-3 focus:py-2 focus:text-sm focus:shadow-md"
+    >
+      Skip to content
+    </a>
     <LandingNav />
-    <main>
-      <HeroSection />
-      <ProductShowcase />
-      <PrinciplePanel />
-      <WorkflowSection />
-      <BenefitsSection />
-      <PrivacySection />
-      <UseCasesCarousel />
-      <FAQSection />
-      <FinalCTA />
+    <main id="main">
+      <Hero />
+      <HowItWorks />
+      <Features />
+      <Pipeline />
+      <FAQ />
+      <FinalCta />
     </main>
     <LandingFooter />
   </div>
