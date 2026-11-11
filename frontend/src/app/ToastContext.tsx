@@ -81,17 +81,17 @@ const ICONS: Record<ToastType, React.ReactNode> = {
 };
 
 const BG: Record<ToastType, string> = {
-  success: 'bg-panel border-accent-line',
-  error: 'bg-panel border-danger-line',
-  info: 'bg-panel border-info-line',
-  warning: 'bg-panel border-warning-line',
+  success: 'bg-panel border-line',
+  error: 'bg-panel border-line',
+  info: 'bg-panel border-line',
+  warning: 'bg-panel border-line',
 };
 
 const TITLE_COLOR: Record<ToastType, string> = {
-  success: 'text-accent',
-  error: 'text-danger',
-  info: 'text-info',
-  warning: 'text-warning',
+  success: 'text-ink',
+  error: 'text-ink',
+  info: 'text-ink',
+  warning: 'text-ink',
 };
 
 interface ToastContainerProps {
@@ -109,18 +109,18 @@ const ToastContainer: React.FC<ToastContainerProps> = ({
       role="region"
       aria-label="Notifications"
       aria-live="polite"
-      className="fixed bottom-4 right-4 z-[9999] flex flex-col gap-2 max-w-sm w-full"
+      className="fixed bottom-4 left-4 right-4 z-[9999] flex flex-col gap-2 sm:left-auto sm:w-full sm:max-w-sm"
     >
       {toasts.map((toast) => (
         <div
           key={toast.id}
           role="alert"
-          className={`flex items-start gap-3 px-4 py-3 rounded-xl border shadow-lg ${BG[toast.type]} animate-in slide-in-from-right-4 duration-200`}
+          className={`flex items-start gap-3 px-4 py-3 rounded-lg border shadow-lg ${BG[toast.type]} toast-enter`}
         >
           <span className="mt-0.5 shrink-0">{ICONS[toast.type]}</span>
           <div className="flex-1 min-w-0">
             <p
-              className={`text-sm font-semibold leading-snug ${TITLE_COLOR[toast.type]}`}
+              className={`text-[13px] font-medium leading-snug ${TITLE_COLOR[toast.type]}`}
             >
               {toast.title}
             </p>

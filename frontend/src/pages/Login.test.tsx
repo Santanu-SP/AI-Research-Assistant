@@ -65,7 +65,7 @@ describe('authentication navigation', () => {
 
     fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'researcher@example.com' } });
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'password-123' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Login' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
 
     await waitFor(() => expect(mocks.navigate).toHaveBeenCalledWith('/research/new', { replace: true }));
   });

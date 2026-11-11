@@ -42,20 +42,20 @@ export const LoginPage: React.FC = () => {
   const oauthError = searchParams.get('oauthError');
   const oauthMessage = oauthError ? 'Google sign-in was not completed. Please try again or use email and password.' : null;
 
-  return <AuthShell title="Welcome back" description="Sign in to continue your research.">
+  return <AuthShell title="Sign in" description="Welcome back. Pick up where you left off.">
     <form onSubmit={(event) => void submit(event)} className="space-y-4">
-      {location.state?.registered && <p className="text-sm text-accent bg-accent-soft rounded-md p-3">Account created. Sign in to continue.</p>}
-      {oauthMessage && <p role="alert" className="text-sm text-danger bg-danger-soft rounded-md p-3">{oauthMessage}</p>}
-      {error && <p role="alert" className="text-sm text-danger bg-danger-soft rounded-md p-3">{error}</p>}
+      {location.state?.registered && <p className="rounded-md border border-accent-line bg-accent-soft px-3 py-2.5 text-[13px] text-accent">Account created. Sign in to continue.</p>}
+      {oauthMessage && <p role="alert" className="rounded-md border border-danger-line bg-danger-soft px-3 py-2.5 text-[13px] text-danger">{oauthMessage}</p>}
+      {error && <p role="alert" className="rounded-md border border-danger-line bg-danger-soft px-3 py-2.5 text-[13px] text-danger">{error}</p>}
       <div><label htmlFor="login-email" className={authLabelClass}>Email</label><input id="login-email" type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} className={authInputClass} /></div>
       <div><label htmlFor="login-password" className={authLabelClass}>Password</label><input id="login-password" type="password" autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} className={authInputClass} /></div>
-      <button type="submit" disabled={busy} className="w-full rounded-md bg-solid px-4 py-2.5 text-sm font-medium text-on-solid hover:bg-solid-hover disabled:opacity-60">{busy ? 'Signing in…' : 'Login'}</button>
+      <button type="submit" disabled={busy} className="h-10 w-full rounded-md bg-solid px-4 text-sm font-medium text-on-solid shadow-xs transition-colors hover:bg-solid-hover disabled:opacity-60">{busy ? 'Signing in…' : 'Sign in'}</button>
       <div className="flex items-center gap-3 text-xs text-ink-muted"><span className="h-px flex-1 bg-line" />or<span className="h-px flex-1 bg-line" /></div>
-      <button type="button" disabled={busy} onClick={() => void loginWithGoogle()} className="w-full rounded-md border border-line-strong bg-panel px-4 py-2.5 text-sm font-medium text-ink hover:bg-canvas disabled:opacity-60 inline-flex items-center justify-center gap-2">
+      <button type="button" disabled={busy} onClick={() => void loginWithGoogle()} className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md border border-line-strong bg-panel px-4 text-sm font-medium text-ink shadow-xs transition-colors hover:bg-subtle disabled:opacity-60">
         <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4"><path fill="#4285F4" d="M21.35 12.23c0-.71-.06-1.39-.18-2.05H12v3.88h5.24a4.48 4.48 0 0 1-1.94 2.94v2.52h3.14c1.84-1.69 2.91-4.19 2.91-7.29Z"/><path fill="#34A853" d="M12 21.75c2.63 0 4.84-.87 6.45-2.35l-3.14-2.52c-.87.59-1.99.94-3.31.94-2.54 0-4.69-1.71-5.46-4.01H3.3v2.6A9.75 9.75 0 0 0 12 21.75Z"/><path fill="#FBBC05" d="M6.54 13.81a5.87 5.87 0 0 1 0-3.62V7.6H3.3a9.75 9.75 0 0 0 0 8.81l3.24-2.6Z"/><path fill="#EA4335" d="M12 6.18c1.43 0 2.71.49 3.72 1.45l2.79-2.79C16.84 3.28 14.63 2.25 12 2.25A9.75 9.75 0 0 0 3.3 7.6l3.24 2.59C7.31 7.89 9.46 6.18 12 6.18Z"/></svg>
         Continue with Google
       </button>
-      <p className="text-center text-xs text-ink-soft">New here? <Link to="/register" className="font-medium text-accent hover:underline">Create an account</Link></p>
+      <p className="pt-2 text-center text-[13px] text-ink-soft">New here? <Link to="/register" className="font-medium text-accent hover:underline">Create an account</Link></p>
     </form>
   </AuthShell>;
 };

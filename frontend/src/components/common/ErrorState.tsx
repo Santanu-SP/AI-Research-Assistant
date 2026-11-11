@@ -1,5 +1,6 @@
 import React from 'react';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, RotateCw } from 'lucide-react';
+import { PrimaryButton } from './PrimaryButton';
 
 interface ErrorStateProps {
   title?: string;
@@ -8,27 +9,23 @@ interface ErrorStateProps {
 }
 
 export const ErrorState: React.FC<ErrorStateProps> = ({
-  title = "Something went wrong",
-  message = "We couldn’t load this content.",
+  title = 'Something went wrong',
+  message = 'We couldn’t load this content.',
   onRetry,
-}) => {
-  return (
-    <div className="w-full py-12 px-4 flex flex-col items-center justify-center text-center bg-panel border border-line rounded-lg">
-      <div className="w-10 h-10 rounded-full bg-canvas text-ink-soft flex items-center justify-center mb-3 border border-line">
-        <AlertCircle className="w-5 h-5 stroke-[1.5]" />
-      </div>
-      <h3 className="text-sm font-semibold text-ink mb-1">{title}</h3>
-      <p className="text-xs text-ink-soft max-w-sm mb-5 leading-relaxed">
-        {message}
-      </p>
-      {onRetry && (
-        <button
-          onClick={onRetry}
-          className="bg-transparent border border-line hover:bg-canvas text-ink text-xs font-medium px-4 py-1.5 rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2"
-        >
-          Retry
-        </button>
-      )}
+}) => (
+  <div
+    className="flex w-full flex-col items-center justify-center rounded-lg border border-line bg-panel px-6 py-12 text-center"
+  >
+    <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg border border-danger-line bg-danger-soft text-danger">
+      <AlertCircle className="h-5 w-5" strokeWidth={1.75} />
     </div>
-  );
-};
+    <h3 className="text-sm font-semibold text-ink">{title}</h3>
+    <p className="mt-1 max-w-sm text-[13px] leading-relaxed text-ink-soft">{message}</p>
+    {onRetry && (
+      <PrimaryButton variant="outline" className="mt-5" onClick={onRetry}>
+        <RotateCw className="h-3.5 w-3.5" />
+        Retry
+      </PrimaryButton>
+    )}
+  </div>
+);

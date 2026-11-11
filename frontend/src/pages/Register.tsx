@@ -29,15 +29,15 @@ export const RegisterPage: React.FC = () => {
     } finally { setBusy(false); }
   };
 
-  return <AuthShell title="Create your account" description="Keep your documents and research in your own workspace.">
+  return <AuthShell title="Create your account" description="Upload your papers and start asking questions in a few minutes.">
     <form onSubmit={(event) => void submit(event)} className="space-y-4">
-      {error && <p role="alert" className="text-sm text-danger bg-danger-soft rounded-md p-3">{error}</p>}
+      {error && <p role="alert" className="rounded-md border border-danger-line bg-danger-soft px-3 py-2.5 text-[13px] text-danger">{error}</p>}
       <div><label htmlFor="register-name" className={authLabelClass}>Name</label><input id="register-name" autoComplete="name" required value={name} onChange={(event) => setName(event.target.value)} className={authInputClass} /></div>
       <div><label htmlFor="register-email" className={authLabelClass}>Email</label><input id="register-email" type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} className={authInputClass} /></div>
-      <div><label htmlFor="register-password" className={authLabelClass}>Password</label><input id="register-password" type="password" autoComplete="new-password" minLength={8} required value={password} onChange={(event) => setPassword(event.target.value)} className={authInputClass} /></div>
+      <div><label htmlFor="register-password" className={authLabelClass}>Password</label><input id="register-password" type="password" autoComplete="new-password" minLength={8} required value={password} onChange={(event) => setPassword(event.target.value)} className={authInputClass} aria-describedby="register-password-hint" /><p id="register-password-hint" className="mt-1.5 text-xs text-ink-muted">At least 8 characters.</p></div>
       <div><label htmlFor="register-confirm" className={authLabelClass}>Confirm password</label><input id="register-confirm" type="password" autoComplete="new-password" required value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} className={authInputClass} /></div>
-      <button type="submit" disabled={busy} className="w-full rounded-md bg-solid px-4 py-2.5 text-sm font-medium text-on-solid hover:bg-solid-hover disabled:opacity-60">{busy ? 'Creating account…' : 'Register'}</button>
-      <p className="text-center text-xs text-ink-soft">Already have an account? <Link to="/login" className="font-medium text-accent hover:underline">Login</Link></p>
+      <button type="submit" disabled={busy} className="h-10 w-full rounded-md bg-solid px-4 text-sm font-medium text-on-solid shadow-xs transition-colors hover:bg-solid-hover disabled:opacity-60">{busy ? 'Creating account…' : 'Create account'}</button>
+      <p className="pt-2 text-center text-[13px] text-ink-soft">Already have an account? <Link to="/login" className="font-medium text-accent hover:underline">Sign in</Link></p>
     </form>
   </AuthShell>;
 };

@@ -23,12 +23,12 @@ const STATUS_CONFIG: Record<
   uploaded: {
     label: 'Uploaded',
     icon: Clock,
-    className: 'text-warning bg-warning-soft border-warning-line',
+    className: 'text-ink-soft bg-subtle border-line',
   },
   processing: {
     label: 'Processing',
     icon: Loader2,
-    className: 'text-info bg-info-soft border-info-line',
+    className: 'text-warning bg-warning-soft border-warning-line',
   },
   indexed: {
     label: 'Indexed',
@@ -55,13 +55,13 @@ export const IngestionStatus: React.FC<IngestionStatusProps> = ({
 
   const Icon = config.icon;
   const iconSize = size === 'sm' ? 'w-3 h-3' : 'w-3.5 h-3.5';
-  const textSize = size === 'sm' ? 'text-[10px]' : 'text-xs';
-  const padding = size === 'sm' ? 'px-1.5 py-0.5' : 'px-2 py-1';
+  const textSize = size === 'sm' ? 'text-[11px]' : 'text-xs';
+  const padding = size === 'sm' ? 'h-5 px-1.5' : 'h-[22px] px-2';
 
   return (
     <div className="inline-flex flex-col items-start gap-0.5">
       <span
-        className={`inline-flex items-center gap-1 font-medium rounded border ${config.className} ${textSize} ${padding}`}
+        className={`inline-flex items-center gap-1 whitespace-nowrap rounded-md border font-medium ${config.className} ${textSize} ${padding}`}
         aria-label={`Ingestion status: ${config.label}`}
       >
         <Icon
@@ -70,7 +70,7 @@ export const IngestionStatus: React.FC<IngestionStatusProps> = ({
         {config.label}
       </span>
       {status === 'failed' && errorSummary && (
-        <span className="text-[10px] text-danger max-w-xs leading-snug">
+        <span className="max-w-md text-xs leading-snug text-danger">
           {errorSummary}
         </span>
       )}

@@ -50,12 +50,12 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
   }
 
   const text = label || defaultLabel;
-  const paddingClass = size === 'sm' ? 'px-2 py-0.5 text-[11px]' : 'px-2.5 py-0.5 text-[11.5px]';
+  const paddingClass = size === 'sm' ? 'h-5 px-1.5 text-[11px]' : 'h-[22px] px-2 text-xs';
 
   return (
     <span
       title={title}
-      className={`inline-flex items-center gap-1.5 font-medium rounded-full border ${bgClass} ${paddingClass} tracking-normal`}
+      className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border font-medium ${bgClass} ${paddingClass}`}
     >
       <span
         className={`w-1.5 h-1.5 rounded-full ${dotClass} ${
