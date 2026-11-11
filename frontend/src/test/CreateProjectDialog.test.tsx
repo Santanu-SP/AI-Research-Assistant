@@ -44,7 +44,7 @@ describe('CreateProjectDialog', () => {
   it('renders with accessible dialog role and title', () => {
     renderDialog();
     expect(screen.getByRole('dialog')).toBeInTheDocument();
-    expect(screen.getByText('New Research Project')).toBeInTheDocument();
+    expect(screen.getByText('New project')).toBeInTheDocument();
   });
 
   it('disables submit when name is empty', () => {

@@ -55,7 +55,7 @@ export const ArchiveProjectDialog: React.FC<ArchiveProjectDialogProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 overlay-enter"
       onMouseDown={onClose}
     >
       <div
@@ -63,17 +63,17 @@ export const ArchiveProjectDialog: React.FC<ArchiveProjectDialogProps> = ({
         aria-modal="true"
         aria-labelledby="archive-project-title"
         aria-describedby="archive-project-description"
-        className="w-full max-w-sm bg-white rounded-xl shadow-xl border border-[#e5e7e4] overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+        className="w-full max-w-sm bg-panel rounded-xl shadow-xl border border-line overflow-hidden dialog-enter"
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="px-6 py-5">
           <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 rounded-full bg-[#fee2e2]/60 flex items-center justify-center shrink-0">
-              <Archive className="w-5 h-5 text-[#b91c1c]" />
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-danger-line bg-danger-soft">
+              <Archive className="w-5 h-5 text-danger" />
             </div>
             <h3
               id="archive-project-title"
-              className="font-semibold text-base text-[#181a18]"
+              className="font-semibold text-base text-ink"
             >
               Archive project?
             </h3>
@@ -81,7 +81,7 @@ export const ArchiveProjectDialog: React.FC<ArchiveProjectDialogProps> = ({
               type="button"
               onClick={onClose}
               aria-label="Cancel"
-              className="ml-auto text-[#929792] hover:text-[#181a18] p-1.5 rounded-md hover:bg-[#f5f5f2] transition-colors"
+              className="ml-auto text-ink-muted hover:text-ink p-1.5 rounded-md hover:bg-subtle transition-colors"
             >
               <X className="w-4 h-4" />
             </button>
@@ -89,9 +89,9 @@ export const ArchiveProjectDialog: React.FC<ArchiveProjectDialogProps> = ({
 
           <p
             id="archive-project-description"
-            className="text-sm text-[#6b706c] leading-relaxed"
+            className="text-sm text-ink-soft leading-relaxed"
           >
-            <strong className="text-[#181a18]">"{project.name}"</strong> will be
+            <strong className="text-ink">"{project.name}"</strong> will be
             archived. You will no longer be able to upload new documents or run
             research within it. Existing documents and reports are preserved.
           </p>
@@ -99,7 +99,7 @@ export const ArchiveProjectDialog: React.FC<ArchiveProjectDialogProps> = ({
           {error && (
             <p
               role="alert"
-              className="mt-3 text-xs text-[#b91c1c] bg-[#fee2e2]/50 border border-[#fecaca] rounded-lg px-3 py-2"
+              className="mt-3 text-xs text-danger bg-danger-soft border border-danger-line rounded-lg px-3 py-2"
             >
               {error}
             </p>
@@ -110,7 +110,7 @@ export const ArchiveProjectDialog: React.FC<ArchiveProjectDialogProps> = ({
               type="button"
               onClick={onClose}
               disabled={isArchiving}
-              className="flex-1 text-sm font-medium text-[#6b706c] hover:text-[#181a18] border border-[#e5e7e4] hover:bg-[#f5f5f2] px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
+              className="inline-flex h-9 flex-1 items-center justify-center rounded-md border border-line-strong bg-panel px-4 text-[13px] font-medium text-ink shadow-xs transition-colors hover:bg-subtle disabled:opacity-50"
             >
               Cancel
             </button>
@@ -118,7 +118,7 @@ export const ArchiveProjectDialog: React.FC<ArchiveProjectDialogProps> = ({
               type="button"
               onClick={() => void handleArchive()}
               disabled={isArchiving}
-              className="flex-1 text-sm font-medium text-white bg-[#b91c1c] hover:bg-[#991b1b] px-4 py-2 rounded-lg transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
+              className="inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-md bg-danger-solid px-4 text-[13px] font-medium text-on-solid shadow-xs transition-colors hover:bg-danger-solid-hover disabled:opacity-60"
             >
               {isArchiving ? (
                 <>

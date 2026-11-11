@@ -43,6 +43,7 @@ const safeErrorSummary = (error: string | null | undefined): string | null => {
   return firstLine;
 };
 
+/** A document inside a project. Rendered as a row; the parent list draws the borders. */
 export const SourceCard: React.FC<SourceCardProps> = ({
   document,
   onDelete,
@@ -52,83 +53,76 @@ export const SourceCard: React.FC<SourceCardProps> = ({
 }) => {
   const displayName = document.title || document.name;
   const showFileName = document.title && document.title !== document.name;
+  const showSourceType = document.sourceType !== 'uploaded_file';
+  const showContentLevel = document.contentLevel !== 'user_document';
 
   return (
     <div
-      className="bg-white border border-[#e5e7e4] rounded-xl p-4 flex flex-col sm:flex-row sm:items-start gap-4 hover:border-[#cbd0ca] hover:shadow-xs transition-all duration-150"
+      className="group flex items-start gap-3 px-4 py-3.5 transition-colors hover:bg-subtle/50 sm:px-5"
       data-document-id={document.id}
     >
-      <div className="w-9 h-9 rounded-lg bg-[#f1f6f3] flex items-center justify-center shrink-0">
-        <FileText className="w-5 h-5 text-[#163328]" />
-      </div>
+      <span className="relative mt-0.5 flex h-9 w-8 shrink-0 items-center justify-center rounded-md border border-line bg-subtle text-ink-soft">
+        <FileText className="h-4 w-4" strokeWidth={1.75} />
+        {document.type && (
+          <span className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 rounded-sm border border-line bg-panel px-1 font-mono text-[8.5px] font-medium uppercase leading-3 text-ink-soft">
+            {document.type}
+          </span>
+        )}
+      </span>
 
-      <div className="flex-1 min-w-0">
-        <div className="flex items-start justify-between gap-2">
+      <div className="min-w-0 flex-1">
+        <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-[#181a18] leading-snug truncate">
-              {displayName}
-            </p>
+            <p className="truncate text-sm font-medium leading-snug text-ink">{displayName}</p>
             {showFileName && (
-              <p className="text-[11px] text-[#929792] truncate mt-0.5">
-                {document.name}
-              </p>
+              <p className="mt-0.5 truncate text-xs text-ink-muted">{document.name}</p>
             )}
           </div>
 
-          <div className="flex items-center gap-1 shrink-0">
-          {onRetry && !isArchived && document.status === 'failed' && (
-            <button
-              type="button"
-              aria-label={`Retry processing: ${displayName}`}
-              title="Retry processing"
-              disabled={isRetrying}
-              onClick={() => onRetry(document.id)}
-              className="shrink-0 p-1.5 text-[#929792] hover:text-[#163328] hover:bg-[#f1f6f3] rounded-md transition-colors disabled:opacity-50"
-            >
-              <RotateCcw className={`w-3.5 h-3.5 ${isRetrying ? 'animate-spin' : ''}`} />
-            </button>
-          )}
-          {onDelete && !isArchived && (
-            <button
-              type="button"
-              aria-label={`Delete document: ${displayName}`}
-              onClick={() => onDelete(document.id)}
-              className="shrink-0 p-1.5 text-[#929792] hover:text-[#b91c1c] hover:bg-[#fee2e2]/40 rounded-md transition-colors"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
-          )}
+          <div className="flex shrink-0 items-center gap-2">
+            <IngestionStatus status={document.ingestionStatus} />
+            {onRetry && !isArchived && document.status === 'failed' && (
+              <button
+                type="button"
+                aria-label={`Retry processing: ${displayName}`}
+                title="Retry processing"
+                disabled={isRetrying}
+                onClick={() => onRetry(document.id)}
+                className="flex h-8 w-8 items-center justify-center rounded-md text-ink-muted transition-colors hover:bg-subtle hover:text-ink disabled:opacity-50"
+              >
+                <RotateCcw className={`h-4 w-4 ${isRetrying ? 'animate-spin' : ''}`} />
+              </button>
+            )}
+            {onDelete && !isArchived && (
+              <button
+                type="button"
+                aria-label={`Delete document: ${displayName}`}
+                title="Delete document"
+                onClick={() => onDelete(document.id)}
+                className="flex h-8 w-8 items-center justify-center rounded-md text-ink-muted transition-colors hover:bg-danger-soft hover:text-danger"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            )}
           </div>
         </div>
 
-        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
-          <IngestionStatus
-            status={document.ingestionStatus}
-            errorSummary={safeErrorSummary(document.processingError)}
-          />
-          <SourceTypeLabel sourceType={document.sourceType} />
-          <ContentLevelLabel contentLevel={document.contentLevel} />
-          {document.type && (
-            <span className="text-[10px] font-medium text-[#929792] uppercase tracking-wide">
-              {document.type}
-            </span>
-          )}
-        </div>
-
-        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[#929792]">
-          <span>{formatSize(document.size)}</span>
+        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-muted">
+          <span className="tabular-nums">{formatSize(document.size)}</span>
           {document.pageCount && document.pageCount > 0 && (
-            <span>{document.pageCount} pages</span>
+            <span className="tabular-nums">{document.pageCount} pages</span>
           )}
           {document.chunkCount !== undefined && document.chunkCount > 0 && (
-            <span>{document.chunkCount} chunks</span>
+            <span className="tabular-nums">{document.chunkCount} chunks</span>
           )}
+          {showSourceType && <SourceTypeLabel sourceType={document.sourceType} />}
+          {showContentLevel && <ContentLevelLabel contentLevel={document.contentLevel} />}
           {document.doi && (
             <a
               href={`https://doi.org/${document.doi}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-[#163328] hover:underline"
+              className="text-accent hover:underline"
               onClick={(e) => e.stopPropagation()}
             >
               DOI: {document.doi}
@@ -136,6 +130,10 @@ export const SourceCard: React.FC<SourceCardProps> = ({
           )}
           <span>Added {formatDate(document.uploadedAt)}</span>
         </div>
+
+        {document.status === 'failed' && safeErrorSummary(document.processingError) && (
+          <p className="mt-1.5 text-xs text-danger">{safeErrorSummary(document.processingError)}</p>
+        )}
       </div>
     </div>
   );

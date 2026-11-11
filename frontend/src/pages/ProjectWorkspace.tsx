@@ -4,7 +4,7 @@
  */
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
-import { FileText, Compass, ArrowLeft, Archive } from 'lucide-react';
+import { FileText, Compass, ArrowLeft, Archive, ChevronRight } from 'lucide-react';
 import { TopBar } from '../components/layout/TopBar';
 import { CenteredLoadingState } from '../components/common/LoadingState';
 import { ErrorState } from '../components/common/ErrorState';
@@ -33,7 +33,7 @@ export const ProjectWorkspacePage: React.FC = () => {
 
   if (projectLoading) {
     return (
-      <div className="min-h-screen bg-[#fafaf8] flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center">
         <CenteredLoadingState label="Loading project workspace…" />
       </div>
     );
@@ -41,11 +41,11 @@ export const ProjectWorkspacePage: React.FC = () => {
 
   if (projectError) {
     return (
-      <div className="min-h-screen bg-[#fafaf8] flex flex-col">
+      <div className="min-h-screen flex flex-col">
         <TopBar
           breadcrumbs={
             <div className="flex items-center gap-2">
-              <Link to="/projects" className="text-[#6b706c] hover:text-[#181a18]">
+              <Link to="/projects" className="text-ink-soft hover:text-ink">
                 Projects
               </Link>
             </div>
@@ -65,23 +65,23 @@ export const ProjectWorkspacePage: React.FC = () => {
   if (!selectedProject) return null;
 
   return (
-    <div className="min-h-screen bg-[#fafaf8] flex flex-col">
+    <div className="min-h-screen flex flex-col">
       <TopBar
         breadcrumbs={
-          <div className="flex items-center gap-2 text-xs">
+          <div className="flex min-w-0 items-center gap-2">
             <Link
               to="/projects"
-              className="text-[#6b706c] hover:text-[#181a18] flex items-center gap-1 shrink-0"
+              className="flex shrink-0 items-center gap-1 rounded-sm text-ink-soft hover:text-ink"
             >
-              <ArrowLeft className="w-3.5 h-3.5" />
+              <ArrowLeft className="h-3.5 w-3.5 sm:hidden" />
               <span className="hidden sm:inline">Projects</span>
             </Link>
-            <span className="text-[#929792]">/</span>
-            <span className="text-[#181a18] font-medium truncate">
+            <ChevronRight className="hidden h-3.5 w-3.5 shrink-0 text-ink-muted sm:block" />
+            <span className="text-ink font-medium truncate">
               {selectedProject.name}
             </span>
             {isArchived && (
-              <span className="inline-flex items-center gap-1 text-[10px] font-medium text-[#929792] bg-[#f5f5f2] border border-[#e5e7e4] px-1.5 py-0.5 rounded shrink-0">
+              <span className="inline-flex items-center gap-1 text-[10px] font-medium text-ink-muted bg-subtle border border-line px-1.5 py-0.5 rounded shrink-0">
                 <Archive className="w-2.5 h-2.5" />
                 Archived
               </span>
@@ -91,14 +91,14 @@ export const ProjectWorkspacePage: React.FC = () => {
       />
 
       <main className="flex-1 pt-14 flex flex-col">
-        <div className="max-w-5xl mx-auto w-full px-4 sm:px-6 py-6 flex flex-col flex-1">
+        <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col px-4 py-8 sm:px-6 sm:py-10 lg:px-0">
           <ProjectHeader
             project={selectedProject}
             onUpdated={() => void refreshProject()}
             onArchived={() => navigate('/projects')}
           />
 
-          <div className="border-b border-[#e5e7e4] mt-6 mb-0 flex items-center gap-0">
+          <div role="tablist" aria-label="Project sections" className="mt-8 flex items-center gap-5 border-b border-line">
             <button
               type="button"
               id="tab-sources"
@@ -106,13 +106,13 @@ export const ProjectWorkspacePage: React.FC = () => {
               aria-selected={activeTab === 'sources'}
               aria-controls="panel-sources"
               onClick={() => setActiveTab('sources')}
-              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
+              className={`-mb-px flex items-center gap-2 border-b-2 px-0.5 pb-2.5 pt-1 text-[13px] font-medium transition-colors ${
                 activeTab === 'sources'
-                  ? 'border-[#163328] text-[#163328]'
-                  : 'border-transparent text-[#6b706c] hover:text-[#181a18] hover:border-[#d0d7d2]'
+                  ? 'border-ink text-ink'
+                  : 'border-transparent text-ink-muted hover:text-ink'
               }`}
             >
-              <FileText className="w-4 h-4" />
+              <FileText className="h-4 w-4" />
               Sources
             </button>
             <button
@@ -122,10 +122,10 @@ export const ProjectWorkspacePage: React.FC = () => {
               aria-selected={activeTab === 'research'}
               aria-controls="panel-research"
               onClick={() => setActiveTab('research')}
-              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
+              className={`-mb-px flex items-center gap-2 border-b-2 px-0.5 pb-2.5 pt-1 text-[13px] font-medium transition-colors ${
                 activeTab === 'research'
-                  ? 'border-[#163328] text-[#163328]'
-                  : 'border-transparent text-[#6b706c] hover:text-[#181a18] hover:border-[#d0d7d2]'
+                  ? 'border-ink text-ink'
+                  : 'border-transparent text-ink-muted hover:text-ink'
               }`}
             >
               <Compass className="w-4 h-4" />
@@ -133,7 +133,7 @@ export const ProjectWorkspacePage: React.FC = () => {
             </button>
           </div>
 
-          <div className="flex-1 mt-6">
+          <div className="mt-6 flex-1">
             <div
               id="panel-sources"
               role="tabpanel"

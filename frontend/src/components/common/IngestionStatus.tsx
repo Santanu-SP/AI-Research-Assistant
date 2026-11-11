@@ -23,22 +23,22 @@ const STATUS_CONFIG: Record<
   uploaded: {
     label: 'Uploaded',
     icon: Clock,
-    className: 'text-[#b45309] bg-[#fef3c7] border-[#fde68a]',
+    className: 'text-ink-soft bg-subtle border-line',
   },
   processing: {
     label: 'Processing',
     icon: Loader2,
-    className: 'text-[#0369a1] bg-[#e0f2fe]/50 border-[#bae6fd]',
+    className: 'text-warning bg-warning-soft border-warning-line',
   },
   indexed: {
     label: 'Indexed',
     icon: CheckCircle2,
-    className: 'text-[#163328] bg-[#f1f6f3] border-[#d8e5df]',
+    className: 'text-accent bg-accent-soft border-accent-line',
   },
   failed: {
     label: 'Failed',
     icon: AlertCircle,
-    className: 'text-[#b91c1c] bg-[#fee2e2]/60 border-[#fecaca]',
+    className: 'text-danger bg-danger-soft border-danger-line',
   },
 };
 
@@ -50,18 +50,18 @@ export const IngestionStatus: React.FC<IngestionStatusProps> = ({
   const config = STATUS_CONFIG[status] ?? {
     label: String(status),
     icon: HelpCircle,
-    className: 'text-[#929792] bg-[#f5f5f2] border-[#e5e7e4]',
+    className: 'text-ink-muted bg-subtle border-line',
   };
 
   const Icon = config.icon;
   const iconSize = size === 'sm' ? 'w-3 h-3' : 'w-3.5 h-3.5';
-  const textSize = size === 'sm' ? 'text-[10px]' : 'text-xs';
-  const padding = size === 'sm' ? 'px-1.5 py-0.5' : 'px-2 py-1';
+  const textSize = size === 'sm' ? 'text-[11px]' : 'text-xs';
+  const padding = size === 'sm' ? 'h-5 px-1.5' : 'h-[22px] px-2';
 
   return (
     <div className="inline-flex flex-col items-start gap-0.5">
       <span
-        className={`inline-flex items-center gap-1 font-medium rounded border ${config.className} ${textSize} ${padding}`}
+        className={`inline-flex items-center gap-1 whitespace-nowrap rounded-md border font-medium ${config.className} ${textSize} ${padding}`}
         aria-label={`Ingestion status: ${config.label}`}
       >
         <Icon
@@ -70,7 +70,7 @@ export const IngestionStatus: React.FC<IngestionStatusProps> = ({
         {config.label}
       </span>
       {status === 'failed' && errorSummary && (
-        <span className="text-[10px] text-[#b91c1c] max-w-xs leading-snug">
+        <span className="max-w-md text-xs leading-snug text-danger">
           {errorSummary}
         </span>
       )}

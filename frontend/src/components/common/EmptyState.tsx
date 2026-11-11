@@ -1,5 +1,6 @@
 import React from 'react';
 import { LucideIcon, FolderSearch } from 'lucide-react';
+import { PrimaryButton } from './PrimaryButton';
 
 interface EmptyStateProps {
   icon?: LucideIcon;
@@ -19,36 +20,24 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
   onPrimaryAction,
   secondaryActionLabel,
   onSecondaryAction,
-}) => {
-  return (
-    <div className="w-full py-16 px-4 flex flex-col items-center justify-center text-center bg-white border border-[#e5e7e4] rounded-lg">
-      <div className="w-12 h-12 rounded-full bg-[#f1f6f3] text-[#163328] flex items-center justify-center mb-3">
-        <Icon className="w-6 h-6 stroke-[1.5]" />
-      </div>
-      <h3 className="text-sm font-semibold text-[#181a18] mb-1">{title}</h3>
-      <p className="text-xs text-[#6b706c] max-w-sm mb-5 leading-relaxed">
-        {description}
-      </p>
-      {(primaryActionLabel || secondaryActionLabel) && (
-        <div className="flex items-center gap-3">
-          {secondaryActionLabel && onSecondaryAction && (
-            <button
-              onClick={onSecondaryAction}
-              className="bg-transparent border border-[#e5e7e4] hover:bg-[#fafaf8] text-[#181a18] text-xs font-medium px-3.5 py-1.5 rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-[#163328] focus:ring-offset-2"
-            >
-              {secondaryActionLabel}
-            </button>
-          )}
-          {primaryActionLabel && onPrimaryAction && (
-            <button
-              onClick={onPrimaryAction}
-              className="bg-[#163328] hover:bg-[#214f40] text-white text-xs font-medium px-3.5 py-1.5 rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-[#163328] focus:ring-offset-2"
-            >
-              {primaryActionLabel}
-            </button>
-          )}
-        </div>
-      )}
+}) => (
+  <div className="flex w-full flex-col items-center justify-center rounded-lg border border-dashed border-line-strong bg-panel px-6 py-14 text-center">
+    <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg border border-line bg-subtle text-ink-soft">
+      <Icon className="h-5 w-5" strokeWidth={1.75} />
     </div>
-  );
-};
+    <h3 className="text-sm font-semibold text-ink">{title}</h3>
+    <p className="mt-1 max-w-sm text-[13px] leading-relaxed text-ink-soft">{description}</p>
+    {(primaryActionLabel || secondaryActionLabel) && (
+      <div className="mt-5 flex items-center gap-2">
+        {secondaryActionLabel && onSecondaryAction && (
+          <PrimaryButton variant="outline" onClick={onSecondaryAction}>
+            {secondaryActionLabel}
+          </PrimaryButton>
+        )}
+        {primaryActionLabel && onPrimaryAction && (
+          <PrimaryButton onClick={onPrimaryAction}>{primaryActionLabel}</PrimaryButton>
+        )}
+      </div>
+    )}
+  </div>
+);

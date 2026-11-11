@@ -74,24 +74,24 @@ export const useToast = (): ToastContextValue => {
 
 
 const ICONS: Record<ToastType, React.ReactNode> = {
-  success: <Check className="w-4 h-4 text-[#163328]" />,
-  error: <AlertCircle className="w-4 h-4 text-[#b91c1c]" />,
-  info: <Info className="w-4 h-4 text-[#0369a1]" />,
-  warning: <AlertTriangle className="w-4 h-4 text-[#b45309]" />,
+  success: <Check className="w-4 h-4 text-accent" />,
+  error: <AlertCircle className="w-4 h-4 text-danger" />,
+  info: <Info className="w-4 h-4 text-info" />,
+  warning: <AlertTriangle className="w-4 h-4 text-warning" />,
 };
 
 const BG: Record<ToastType, string> = {
-  success: 'bg-white border-[#d8e5df]',
-  error: 'bg-white border-[#fecaca]',
-  info: 'bg-white border-[#bae6fd]',
-  warning: 'bg-white border-[#fde68a]',
+  success: 'bg-panel border-line',
+  error: 'bg-panel border-line',
+  info: 'bg-panel border-line',
+  warning: 'bg-panel border-line',
 };
 
 const TITLE_COLOR: Record<ToastType, string> = {
-  success: 'text-[#163328]',
-  error: 'text-[#b91c1c]',
-  info: 'text-[#0369a1]',
-  warning: 'text-[#b45309]',
+  success: 'text-ink',
+  error: 'text-ink',
+  info: 'text-ink',
+  warning: 'text-ink',
 };
 
 interface ToastContainerProps {
@@ -109,23 +109,23 @@ const ToastContainer: React.FC<ToastContainerProps> = ({
       role="region"
       aria-label="Notifications"
       aria-live="polite"
-      className="fixed bottom-4 right-4 z-[9999] flex flex-col gap-2 max-w-sm w-full"
+      className="fixed bottom-4 left-4 right-4 z-[9999] flex flex-col gap-2 sm:left-auto sm:w-full sm:max-w-sm"
     >
       {toasts.map((toast) => (
         <div
           key={toast.id}
           role="alert"
-          className={`flex items-start gap-3 px-4 py-3 rounded-xl border shadow-lg ${BG[toast.type]} animate-in slide-in-from-right-4 duration-200`}
+          className={`flex items-start gap-3 px-4 py-3 rounded-lg border shadow-lg ${BG[toast.type]} toast-enter`}
         >
           <span className="mt-0.5 shrink-0">{ICONS[toast.type]}</span>
           <div className="flex-1 min-w-0">
             <p
-              className={`text-sm font-semibold leading-snug ${TITLE_COLOR[toast.type]}`}
+              className={`text-[13px] font-medium leading-snug ${TITLE_COLOR[toast.type]}`}
             >
               {toast.title}
             </p>
             {toast.description && (
-              <p className="text-xs text-[#6b706c] mt-0.5 leading-relaxed">
+              <p className="text-xs text-ink-soft mt-0.5 leading-relaxed">
                 {toast.description}
               </p>
             )}
@@ -134,7 +134,7 @@ const ToastContainer: React.FC<ToastContainerProps> = ({
             type="button"
             aria-label="Dismiss notification"
             onClick={() => onDismiss(toast.id)}
-            className="shrink-0 mt-0.5 text-[#929792] hover:text-[#181a18] transition-colors"
+            className="shrink-0 mt-0.5 text-ink-muted hover:text-ink transition-colors"
           >
             <X className="w-3.5 h-3.5" />
           </button>

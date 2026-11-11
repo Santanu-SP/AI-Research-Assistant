@@ -76,29 +76,24 @@ export const NewResearch: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#fafaf8] flex flex-col">
+    <div className="min-h-screen flex flex-col">
       <TopBar
-        breadcrumbs={
-          <div className="flex items-center gap-2">
-            <span className="text-[#6b706c]">Research</span>
-            <span className="text-[#929792]">/</span>
-            <span className="text-[#181a18] font-medium">New Research</span>
-          </div>
-        }
+        breadcrumbs={<span className="font-medium text-ink">New research</span>}
       />
 
-      <main className="flex-1 pt-14 pb-16 px-4 sm:px-6">
-        <div className="max-w-3xl mx-auto py-10">
-          <div className="mb-8 text-center sm:text-left">
-            <h1 className="font-serif text-3xl sm:text-4xl text-[#181a18] tracking-tight font-normal mb-2.5">
-              What would you like to investigate?
+      <main className="flex-1 px-4 pb-16 pt-14 sm:px-6 lg:px-10">
+        <div className="mx-auto max-w-3xl py-10 sm:py-14">
+          <div className="mb-6">
+            <h1 className="font-serif text-[28px] leading-tight tracking-[-0.01em] text-ink sm:text-[34px]">
+              What do you want to find out?
             </h1>
-            <p className="text-sm sm:text-[15px] text-[#6b706c] max-w-2xl leading-relaxed">
-              Search your indexed papers and generate a locally grounded answer with validated citations.
+            <p className="mt-2 max-w-xl text-sm leading-relaxed text-ink-soft">
+              Questions are answered only from the papers you have uploaded and indexed. Each
+              claim in the answer links to the passage it came from.
             </p>
           </div>
 
-          <div className="mb-10">
+          <div className="mb-12">
             <ResearchComposer
               key={location.key}
               onStartResearch={handleStartResearch}
@@ -114,17 +109,17 @@ export const NewResearch: React.FC = () => {
             ) : null}
           </div>
 
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <span className="uppercase tracking-wider text-[11px] font-semibold text-[#929792]">
-                Recent Research
-              </span>
-              <Link
-                to="/research"
-                className="text-xs font-medium text-[#163328] hover:underline"
-              >
-                View all ({recentTotal})
-              </Link>
+          <section>
+            <div className="mb-2 flex items-center justify-between">
+              <h2 className="text-sm font-medium text-ink">Recent research</h2>
+              {recentTotal > 0 && (
+                <Link
+                  to="/research"
+                  className="text-[13px] font-medium text-accent hover:underline"
+                >
+                  View all ({recentTotal})
+                </Link>
+              )}
             </div>
 
             {isRecentLoading ? (
@@ -138,50 +133,43 @@ export const NewResearch: React.FC = () => {
             ) : recentResearch.length === 0 ? (
               <EmptyState
                 title="No research yet"
-                description="Create your first research record using the question above."
+                description="Ask your first question above. Finished answers will be listed here."
               />
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {recentResearch.map((item) => {
-                const targetPath =
-                  item.status === 'researching'
-                    ? `/research/${item.id}/progress`
-                    : item.status === 'completed'
+              <ul className="divide-y divide-line overflow-hidden rounded-lg border border-line bg-panel shadow-xs">
+                {recentResearch.map((item) => {
+                  const targetPath =
+                    item.status === 'completed'
                       ? `/research/${item.id}`
                       : `/research/${item.id}/progress`;
 
-                return (
-                  <Link
-                    key={item.id}
-                    to={targetPath}
-                    className="p-4 bg-white border border-[#e5e7e4] hover:border-[#cbd0ca] hover:shadow-xs rounded-lg transition-all duration-150 flex flex-col justify-between group"
-                  >
-                    <div>
-                      <div className="flex items-center justify-between gap-2 mb-2">
-                        <span className="text-[11px] font-medium text-[#6b706c] truncate">
-                          {item.domain || 'General research'}
-                        </span>
+                  return (
+                    <li key={item.id}>
+                      <Link
+                        to={targetPath}
+                        className="group flex items-center gap-4 px-4 py-3 transition-colors hover:bg-subtle/60"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-ink">{item.title}</p>
+                          <p className="mt-0.5 flex items-center gap-1.5 text-xs text-ink-muted">
+                            <span className="truncate">{item.domain || 'General'}</span>
+                            <span aria-hidden="true">·</span>
+                            <span className="shrink-0">{item.sourceCount} sources</span>
+                            <span aria-hidden="true">·</span>
+                            <span className="flex shrink-0 items-center gap-1">
+                              <Clock className="h-3 w-3" />
+                              {formatUpdatedAt(item.updatedAt)}
+                            </span>
+                          </p>
+                        </div>
                         <StatusBadge status={item.status} size="sm" />
-                      </div>
-
-                      <h4 className="text-[13.5px] font-medium text-[#181a18] group-hover:text-[#163328] transition-colors line-clamp-2 leading-snug mb-3">
-                        {item.title}
-                      </h4>
-                    </div>
-
-                    <div className="flex items-center justify-between text-[11px] text-[#929792] pt-2 border-t border-[#f5f5f2]">
-                      <span>{item.sourceCount} sources</span>
-                      <span className="flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
-                        <span>{formatUpdatedAt(item.updatedAt)}</span>
-                      </span>
-                    </div>
-                  </Link>
-                );
-              })}
-              </div>
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
             )}
-          </div>
+          </section>
         </div>
       </main>
     </div>

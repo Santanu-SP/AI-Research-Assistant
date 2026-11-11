@@ -23,7 +23,7 @@ const parseInline = (text: string): React.ReactNode[] => {
     const token = match[1];
     if (token.startsWith('**')) {
       segments.push(
-        <strong key={match.index} className="font-semibold text-[#181a18]">
+        <strong key={match.index} className="font-semibold text-ink">
           {token.slice(2, -2)}
         </strong>
       );
@@ -31,7 +31,7 @@ const parseInline = (text: string): React.ReactNode[] => {
       segments.push(
         <code
           key={match.index}
-          className="font-mono text-[13px] bg-[#f5f5f2] px-1 py-0.5 rounded text-[#181a18]"
+          className="font-mono text-[13px] bg-subtle px-1 py-0.5 rounded text-ink"
         >
           {token.slice(1, -1)}
         </code>
@@ -74,7 +74,7 @@ export const SafeMarkdown: React.FC<SafeMarkdownProps> = ({
       elements.push(
         <h2
           key={key++}
-          className="font-serif text-xl text-[#181a18] font-normal mt-5 mb-2 first:mt-0"
+          className="font-serif text-xl text-ink font-normal mt-5 mb-2 first:mt-0"
         >
           {parseInline(line.slice(2))}
         </h2>
@@ -90,7 +90,7 @@ export const SafeMarkdown: React.FC<SafeMarkdownProps> = ({
       elements.push(
         <h3
           key={key++}
-          className={`font-semibold text-[#181a18] mt-4 mb-1.5 ${
+          className={`font-semibold text-ink mt-4 mb-1.5 ${
             level === 2 ? 'text-base' : 'text-sm'
           }`}
         >
@@ -103,7 +103,7 @@ export const SafeMarkdown: React.FC<SafeMarkdownProps> = ({
     // Bullet list items
     if (line.startsWith('- ') || line.startsWith('* ')) {
       listItems.push(
-        <li key={key++} className="text-sm leading-relaxed text-[#2c302d]">
+        <li key={key++} className="text-sm leading-relaxed text-ink">
           {parseInline(line.slice(2))}
         </li>
       );
@@ -114,7 +114,7 @@ export const SafeMarkdown: React.FC<SafeMarkdownProps> = ({
     const numMatch = /^(\d+)\.\s+(.*)$/.exec(line);
     if (numMatch) {
       listItems.push(
-        <li key={key++} className="text-sm leading-relaxed text-[#2c302d]">
+        <li key={key++} className="text-sm leading-relaxed text-ink">
           {parseInline(numMatch[2])}
         </li>
       );
@@ -133,7 +133,7 @@ export const SafeMarkdown: React.FC<SafeMarkdownProps> = ({
       elements.push(
         <blockquote
           key={key++}
-          className="border-l-2 border-[#163328] pl-4 my-3 italic text-[#424744] text-sm"
+          className="border-l-2 border-accent pl-4 my-3 italic text-ink-soft text-sm"
         >
           {parseInline(line.slice(2))}
         </blockquote>
@@ -144,14 +144,14 @@ export const SafeMarkdown: React.FC<SafeMarkdownProps> = ({
     // Horizontal rule
     if (/^---+$/.test(line.trim())) {
       flushList();
-      elements.push(<hr key={key++} className="border-[#e5e7e4] my-4" />);
+      elements.push(<hr key={key++} className="border-line my-4" />);
       continue;
     }
 
     // Regular paragraph
     flushList();
     elements.push(
-      <p key={key++} className="text-sm leading-relaxed text-[#2c302d] my-1.5">
+      <p key={key++} className="text-sm leading-relaxed text-ink my-1.5">
         {parseInline(line)}
       </p>
     );

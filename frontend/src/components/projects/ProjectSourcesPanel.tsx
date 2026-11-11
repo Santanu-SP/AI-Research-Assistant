@@ -106,24 +106,24 @@ export const ProjectSourcesPanel: React.FC<ProjectSourcesPanelProps> = ({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search className="w-4 h-4 text-[#929792] absolute left-3 top-1/2 -translate-y-1/2" />
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="relative w-full sm:max-w-xs">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted" />
           <input
-            type="text"
+            type="search"
             aria-label="Search documents"
             id="sources-search"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search documents…"
-            className="w-full bg-white border border-[#e5e7e4] rounded-lg pl-9 pr-8 py-2 text-xs text-[#181a18] placeholder:text-[#929792] focus:outline-none focus:ring-1 focus:ring-[#163328] focus:border-[#163328] transition-colors"
+            placeholder="Search documents"
+            className="field h-9 pl-9 pr-8 text-[13px]"
           />
           {searchQuery && (
             <button
               type="button"
               aria-label="Clear search"
               onClick={() => setSearchQuery('')}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#929792] hover:text-[#181a18]"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-ink-muted hover:text-ink"
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -134,7 +134,7 @@ export const ProjectSourcesPanel: React.FC<ProjectSourcesPanelProps> = ({
           aria-label="Filter by ingestion status"
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="bg-white border border-[#e5e7e4] text-[#6b706c] text-xs rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#163328]"
+          className="field h-9 w-auto pr-8 text-[13px]"
         >
           <option value="all">All statuses</option>
           <option value="uploaded">Uploaded</option>
@@ -147,23 +147,23 @@ export const ProjectSourcesPanel: React.FC<ProjectSourcesPanelProps> = ({
           <PrimaryButton
             id="upload-document-btn"
             onClick={() => setIsUploadOpen(true)}
-            className="gap-1.5 shrink-0"
+            className="sm:ml-auto"
           >
-            <Upload className="w-3.5 h-3.5" />
-            <span>Upload</span>
+            <Upload className="h-4 w-4" />
+            Upload
           </PrimaryButton>
         )}
       </div>
 
       {!isLoading && !error && (
-        <p className="text-xs text-[#929792]">
+        <p className="text-xs tabular-nums text-ink-muted">
           {total} document{total !== 1 ? 's' : ''}
           {hasFilters && ' matching filters'}
         </p>
       )}
 
       {pollingStopped && (
-        <p role="status" className="text-xs text-[#b45309]">
+        <p role="status" className="text-xs text-warning">
           Some documents are taking longer than expected. Automatic refresh has
           paused.{' '}
           <button type="button" onClick={reload} className="underline font-medium">
@@ -198,7 +198,7 @@ export const ProjectSourcesPanel: React.FC<ProjectSourcesPanelProps> = ({
           description={
             isArchived
               ? 'This project is archived. Documents cannot be added.'
-              : 'Upload PDF or DOCX documents to include them in project research.'
+              : 'Upload PDF or DOCX papers. Questions in this project will only search these documents.'
           }
           primaryActionLabel={isArchived ? undefined : 'Upload document'}
           onPrimaryAction={isArchived ? undefined : () => setIsUploadOpen(true)}
@@ -207,7 +207,7 @@ export const ProjectSourcesPanel: React.FC<ProjectSourcesPanelProps> = ({
         <div
           role="list"
           aria-label="Project documents"
-          className="space-y-3"
+          className="divide-y divide-line overflow-hidden rounded-lg border border-line bg-panel shadow-xs"
         >
           {documents.map((doc) => (
             <div key={doc.id} role="listitem">
@@ -219,7 +219,7 @@ export const ProjectSourcesPanel: React.FC<ProjectSourcesPanelProps> = ({
                 isArchived={isArchived}
               />
               {isDeletingId === doc.id && (
-                <p className="text-xs text-[#929792] mt-1 pl-1">
+                <p className="px-5 pb-3 text-xs text-ink-muted">
                   Deleting…
                 </p>
               )}

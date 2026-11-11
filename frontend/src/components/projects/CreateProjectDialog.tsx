@@ -72,25 +72,25 @@ export const CreateProjectDialog: React.FC<CreateProjectDialogProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 overlay-enter"
       onMouseDown={onClose}
     >
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="create-project-title"
-        className="w-full max-w-md bg-white rounded-xl shadow-xl border border-[#e5e7e4] overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+        className="w-full max-w-md bg-panel rounded-xl shadow-xl border border-line overflow-hidden dialog-enter"
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <div className="px-6 py-4 border-b border-[#e5e7e4] flex items-center justify-between">
+        <div className="px-6 py-4 border-b border-line flex items-center justify-between">
           <div>
             <h3
               id="create-project-title"
-              className="font-semibold text-base text-[#181a18]"
+              className="font-semibold text-base text-ink"
             >
-              New Research Project
+              New project
             </h3>
-            <p className="text-xs text-[#6b706c] mt-0.5">
+            <p className="text-xs text-ink-soft mt-0.5">
               A workspace for your documents and research questions.
             </p>
           </div>
@@ -98,7 +98,7 @@ export const CreateProjectDialog: React.FC<CreateProjectDialogProps> = ({
             type="button"
             onClick={onClose}
             aria-label="Close dialog"
-            className="text-[#929792] hover:text-[#181a18] p-1.5 rounded-md hover:bg-[#f5f5f2] transition-colors"
+            className="text-ink-muted hover:text-ink p-1.5 rounded-md hover:bg-subtle transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -108,9 +108,9 @@ export const CreateProjectDialog: React.FC<CreateProjectDialogProps> = ({
           <div>
             <label
               htmlFor="project-name"
-              className="block text-xs font-medium text-[#181a18] mb-1.5"
+              className="field-label"
             >
-              Project name <span aria-hidden="true" className="text-[#b91c1c]">*</span>
+              Project name <span aria-hidden="true" className="text-danger">*</span>
             </label>
             <input
               ref={nameRef}
@@ -118,13 +118,13 @@ export const CreateProjectDialog: React.FC<CreateProjectDialogProps> = ({
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Membrane Protein Folding"
+              placeholder="e.g. Membrane protein folding"
               maxLength={200}
               required
               autoComplete="off"
-              className="w-full border border-[#e5e7e4] rounded-lg px-3 py-2 text-sm text-[#181a18] placeholder:text-[#929792] focus:outline-none focus:ring-1 focus:ring-[#163328] focus:border-[#163328] transition-colors"
+              className="field"
             />
-            <div className="mt-1 text-right text-[11px] text-[#929792]">
+            <div className="mt-1 text-right text-[11px] text-ink-muted">
               {name.trim().length}/200
             </div>
           </div>
@@ -132,10 +132,10 @@ export const CreateProjectDialog: React.FC<CreateProjectDialogProps> = ({
           <div>
             <label
               htmlFor="project-description"
-              className="block text-xs font-medium text-[#181a18] mb-1.5"
+              className="field-label"
             >
               Description{' '}
-              <span className="text-[#929792] font-normal">(optional)</span>
+              <span className="text-ink-muted font-normal">(optional)</span>
             </label>
             <textarea
               id="project-description"
@@ -144,12 +144,12 @@ export const CreateProjectDialog: React.FC<CreateProjectDialogProps> = ({
               placeholder="Research scope, objectives, or background…"
               maxLength={5000}
               rows={3}
-              className="w-full border border-[#e5e7e4] rounded-lg px-3 py-2 text-sm text-[#181a18] placeholder:text-[#929792] focus:outline-none focus:ring-1 focus:ring-[#163328] focus:border-[#163328] transition-colors resize-none"
+              className="field resize-none"
             />
           </div>
 
           {error && (
-            <p role="alert" className="text-xs text-[#b91c1c] bg-[#fee2e2]/50 border border-[#fecaca] rounded-lg px-3 py-2">
+            <p role="alert" className="rounded-md border border-danger-line bg-danger-soft px-3 py-2 text-xs text-danger">
               {error}
             </p>
           )}
@@ -158,7 +158,7 @@ export const CreateProjectDialog: React.FC<CreateProjectDialogProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="text-xs font-medium text-[#6b706c] hover:text-[#181a18] px-3.5 py-2 rounded-md hover:bg-[#f5f5f2] transition-colors"
+              className="inline-flex h-9 items-center rounded-md px-3.5 text-[13px] font-medium text-ink-soft transition-colors hover:bg-subtle hover:text-ink"
             >
               Cancel
             </button>

@@ -1,21 +1,27 @@
-import React, { Suspense, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { CenteredLoadingState } from '../common/LoadingState';
 import { AppSidebar } from './AppSidebar';
 import { AnimatedResearchBackground } from './AnimatedResearchBackground';
-import { ThemeToggle } from './ThemeToggle';
-import { Menu, X } from 'lucide-react';
-import { useAuth } from '../../app/AuthContext';
+import { MobileNavContext } from './MobileNavContext';
 
 export const AppLayout: React.FC = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
-  const { user } = useAuth();
 
-  // Close mobile drawer on route transition
-  React.useEffect(() => {
+  // Close the drawer when the route changes.
+  useEffect(() => {
     setMobileMenuOpen(false);
   }, [location.pathname]);
+
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMobileMenuOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [mobileMenuOpen]);
 
   const motionMode = location.pathname.endsWith('/progress')
     ? 'progress'
@@ -25,53 +31,43 @@ export const AppLayout: React.FC = () => {
         ? 'reading'
         : 'workspace';
 
+  const toggle = useCallback(() => setMobileMenuOpen((open) => !open), []);
+  const mobileNav = useMemo(() => ({ open: mobileMenuOpen, toggle }), [mobileMenuOpen, toggle]);
+
   return (
-    <div className="relative isolate min-h-screen overflow-x-clip bg-[#fafaf8] text-[#181a18]">
-      <AnimatedResearchBackground mode={motionMode} />
-
-      <div className="hidden lg:block">
-        <AppSidebar />
-      </div>
-
-      <div className="app-chrome-surface lg:hidden fixed top-0 left-0 right-0 h-14 border-b border-[#e5e7e4] z-50 flex items-center justify-between px-4">
-        <button
-          type="button"
-          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          className="p-1.5 rounded-md text-[#181a18] hover:bg-[#f1f6f3] transition-colors"
-          aria-label="Toggle navigation menu"
+    <MobileNavContext.Provider value={mobileNav}>
+      <div className="relative isolate min-h-screen overflow-x-clip bg-canvas text-ink">
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[100] focus:rounded-md focus:bg-panel focus:px-3 focus:py-2 focus:text-sm focus:shadow-md"
         >
-          {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-        </button>
+          Skip to content
+        </a>
 
-        <span className="font-semibold text-sm tracking-tight text-[#181a18]">
-          Research Assistant
-        </span>
+        <AnimatedResearchBackground mode={motionMode} />
 
-        <div className="flex items-center gap-2">
-          <ThemeToggle className="inline-flex lg:hidden" />
-          <div className="w-8 h-8 rounded-full bg-[#e2e8e4] text-[#163328] font-semibold text-xs flex items-center justify-center border border-[#d0d7d2]">
-            {user?.name.slice(0, 1).toUpperCase() || 'R'}
+        <div className="hidden lg:block">
+          <AppSidebar />
+        </div>
+
+        {mobileMenuOpen && (
+          <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Navigation">
+            <div
+              className="fixed inset-0 bg-ink/30"
+              onClick={() => setMobileMenuOpen(false)}
+            />
+            <div className="relative z-10 h-full w-[280px] max-w-[85vw] shadow-xl">
+              <AppSidebar className="!relative !w-full" onNavigate={() => setMobileMenuOpen(false)} />
+            </div>
           </div>
+        )}
+
+        <div id="main-content" className="app-content-surface relative z-10 flex min-h-screen flex-col lg:pl-[248px]">
+          <Suspense fallback={<CenteredLoadingState label="Loading…" />}>
+            <Outlet />
+          </Suspense>
         </div>
       </div>
-
-      {mobileMenuOpen && (
-        <div className="fixed inset-0 z-50 lg:hidden">
-          <div
-            className="fixed inset-0 bg-black/40 backdrop-blur-xs transition-opacity"
-            onClick={() => setMobileMenuOpen(false)}
-          />
-          <div className="relative w-[280px] h-full bg-[#fafaf8] shadow-2xl z-10 animate-in slide-in-from-left duration-200">
-            <AppSidebar className="w-full relative shadow-none border-r border-[#e5e7e4]" />
-          </div>
-        </div>
-      )}
-
-      <div className="app-content-surface relative z-10 lg:pl-[232px] pt-14 lg:pt-0 min-h-screen flex flex-col">
-        <Suspense fallback={<CenteredLoadingState label="Loading…" />}>
-          <Outlet />
-        </Suspense>
-      </div>
-    </div>
+    </MobileNavContext.Provider>
   );
 };

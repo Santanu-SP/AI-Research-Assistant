@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Clock, Search } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, Plus, Search } from 'lucide-react';
 import { EmptyState } from '../components/common/EmptyState';
 import { ErrorState } from '../components/common/ErrorState';
-import { CenteredLoadingState } from '../components/common/LoadingState';
+import { LoadingState } from '../components/common/LoadingState';
 import { PrimaryButton } from '../components/common/PrimaryButton';
+import { PageHeader } from '../components/common/PageHeader';
 import { StatusBadge } from '../components/common/StatusBadge';
 import { TopBar } from '../components/layout/TopBar';
 import {
@@ -99,47 +100,37 @@ export const MyResearchPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#fafaf8] flex flex-col">
+    <div className="min-h-screen flex flex-col">
       <TopBar
-        breadcrumbs={
-          <div className="flex items-center gap-2">
-            <span className="text-[#6b706c]">Archive</span>
-            <span className="text-[#929792]">/</span>
-            <span className="text-[#181a18] font-medium">My Research</span>
-          </div>
-        }
+        breadcrumbs={<span className="font-medium text-ink">My research</span>}
       />
 
-      <main className="flex-1 pt-14 pb-16 px-4 sm:px-6">
-        <div className="max-w-5xl mx-auto py-8">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-            <div>
-              <h1 className="font-serif text-2xl sm:text-3xl text-[#181a18] font-normal tracking-tight">
-                My Research
-              </h1>
-              <p className="text-xs sm:text-sm text-[#6b706c] mt-1">
-                Persisted research records across every domain and lifecycle state.
-              </p>
-            </div>
+      <main className="flex-1 px-4 pb-16 pt-14 sm:px-6 lg:px-10">
+        <div className="mx-auto max-w-5xl py-8 sm:py-10">
+          <PageHeader
+            title="My research"
+            description="Every question you have asked, with its status and the number of sources behind the answer."
+            actions={
+              <PrimaryButton onClick={() => navigate('/research/new')}>
+                <Plus className="h-4 w-4" />
+                New research
+              </PrimaryButton>
+            }
+          />
 
-            <PrimaryButton showArrow onClick={() => navigate('/research/new')}>
-              New Research
-            </PrimaryButton>
-          </div>
-
-          <div className="p-3 bg-white border border-[#e5e7e4] rounded-xl mb-6 flex flex-wrap items-center justify-between gap-3 shadow-xs">
-            <div className="relative flex-1 min-w-[240px]">
-              <Search className="w-4 h-4 text-[#929792] absolute left-3 top-1/2 -translate-y-1/2" />
+          <div className="mb-4 mt-8 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="relative w-full sm:max-w-xs">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted" />
               <input
-                type="text"
+                type="search"
                 aria-label="Search research"
                 value={searchQuery}
                 onChange={(event) => {
                   setSearchQuery(event.target.value);
                   setOffset(0);
                 }}
-                placeholder="Search investigations by title or question…"
-                className="w-full bg-[#fafaf8] border border-[#e5e7e4] rounded-md pl-9 pr-3 py-1.5 text-xs text-[#181a18] placeholder:text-[#929792] focus:outline-none focus:ring-1 focus:ring-[#163328] focus:border-[#163328] transition-colors"
+                placeholder="Search by title or question"
+                className="field h-9 pl-9 text-[13px]"
               />
             </div>
 
@@ -151,7 +142,7 @@ export const MyResearchPage: React.FC = () => {
                   setSelectedDomain(event.target.value);
                   setOffset(0);
                 }}
-                className="bg-[#fafaf8] border border-[#e5e7e4] text-[#6b706c] hover:text-[#181a18] text-xs rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#163328]"
+                className="field h-9 w-auto pr-8 text-[13px]"
               >
                 <option value="all">All domains</option>
                 {domainOptions.map((domain) => (
@@ -168,7 +159,7 @@ export const MyResearchPage: React.FC = () => {
                   setSelectedStatus(event.target.value);
                   setOffset(0);
                 }}
-                className="bg-[#fafaf8] border border-[#e5e7e4] text-[#6b706c] hover:text-[#181a18] text-xs rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#163328]"
+                className="field h-9 w-auto pr-8 text-[13px]"
               >
                 <option value="all">All statuses</option>
                 <option value="completed">Completed</option>
@@ -180,7 +171,7 @@ export const MyResearchPage: React.FC = () => {
           </div>
 
           {isLoading ? (
-            <CenteredLoadingState label="Loading your research…" />
+            <LoadingState rows={4} />
           ) : loadError ? (
             <ErrorState
               title="Research unavailable"
@@ -189,17 +180,17 @@ export const MyResearchPage: React.FC = () => {
             />
           ) : researchList.length === 0 ? (
             <EmptyState
-              title={hasFilters ? 'No research investigations found' : 'No research yet'}
+              title={hasFilters ? 'Nothing matches these filters' : 'No research yet'}
               description={
                 hasFilters
-                  ? 'No investigations match your active filters.'
-                  : 'Create your first persisted research record.'
+                  ? 'Try a different search term, domain or status.'
+                  : 'Ask a question about your uploaded papers to start.'
               }
               primaryActionLabel={hasFilters ? 'Clear filters' : 'New research'}
               onPrimaryAction={hasFilters ? clearFilters : () => navigate('/research/new')}
             />
           ) : (
-            <div className="bg-white border border-[#e5e7e4] rounded-xl overflow-hidden shadow-xs divide-y divide-[#e5e7e4]">
+            <div className="divide-y divide-line overflow-hidden rounded-lg border border-line bg-panel shadow-xs">
               {researchList.map((item) => {
                 const targetUrl =
                   item.status === 'researching'
@@ -212,38 +203,29 @@ export const MyResearchPage: React.FC = () => {
                   <Link
                     key={item.id}
                     to={targetUrl}
-                    className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-[#fafaf8] transition-colors group cursor-pointer"
+                    className="group flex items-center gap-4 px-4 py-3.5 transition-colors hover:bg-subtle/60 sm:px-5"
                   >
                     <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2 mb-1.5">
-                        <span className="text-[11px] font-medium text-[#163328] bg-[#f1f6f3] border border-[#d8e5df] px-2 py-0.5 rounded">
-                          {item.domain || 'General research'}
-                        </span>
-                        <StatusBadge status={item.status} size="sm" />
+                      <div className="flex items-center gap-2">
+                        <h3 className="truncate text-sm font-medium text-ink">{item.title}</h3>
                       </div>
-
-                      <h3 className="text-sm sm:text-[15px] font-semibold text-[#181a18] group-hover:text-[#163328] transition-colors leading-snug">
-                        {item.title}
-                      </h3>
-                      <p className="text-xs text-[#6b706c] line-clamp-1 mt-1 leading-relaxed">
-                        {item.question}
+                      <p className="mt-0.5 truncate text-[13px] text-ink-muted">{item.question}</p>
+                      <p className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-ink-muted">
+                        <span className="rounded border border-line bg-subtle px-1.5 py-px text-[11px] font-medium text-ink-soft">
+                          {item.domain || 'General'}
+                        </span>
+                        <span>{item.sourceCount} sources</span>
+                        <span aria-hidden="true">·</span>
+                        <span className="flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          {formatUpdatedAt(item.updatedAt)}
+                        </span>
                       </p>
                     </div>
 
-                    <div className="flex items-center justify-between sm:justify-end gap-5 shrink-0 text-xs text-[#6b706c] pt-2 sm:pt-0 border-t sm:border-t-0 border-[#f5f5f2]">
-                      <div className="text-right">
-                        <span className="font-medium text-[#181a18] block">
-                          {item.sourceCount} sources
-                        </span>
-                        <span className="text-[11px] text-[#929792] flex items-center justify-end gap-1 mt-0.5">
-                          <Clock className="w-3 h-3" />
-                          <span>{formatUpdatedAt(item.updatedAt)}</span>
-                        </span>
-                      </div>
-
-                      <div className="w-8 h-8 rounded-full flex items-center justify-center text-[#929792] group-hover:text-[#163328] group-hover:bg-[#f1f6f3] transition-all">
-                        <ChevronRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
-                      </div>
+                    <div className="flex shrink-0 items-center gap-3">
+                      <StatusBadge status={item.status} size="sm" />
+                      <ChevronRight className="hidden h-4 w-4 text-ink-muted transition-transform group-hover:translate-x-0.5 group-hover:text-ink-soft sm:block" />
                     </div>
                   </Link>
                 );
@@ -251,16 +233,16 @@ export const MyResearchPage: React.FC = () => {
             </div>
           )}
 
-          <div className="mt-3 flex items-center justify-between gap-4 text-xs text-[#929792]">
+          <div className="mt-3 flex items-center justify-between gap-4 text-xs tabular-nums text-ink-muted">
             <span>
-              Showing {firstVisible}–{lastVisible} of {totalResearch} investigations
+              {firstVisible}–{lastVisible} of {totalResearch}
             </span>
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 disabled={!hasPrevious || isLoading}
                 onClick={() => setOffset((value) => Math.max(0, value - PAGE_SIZE))}
-                className="inline-flex items-center gap-1 rounded-md border border-[#e5e7e4] bg-white px-2.5 py-1.5 text-[#6b706c] hover:text-[#181a18] disabled:cursor-not-allowed disabled:opacity-40"
+                className="inline-flex h-8 items-center gap-1 rounded-md border border-line bg-panel px-2.5 text-[13px] text-ink-soft transition-colors hover:bg-subtle hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <ChevronLeft className="h-3.5 w-3.5" />
                 Previous
@@ -269,7 +251,7 @@ export const MyResearchPage: React.FC = () => {
                 type="button"
                 disabled={!hasNext || isLoading}
                 onClick={() => setOffset((value) => value + PAGE_SIZE)}
-                className="inline-flex items-center gap-1 rounded-md border border-[#e5e7e4] bg-white px-2.5 py-1.5 text-[#6b706c] hover:text-[#181a18] disabled:cursor-not-allowed disabled:opacity-40"
+                className="inline-flex h-8 items-center gap-1 rounded-md border border-line bg-panel px-2.5 text-[13px] text-ink-soft transition-colors hover:bg-subtle hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Next
                 <ChevronRight className="h-3.5 w-3.5" />

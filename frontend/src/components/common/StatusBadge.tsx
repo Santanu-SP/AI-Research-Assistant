@@ -25,37 +25,37 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
 }) => {
   const normalized = status.toLowerCase();
 
-  let bgClass = 'bg-[#f3f4f6] text-[#6b706c] border-[#e5e7e4]';
-  let dotClass = 'bg-[#929792]';
+  let bgClass = 'bg-subtle text-ink-soft border-line';
+  let dotClass = 'bg-ink-muted';
   let showPulse = false;
   let defaultLabel = 'Draft';
 
   if (normalized === 'completed' || normalized === 'ready' || normalized === 'indexed') {
-    bgClass = 'bg-[#f1f6f3] text-[#173d31] border-[#d8e5df]';
-    dotClass = 'bg-[#173d31]';
+    bgClass = 'bg-accent-soft text-accent border-accent-line';
+    dotClass = 'bg-solid';
     defaultLabel = normalized === 'completed' ? 'Completed' : normalized === 'indexed' ? 'Indexed' : 'Ready';
   } else if (normalized === 'uploaded') {
-    bgClass = 'bg-[#f3f4f6] text-[#6b706c] border-[#e5e7e4]';
-    dotClass = 'bg-[#929792]';
+    bgClass = 'bg-subtle text-ink-soft border-line';
+    dotClass = 'bg-ink-muted';
     defaultLabel = 'Uploaded';
   } else if (normalized === 'researching' || normalized === 'processing') {
-    bgClass = 'bg-[#fef3c7] text-[#b45309] border-[#fde68a]';
-    dotClass = 'bg-[#b45309]';
+    bgClass = 'bg-warning-soft text-warning border-warning-line';
+    dotClass = 'bg-warning';
     showPulse = true;
     defaultLabel = normalized === 'researching' ? 'Researching' : 'Processing';
   } else if (normalized === 'failed') {
-    bgClass = 'bg-[#fee2e2] text-[#b91c1c] border-[#fecaca]';
-    dotClass = 'bg-[#b91c1c]';
+    bgClass = 'bg-danger-soft text-danger border-danger-line';
+    dotClass = 'bg-danger';
     defaultLabel = 'Failed';
   }
 
   const text = label || defaultLabel;
-  const paddingClass = size === 'sm' ? 'px-2 py-0.5 text-[11px]' : 'px-2.5 py-0.5 text-[11.5px]';
+  const paddingClass = size === 'sm' ? 'h-5 px-1.5 text-[11px]' : 'h-[22px] px-2 text-xs';
 
   return (
     <span
       title={title}
-      className={`inline-flex items-center gap-1.5 font-medium rounded-full border ${bgClass} ${paddingClass} tracking-normal`}
+      className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border font-medium ${bgClass} ${paddingClass}`}
     >
       <span
         className={`w-1.5 h-1.5 rounded-full ${dotClass} ${

@@ -12,6 +12,7 @@ import { EmptyState } from '../components/common/EmptyState';
 import { ErrorState } from '../components/common/ErrorState';
 import { LoadingState } from '../components/common/LoadingState';
 import { PrimaryButton } from '../components/common/PrimaryButton';
+import { PageHeader } from '../components/common/PageHeader';
 import { ProjectCard } from '../components/projects/ProjectCard';
 import { CreateProjectDialog } from '../components/projects/CreateProjectDialog';
 import { ResearchProject } from '../types/project';
@@ -89,65 +90,80 @@ export const ProjectsPage: React.FC = () => {
   const activeProjects = projects.filter((p) => !p.archivedAt);
   const archivedProjects = projects.filter((p) => p.archivedAt);
 
+  const projectList = (items: ResearchProject[]) => (
+    <div className="overflow-hidden rounded-lg border border-line bg-panel shadow-xs">
+      <div className="hidden grid-cols-[minmax(0,1fr)_110px_110px_40px] gap-4 border-b border-line bg-subtle/50 px-5 py-2 text-xs font-medium text-ink-muted sm:grid">
+        <span>Name</span>
+        <span>Updated</span>
+        <span>Created</span>
+        <span className="sr-only">Actions</span>
+      </div>
+      <div className="divide-y divide-line">
+        {items.map((project) => (
+          <ProjectCard
+            key={project.id}
+            project={project}
+            onOpen={handleOpenProject}
+            onUpdated={handleProjectUpdated}
+            onArchived={handleProjectArchived}
+          />
+        ))}
+      </div>
+    </div>
+  );
+
   return (
-    <div className="min-h-screen bg-[#fafaf8] flex flex-col">
+    <div className="flex min-h-screen flex-col">
       <TopBar
-        breadcrumbs={
-          <div className="flex items-center gap-2">
-            <span className="text-[#181a18] font-medium">Projects</span>
-          </div>
-        }
-        rightActions={
-          <PrimaryButton
-            onClick={() => setIsCreateOpen(true)}
-            className="gap-1.5"
-            id="create-project-btn"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>New Project</span>
-          </PrimaryButton>
-        }
+        breadcrumbs={<span className="font-medium text-ink">Projects</span>}
       />
 
-      <main className="flex-1 pt-14 pb-16 px-4 sm:px-6">
-        <div className="max-w-5xl mx-auto py-8">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-            <div>
-              <h1 className="font-serif text-2xl sm:text-3xl text-[#181a18] font-normal tracking-tight">
-                Research Projects
-              </h1>
-              <p className="text-xs sm:text-sm text-[#6b706c] mt-1">
-                Organize your documents and research within isolated workspaces.
-              </p>
-            </div>
-          </div>
+      <main className="flex-1 px-4 pb-16 pt-14 sm:px-6 lg:px-10">
+        <div className="mx-auto max-w-5xl py-8 sm:py-10">
+          <PageHeader
+            title="Projects"
+            description="Each project keeps its own documents and research, and questions only search the papers inside it."
+            actions={
+              <PrimaryButton onClick={() => setIsCreateOpen(true)} id="create-project-btn">
+                <Plus className="h-4 w-4" />
+                New project
+              </PrimaryButton>
+            }
+          />
 
-          <div className="p-3 bg-white border border-[#e5e7e4] rounded-xl mb-6 flex flex-wrap items-center gap-3 shadow-xs">
-            <div className="relative flex-1 min-w-[220px]">
-              <Search className="w-4 h-4 text-[#929792] absolute left-3 top-1/2 -translate-y-1/2" />
+          <div className="mb-4 mt-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="relative w-full sm:max-w-xs">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted" />
               <input
-                type="text"
+                type="search"
                 aria-label="Search projects"
                 id="projects-search"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search projects by name…"
-                className="w-full bg-[#fafaf8] border border-[#e5e7e4] rounded-md pl-9 pr-3 py-1.5 text-xs text-[#181a18] placeholder:text-[#929792] focus:outline-none focus:ring-1 focus:ring-[#163328] focus:border-[#163328] transition-colors"
+                placeholder="Search projects"
+                className="field h-9 pl-9 text-[13px]"
               />
             </div>
 
-            <label className="flex items-center gap-2 text-xs text-[#6b706c] cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={showArchived}
-                onChange={(e) => setShowArchived(e.target.checked)}
-                className="rounded border-[#d0d7d2] text-[#163328] focus:ring-[#163328]"
-              />
-              <span className="flex items-center gap-1.5">
-                <Archive className="w-3.5 h-3.5" />
-                Show archived
-              </span>
-            </label>
+            <div className="flex items-center justify-between gap-4 sm:justify-end">
+              {!isLoading && !error && total > 0 && (
+                <span className="text-xs tabular-nums text-ink-muted">
+                  {total} project{total !== 1 ? 's' : ''}
+                </span>
+              )}
+              <label className="flex cursor-pointer select-none items-center gap-2 text-[13px] text-ink-soft">
+                <input
+                  type="checkbox"
+                  checked={showArchived}
+                  onChange={(e) => setShowArchived(e.target.checked)}
+                  className="h-4 w-4 rounded border-line-strong accent-[var(--app-solid)]"
+                />
+                <span className="flex items-center gap-1.5">
+                  <Archive className="h-3.5 w-3.5" />
+                  Show archived
+                </span>
+              </label>
+            </div>
           </div>
 
           {isLoading ? (
@@ -170,7 +186,7 @@ export const ProjectsPage: React.FC = () => {
             <EmptyState
               icon={FolderOpen}
               title="No projects yet"
-              description="Create a project to organize your documents and research in a dedicated workspace."
+              description="Create a project, upload a few papers to it, and ask questions that only search those papers."
               primaryActionLabel="Create your first project"
               onPrimaryAction={() => setIsCreateOpen(true)}
             />
@@ -179,48 +195,18 @@ export const ProjectsPage: React.FC = () => {
               {activeProjects.length > 0 && (
                 <section>
                   {showArchived && (
-                    <h2 className="text-[11px] font-semibold uppercase tracking-wider text-[#929792] mb-3">
-                      Active ({activeProjects.length})
-                    </h2>
+                    <h2 className="eyebrow mb-2">Active · {activeProjects.length}</h2>
                   )}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {activeProjects.map((project) => (
-                      <ProjectCard
-                        key={project.id}
-                        project={project}
-                        onOpen={handleOpenProject}
-                        onUpdated={handleProjectUpdated}
-                        onArchived={handleProjectArchived}
-                      />
-                    ))}
-                  </div>
+                  {projectList(activeProjects)}
                 </section>
               )}
 
               {showArchived && archivedProjects.length > 0 && (
                 <section>
-                  <h2 className="text-[11px] font-semibold uppercase tracking-wider text-[#929792] mb-3">
-                    Archived ({archivedProjects.length})
-                  </h2>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {archivedProjects.map((project) => (
-                      <ProjectCard
-                        key={project.id}
-                        project={project}
-                        onOpen={handleOpenProject}
-                        onUpdated={handleProjectUpdated}
-                        onArchived={handleProjectArchived}
-                      />
-                    ))}
-                  </div>
+                  <h2 className="eyebrow mb-2">Archived · {archivedProjects.length}</h2>
+                  {projectList(archivedProjects)}
                 </section>
               )}
-            </div>
-          )}
-
-          {!isLoading && !error && total > 0 && (
-            <div className="mt-4 text-xs text-[#929792] text-right">
-              {total} project{total !== 1 ? 's' : ''}
             </div>
           )}
         </div>

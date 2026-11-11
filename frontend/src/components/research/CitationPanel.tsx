@@ -22,11 +22,11 @@ export const CitationPanel: React.FC<CitationPanelProps> = ({
   const hasAuthors = citation.authors && citation.authors.length > 0;
 
   return (
-    <div className="bg-white border border-[#e5e7e4] rounded-xl overflow-hidden">
-      <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#f5f5f2] bg-[#fafaf8]">
+    <div className="bg-panel border border-line rounded-xl overflow-hidden">
+      <div className="flex items-center justify-between px-5 py-3.5 border-b border-line bg-canvas">
         <div className="flex items-center gap-2">
-          <BookOpen className="w-4 h-4 text-[#163328]" />
-          <span className="text-sm font-semibold text-[#181a18]">
+          <BookOpen className="w-4 h-4 text-accent" />
+          <span className="text-sm font-semibold text-ink">
             Citation Evidence
           </span>
         </div>
@@ -34,7 +34,7 @@ export const CitationPanel: React.FC<CitationPanelProps> = ({
           type="button"
           aria-label="Close citation panel"
           onClick={onClose}
-          className="text-[#929792] hover:text-[#181a18] p-1 rounded-md hover:bg-[#f5f5f2] transition-colors"
+          className="text-ink-muted hover:text-ink p-1 rounded-md hover:bg-subtle transition-colors"
         >
           <X className="w-4 h-4" />
         </button>
@@ -44,13 +44,13 @@ export const CitationPanel: React.FC<CitationPanelProps> = ({
         {citation.paperTitle && (
           <div>
             <div className="flex items-start gap-2">
-              <FileText className="w-4 h-4 text-[#929792] shrink-0 mt-0.5" />
-              <p className="text-sm font-semibold text-[#181a18] leading-snug">
+              <FileText className="w-4 h-4 text-ink-muted shrink-0 mt-0.5" />
+              <p className="text-sm font-semibold text-ink leading-snug">
                 {citation.paperTitle}
               </p>
             </div>
             {hasAuthors && (
-              <p className="text-xs text-[#6b706c] mt-1 ml-6">
+              <p className="text-xs text-ink-soft mt-1 ml-6">
                 {citation.authors!.join(', ')}
               </p>
             )}
@@ -65,7 +65,7 @@ export const CitationPanel: React.FC<CitationPanelProps> = ({
             <ContentLevelLabel contentLevel={citation.contentLevel} />
           )}
           {hasPage && (
-            <span className="inline-flex items-center gap-1 text-[10px] text-[#929792]">
+            <span className="inline-flex items-center gap-1 text-[10px] text-ink-muted">
               <Hash className="w-3 h-3" />
               Page {citation.page}
               {hasPageEnd && citation.pageEnd !== citation.page
@@ -74,7 +74,7 @@ export const CitationPanel: React.FC<CitationPanelProps> = ({
             </span>
           )}
           {hasSection && (
-            <span className="text-[10px] text-[#929792] italic">
+            <span className="text-[10px] text-ink-muted italic">
               § {citation.section}
             </span>
           )}
@@ -83,7 +83,7 @@ export const CitationPanel: React.FC<CitationPanelProps> = ({
               href={`https://doi.org/${citation.doi}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-[10px] text-[#163328] hover:underline"
+              className="text-[10px] text-accent hover:underline"
             >
               DOI: {citation.doi}
             </a>
@@ -91,17 +91,17 @@ export const CitationPanel: React.FC<CitationPanelProps> = ({
         </div>
 
         <div>
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-[#929792] mb-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted mb-2">
             Evidence excerpt
           </p>
-          <blockquote className="border-l-2 border-[#163328] pl-4 text-sm text-[#424744] leading-relaxed italic bg-[#fafaf8] py-2 pr-3 rounded-r-lg">
+          <blockquote className="border-l-2 border-accent pl-4 text-sm text-ink-soft leading-relaxed italic bg-canvas py-2 pr-3 rounded-r-lg">
             {citation.excerpt}
           </blockquote>
         </div>
 
         {/* Technical IDs – useful for debugging, hidden when not meaningful */}
-        <details className="text-[11px] text-[#929792]">
-          <summary className="cursor-pointer hover:text-[#6b706c] transition-colors">
+        <details className="text-[11px] text-ink-muted">
+          <summary className="cursor-pointer hover:text-ink-soft transition-colors">
             Technical details
           </summary>
           <dl className="mt-2 space-y-1 font-mono">

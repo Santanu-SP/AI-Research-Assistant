@@ -79,10 +79,10 @@ export const ResearchComposer: React.FC<ResearchComposerProps> = ({
   };
 
   return (
-    <div className="w-full bg-white border border-[#e5e7e4] rounded-xl shadow-xs transition-all duration-150 focus-within:border-[#163328] focus-within:ring-1 focus-within:ring-[#163328]">
+    <div className="w-full rounded-xl border border-line-strong bg-panel shadow-sm transition-shadow duration-150 focus-within:border-accent focus-within:shadow-[0_0_0_3px_color-mix(in_srgb,var(--app-accent)_16%,transparent)]">
       <div className="p-4 sm:p-5">
         <label htmlFor="research-prompt" className="sr-only">
-          Research inquiry query or prompt
+          Research question
         </label>
         <textarea
           ref={textareaRef}
@@ -92,12 +92,12 @@ export const ResearchComposer: React.FC<ResearchComposerProps> = ({
           onKeyDown={handleKeyDown}
           rows={4}
           disabled={isLoading}
-          className="w-full min-h-[148px] bg-transparent resize-none text-[15px] text-[#181a18] placeholder:text-[#929792] focus:outline-none leading-relaxed border-0 p-0 focus:ring-0"
-          placeholder="Ask a research question or describe what you want to investigate…"
+          className="w-full min-h-[120px] resize-none border-0 bg-transparent p-0 text-[15px] leading-relaxed text-ink placeholder:text-ink-muted focus:outline-none focus-visible:outline-none"
+          placeholder="Ask a question about your papers, e.g. Does residence time predict in-vivo efficacy better than affinity?"
         />
       </div>
 
-      <div className="px-4 py-2.5 bg-[#fafaf8] rounded-b-[11px] border-t border-[#e5e7e4] flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-b-[13px] border-t border-line bg-subtle/50 px-3 py-2.5 sm:px-4">
         <div className="flex flex-wrap items-center gap-2 relative">
           <div className="relative" ref={dropdownRef}>
             <button
@@ -105,33 +105,34 @@ export const ResearchComposer: React.FC<ResearchComposerProps> = ({
               onClick={() => setIsDepthOpen(!isDepthOpen)}
               aria-expanded={isDepthOpen}
               aria-haspopup="menu"
-              className="bg-white text-[#6b706c] hover:text-[#181a18] border border-[#e5e7e4] text-xs font-medium px-2.5 py-1.5 rounded-md flex items-center gap-1 transition-colors duration-150 cursor-pointer"
+              className="flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-line bg-panel px-2.5 text-xs font-medium text-ink-soft transition-colors duration-150 hover:border-line-strong hover:text-ink"
             >
-              <span>Research depth: {depthLabels[depth]}</span>
+              <span className="text-ink-muted">Depth</span>
+              <span className="text-ink">{depthLabels[depth]}</span>
               <ChevronDown
-                className={`w-3.5 h-3.5 text-[#929792] transition-transform duration-150 ${
+                className={`w-3.5 h-3.5 text-ink-muted transition-transform duration-150 ${
                   isDepthOpen ? 'rotate-180' : ''
                 }`}
               />
             </button>
 
             {isDepthOpen && (
-              <div className="absolute left-0 bottom-full mb-1.5 w-52 bg-white border border-[#e5e7e4] rounded-md shadow-md py-1 z-30 transition-all duration-150 text-xs">
+              <div role="menu" className="absolute bottom-full left-0 z-30 mb-1.5 w-60 rounded-lg border border-line bg-panel py-1 text-xs shadow-lg">
                 <button
                   type="button"
                   onClick={() => {
                     setDepth('quick');
                     setIsDepthOpen(false);
                   }}
-                  className={`w-full text-left px-3 py-2 text-[#6b706c] hover:text-[#181a18] hover:bg-[#fafaf8] flex items-center justify-between ${
-                    depth === 'quick' ? 'bg-[#f1f6f3]/50' : ''
+                  className={`w-full text-left px-3 py-2 text-ink-soft hover:text-ink hover:bg-subtle flex items-center justify-between ${
+                    depth === 'quick' ? 'bg-subtle' : ''
                   }`}
                 >
                   <div>
-                    <span className="font-medium text-[#181a18] block">Quick</span>
-                    <span className="text-[10.5px] text-[#929792]">Fast overview &amp; summary</span>
+                    <span className="font-medium text-ink block">Quick</span>
+                    <span className="text-[11px] text-ink-muted">A short answer from the strongest passages</span>
                   </div>
-                  {depth === 'quick' && <Check className="w-3.5 h-3.5 text-[#163328]" />}
+                  {depth === 'quick' && <Check className="w-3.5 h-3.5 text-accent" />}
                 </button>
 
                 <button
@@ -140,15 +141,15 @@ export const ResearchComposer: React.FC<ResearchComposerProps> = ({
                     setDepth('standard');
                     setIsDepthOpen(false);
                   }}
-                  className={`w-full text-left px-3 py-2 text-[#6b706c] hover:text-[#181a18] hover:bg-[#fafaf8] flex items-center justify-between ${
-                    depth === 'standard' ? 'bg-[#f1f6f3]/60' : ''
+                  className={`w-full text-left px-3 py-2 text-ink-soft hover:text-ink hover:bg-subtle flex items-center justify-between ${
+                    depth === 'standard' ? 'bg-subtle' : ''
                   }`}
                 >
                   <div>
-                    <span className="font-medium text-[#163328] block">Standard (Default)</span>
-                    <span className="text-[10.5px] text-[#929792]">Multi-source verification</span>
+                    <span className="font-medium text-ink block">Standard</span>
+                    <span className="text-[11px] text-ink-muted">Balanced coverage across your papers</span>
                   </div>
-                  {depth === 'standard' && <Check className="w-3.5 h-3.5 text-[#163328]" />}
+                  {depth === 'standard' && <Check className="w-3.5 h-3.5 text-accent" />}
                 </button>
 
                 <button
@@ -157,15 +158,15 @@ export const ResearchComposer: React.FC<ResearchComposerProps> = ({
                     setDepth('deep');
                     setIsDepthOpen(false);
                   }}
-                  className={`w-full text-left px-3 py-2 text-[#6b706c] hover:text-[#181a18] hover:bg-[#fafaf8] flex items-center justify-between ${
-                    depth === 'deep' ? 'bg-[#f1f6f3]/50' : ''
+                  className={`w-full text-left px-3 py-2 text-ink-soft hover:text-ink hover:bg-subtle flex items-center justify-between ${
+                    depth === 'deep' ? 'bg-subtle' : ''
                   }`}
                 >
                   <div>
-                    <span className="font-medium text-[#181a18] block">Deep</span>
-                    <span className="text-[10.5px] text-[#929792]">Comprehensive cross-synthesis</span>
+                    <span className="font-medium text-ink block">Deep</span>
+                    <span className="text-[11px] text-ink-muted">More passages, longer synthesis</span>
                   </div>
-                  {depth === 'deep' && <Check className="w-3.5 h-3.5 text-[#163328]" />}
+                  {depth === 'deep' && <Check className="w-3.5 h-3.5 text-accent" />}
                 </button>
               </div>
             )}
@@ -173,20 +174,20 @@ export const ResearchComposer: React.FC<ResearchComposerProps> = ({
         </div>
 
         <div className="flex items-center gap-3 ml-auto">
-          <span className="text-[11px] text-[#929792] hidden md:inline">
+          <span className="hidden text-xs text-ink-muted md:inline">
             {isLoading ? LOADING_MESSAGES[loadingMessageIndex] : 'Uses your indexed papers only'}
           </span>
-          <span className="text-[11.5px] text-[#929792] hidden sm:inline select-none">
-            ⌘ + Enter
-          </span>
+          <kbd className="hidden select-none rounded border border-line bg-panel px-1.5 py-0.5 font-mono text-[10.5px] text-ink-muted sm:inline">
+            ⌘ Enter
+          </kbd>
           <button
             type="button"
             onClick={handleSubmit}
             disabled={!prompt.trim() || isLoading}
-            className="bg-[#163328] hover:bg-[#214f40] active:scale-[0.98] text-white text-xs font-medium px-4 py-2 rounded-md flex items-center gap-1.5 transition-all duration-150 shadow-none cursor-pointer group disabled:opacity-60 disabled:cursor-not-allowed"
+            className="group flex h-8 cursor-pointer items-center gap-1.5 rounded-md bg-solid px-3.5 text-[13px] font-medium text-on-solid shadow-xs transition-colors duration-150 hover:bg-solid-hover disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isLoading ? <LoadingOrb size={16} className="loading-orb--on-solid" /> : null}
-            <span>{isLoading ? 'Researching...' : 'Start research'}</span>
+            <span>{isLoading ? 'Researching…' : 'Start research'}</span>
             {!isLoading ? (
               <ArrowRight className="w-3.5 h-3.5 transition-transform duration-150 group-hover:translate-x-0.5" />
             ) : null}

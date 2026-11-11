@@ -2,7 +2,6 @@ import React from 'react';
 import { FileText, RotateCcw, Trash2 } from 'lucide-react';
 import { Document } from '../../types/document';
 import { StatusBadge } from '../common/StatusBadge';
-import { LoadingOrb } from '../common/LoadingOrb';
 
 interface DocumentRowProps {
   document: Document;
@@ -12,6 +11,13 @@ interface DocumentRowProps {
   isRetrying?: boolean;
 }
 
+const formatSize = (bytes: number): string =>
+  bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.round(bytes / 1024)} KB`;
+
+const formatDate = (iso: string) =>
+  new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(iso));
+
+/** One document in a list. The parent supplies the surrounding border and dividers. */
 export const DocumentRow: React.FC<DocumentRowProps> = ({
   document,
   onDelete,
@@ -19,120 +25,104 @@ export const DocumentRow: React.FC<DocumentRowProps> = ({
   onRetry,
   isRetrying = false,
 }) => {
-  const formatSize = (bytes: number): string => {
-    if (bytes >= 1024 * 1024) {
-      return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-    }
-    return `${Math.round(bytes / 1024)} KB`;
-  };
-
-  const isPdf = document.type === 'pdf';
-  const isDocx = document.type === 'docx';
+  const failed = document.status === 'failed';
 
   return (
-    <div className="p-4 bg-white border border-[#e5e7e4] rounded-lg hover:border-[#cbd0ca] hover:shadow-xs transition-all duration-150 flex flex-col sm:flex-row sm:items-center justify-between gap-3 group">
-      <div className="flex items-start gap-3 min-w-0">
-        <div
-          className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 border ${
-            isPdf
-              ? 'bg-[#fee2e2]/40 text-[#b91c1c] border-[#fecaca]'
-              : isDocx
-              ? 'bg-[#e0f2fe]/50 text-[#0369a1] border-[#bae6fd]'
-              : 'bg-[#f5f5f2] text-[#6b706c] border-[#e5e7e4]'
-          }`}
-        >
-          <FileText className="w-5 h-5 stroke-[1.75]" />
-        </div>
+    <div className="group flex flex-col gap-3 px-4 py-3.5 transition-colors hover:bg-subtle/50 sm:flex-row sm:items-center sm:px-5">
+      <div className="flex min-w-0 flex-1 items-start gap-3">
+        <span className="relative mt-0.5 flex h-9 w-8 shrink-0 items-center justify-center rounded-md border border-line bg-subtle text-ink-soft">
+          <FileText className="h-4 w-4" strokeWidth={1.75} />
+          <span className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 rounded-sm border border-line bg-panel px-1 font-mono text-[8.5px] font-medium uppercase leading-3 text-ink-soft">
+            {document.type}
+          </span>
+        </span>
 
         <div className="min-w-0 flex-1">
-          <h4 className="text-[13.5px] font-semibold text-[#181a18] truncate leading-tight group-hover:text-[#163328] transition-colors">
-            {document.title || document.name}
-          </h4>
-          
-          {document.title && document.title !== document.name && (
-            <div className="text-[11px] text-[#929792] truncate mt-0.5">
-              {document.name}
-            </div>
-          )}
-
-          <div className="flex flex-wrap items-center gap-1.5 mt-1.5 text-xs text-[#6b706c]">
-            <span className="font-medium text-[#181a18] uppercase">{document.type}</span>
-            <span className="text-[#929792]">·</span>
-            <span>{formatSize(document.size)}</span>
-            <span className="text-[#929792]">·</span>
-            <span>{new Date(document.uploadedAt || document.createdAt).toLocaleDateString()}</span>
-            
-            {document.pageCount ? (
-              <>
-                <span className="text-[#929792]">·</span>
-                <span>{document.pageCount} pages</span>
-              </>
-            ) : null}
-            
-            {document.authors && document.authors.length > 0 ? (
-              <>
-                <span className="text-[#929792]">·</span>
-                <span className="truncate max-w-[180px]" title={document.authors.join(', ')}>
-                  By {document.authors.join(', ')}
-                </span>
-              </>
-            ) : null}
-
-            {document.doi ? (
-              <>
-                <span className="text-[#929792]">·</span>
-                <span className="truncate max-w-[120px]" title={document.doi}>
-                  DOI: {document.doi}
-                </span>
-              </>
-            ) : null}
-          </div>
-        </div>
-      </div>
-
-      <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-[#f5f5f2]">
-        <StatusBadge 
-          status={document.status} 
-          title={document.status === 'failed' && document.processingError ? document.processingError : undefined}
-        />
-
-        <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={() => onOpen(document)}
-            className="text-xs font-medium text-[#163328] bg-[#f1f6f3] hover:bg-[#e4eee7] border border-[#d8e5df] px-3 py-1.5 rounded-md transition-colors cursor-pointer"
+            className="block max-w-full truncate rounded-sm text-left text-sm font-medium text-ink hover:underline hover:decoration-line-strong hover:underline-offset-2"
           >
-            View details
+            {document.title || document.name}
           </button>
 
-          {document.status === 'failed' && onRetry && (
+          <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-ink-muted">
+            {document.title && document.title !== document.name && (
+              <>
+                <span className="max-w-[220px] truncate">{document.name}</span>
+                <span aria-hidden="true">·</span>
+              </>
+            )}
+            <span className="tabular-nums">{formatSize(document.size)}</span>
+            {document.pageCount ? (
+              <>
+                <span aria-hidden="true">·</span>
+                <span className="tabular-nums">{document.pageCount} pages</span>
+              </>
+            ) : null}
+            <span aria-hidden="true">·</span>
+            <span>{formatDate(document.uploadedAt || document.createdAt)}</span>
+            {document.authors && document.authors.length > 0 ? (
+              <>
+                <span aria-hidden="true">·</span>
+                <span className="max-w-[200px] truncate" title={document.authors.join(', ')}>
+                  {document.authors.join(', ')}
+                </span>
+              </>
+            ) : null}
+            {document.doi ? (
+              <>
+                <span aria-hidden="true">·</span>
+                <span className="max-w-[140px] truncate font-mono text-[11px]" title={document.doi}>
+                  {document.doi}
+                </span>
+              </>
+            ) : null}
+          </p>
+
+          {failed && document.processingError && (
+            <p className="mt-1 text-xs text-danger">{document.processingError}</p>
+          )}
+        </div>
+      </div>
+
+      <div className="flex shrink-0 items-center justify-between gap-2 pl-11 sm:justify-end sm:pl-0">
+        <StatusBadge
+          status={document.status}
+          size="sm"
+          title={failed && document.processingError ? document.processingError : undefined}
+        />
+
+        <div className="flex items-center gap-1">
+          {failed && onRetry && (
             <button
               type="button"
               onClick={() => onRetry(document.id)}
               disabled={isRetrying}
               aria-label={`Retry processing ${document.name}`}
-              className="inline-flex items-center gap-1 text-xs font-medium text-[#163328] bg-white hover:bg-[#f1f6f3] border border-[#d8e5df] px-2.5 py-1.5 rounded-md transition-colors cursor-pointer disabled:opacity-50"
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-panel px-2.5 text-xs font-medium text-ink transition-colors hover:bg-subtle disabled:opacity-50"
             >
-              <RotateCcw className={`w-3.5 h-3.5 ${isRetrying ? 'animate-spin' : ''}`} />
+              <RotateCcw className={`h-3.5 w-3.5 ${isRetrying ? 'animate-spin' : ''}`} />
               Retry
             </button>
           )}
 
-          {document.status === 'processing' && (
-            <span className="inline-flex items-center gap-1.5 text-xs text-[#b45309] font-medium px-2 py-1">
-              <LoadingOrb size={15} />
-              Processing…
-            </span>
-          )}
+          <button
+            type="button"
+            onClick={() => onOpen(document)}
+            className="inline-flex h-8 items-center rounded-md px-2.5 text-xs font-medium text-ink-soft transition-colors hover:bg-subtle hover:text-ink"
+          >
+            Details
+          </button>
 
           <button
             type="button"
             onClick={() => onDelete(document.id)}
             title="Delete document"
             aria-label={`Delete ${document.name}`}
-            className="p-1.5 rounded-md text-[#929792] hover:text-[#b91c1c] hover:bg-[#fee2e2]/40 transition-colors cursor-pointer"
+            className="flex h-8 w-8 items-center justify-center rounded-md text-ink-muted transition-colors hover:bg-danger-soft hover:text-danger"
           >
-            <Trash2 className="w-4 h-4" />
+            <Trash2 className="h-4 w-4" />
           </button>
         </div>
       </div>
