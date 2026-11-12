@@ -17,8 +17,8 @@ export const NotFoundPage: React.FC = () => {
             The page you’re looking for doesn’t exist or may have moved.
           </p>
           <div className="mt-6 flex items-center justify-center gap-2">
-            <PrimaryButton variant="outline" onClick={() => navigate('/research')}>
-              My research
+            <PrimaryButton variant="outline" onClick={() => navigate('/projects')}>
+              Go to projects
             </PrimaryButton>
             <PrimaryButton onClick={() => navigate('/research/new')}>New research</PrimaryButton>
           </div>
