@@ -6,6 +6,7 @@ interface AuthState {
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  logoutAll: () => Promise<void>;
   refreshUser: () => Promise<AuthUser | null>;
 }
 
@@ -54,7 +55,12 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
     setUser(null);
   }, []);
 
-  return <AuthContext.Provider value={{ user, loading, login, logout, refreshUser }}>{children}</AuthContext.Provider>;
+  const logoutAll = useCallback(async () => {
+    await authService.logoutAll();
+    setUser(null);
+  }, []);
+
+  return <AuthContext.Provider value={{ user, loading, login, logout, logoutAll, refreshUser }}>{children}</AuthContext.Provider>;
 };
 
 export const useAuth = (): AuthState => {

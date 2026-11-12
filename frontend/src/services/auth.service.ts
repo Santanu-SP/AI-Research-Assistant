@@ -83,6 +83,7 @@ export const authService = {
     }),
   me: () => apiRequest<AuthUser>('/auth/me'),
   logout: () => apiRequest<void>('/auth/logout', { method: 'POST' }),
+  logoutAll: () => apiRequest<void>('/auth/logout-all', { method: 'POST' }),
   startGoogleLogin,
 };
 
