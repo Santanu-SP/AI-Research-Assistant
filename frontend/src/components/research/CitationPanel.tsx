@@ -98,27 +98,6 @@ export const CitationPanel: React.FC<CitationPanelProps> = ({
             {citation.excerpt}
           </blockquote>
         </div>
-
-        {/* Technical IDs – useful for debugging, hidden when not meaningful */}
-        <details className="text-[11px] text-ink-muted">
-          <summary className="cursor-pointer hover:text-ink-soft transition-colors">
-            Technical details
-          </summary>
-          <dl className="mt-2 space-y-1 font-mono">
-            <div>
-              <dt className="inline">Citation ID: </dt>
-              <dd className="inline break-all">{citation.citationId}</dd>
-            </div>
-            <div>
-              <dt className="inline">Chunk: </dt>
-              <dd className="inline break-all">{citation.chunkId}</dd>
-            </div>
-            <div>
-              <dt className="inline">Document: </dt>
-              <dd className="inline break-all">{citation.documentId}</dd>
-            </div>
-          </dl>
-        </details>
       </div>
     </div>
   );

@@ -8,8 +8,8 @@ interface ProgressStepperProps {
 
 const STAGE_DETAIL: Record<ResearchProgressStage, string> = {
   PLANNING: 'Reading the question and deciding what to look for.',
-  SEARCHING: 'Running semantic and keyword search over your indexed documents.',
-  EXTRACTING: 'Reranking passages and keeping the ones that answer the question.',
+  SEARCHING: 'Looking through your documents for relevant passages.',
+  EXTRACTING: 'Keeping the passages that best answer the question.',
   SYNTHESIZING: 'Writing the answer from the selected passages.',
   FINALIZING: 'Checking that every sentence is backed by a citation.',
 };

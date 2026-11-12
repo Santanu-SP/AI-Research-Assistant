@@ -14,8 +14,8 @@ interface ResearchComposerProps {
 
 const LOADING_MESSAGES = [
   'Searching your papers',
-  'Ranking relevant evidence',
-  'Preparing grounded answer',
+  'Gathering the strongest evidence',
+  'Writing your answer',
 ];
 
 export const ResearchComposer: React.FC<ResearchComposerProps> = ({
@@ -175,7 +175,7 @@ export const ResearchComposer: React.FC<ResearchComposerProps> = ({
 
         <div className="flex items-center gap-3 ml-auto">
           <span className="hidden text-xs text-ink-muted md:inline">
-            {isLoading ? LOADING_MESSAGES[loadingMessageIndex] : 'Uses your indexed papers only'}
+            {isLoading ? LOADING_MESSAGES[loadingMessageIndex] : 'Answers use your documents only'}
           </span>
           <kbd className="hidden select-none rounded border border-line bg-panel px-1.5 py-0.5 font-mono text-[10.5px] text-ink-muted sm:inline">
             ⌘ Enter
