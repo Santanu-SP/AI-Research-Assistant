@@ -50,7 +50,7 @@ describe('ProjectUploadModal', () => {
 
   it('renders with accessible title and dropzone', () => {
     renderModal();
-    expect(screen.getByText('Upload Documents')).toBeInTheDocument();
+    expect(screen.getByText('Upload documents')).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: /Choose PDF or DOCX documents/i })
     ).toBeInTheDocument();
@@ -113,8 +113,8 @@ describe('ProjectUploadModal', () => {
     fireEvent.click(screen.getByText(/Upload 1 file/i));
 
     await waitFor(() => expect(onUploaded).toHaveBeenCalledWith(fixture));
-    expect(screen.getByText('Uploaded · processing')).toBeInTheDocument();
-    expect(screen.queryByText('Indexed')).not.toBeInTheDocument();
+    expect(screen.getByText('Preparing…')).toBeInTheDocument();
+    expect(screen.queryByText('Ready')).not.toBeInTheDocument();
   });
 
   it('marks duplicate errors correctly via isDuplicateDocumentError utility', () => {
@@ -128,7 +128,7 @@ describe('ProjectUploadModal', () => {
     expect(isDupe(new Error('Other'))).toBe(false);
   });
 
-  it('rejects unsupported file types with failed status', async () => {
+  it('rejects unsupported file types', async () => {
     renderModal();
 
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
@@ -139,13 +139,13 @@ describe('ProjectUploadModal', () => {
     fireEvent.change(input);
 
     await waitFor(() => {
-      expect(screen.getByText(/Failed/i)).toBeInTheDocument();
+      expect(screen.getByText(/Couldn’t upload/i)).toBeInTheDocument();
     });
   });
 
   it('does not render when isOpen=false', () => {
     renderModal({ isOpen: false });
-    expect(screen.queryByText('Upload Documents')).not.toBeInTheDocument();
+    expect(screen.queryByText('Upload documents')).not.toBeInTheDocument();
   });
 
   it('calls onClose when Cancel is clicked', () => {

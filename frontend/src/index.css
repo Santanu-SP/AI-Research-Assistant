@@ -683,3 +683,23 @@
     animation: none;
   }
 }
+
+/* Documents: a soft shimmer while a file is being prepared, and a gentle fade once it's ready. */
+.doc-row {
+  position: relative;
+}
+.doc-row[data-state='ready'] {
+  animation: doc-ready 320ms ease-out both;
+}
+@keyframes doc-ready {
+  from { opacity: 0.6; }
+}
+.doc-skeleton {
+  background: linear-gradient(90deg, var(--app-subtle) 0%, var(--app-line) 50%, var(--app-subtle) 100%);
+  background-size: 200% 100%;
+  animation: doc-shimmer 1.6s ease-in-out infinite;
+}
+@keyframes doc-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
+}

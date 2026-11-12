@@ -125,7 +125,7 @@ export const ResearchProgressPage: React.FC = () => {
             </h1>
             {isFailed && (
               <p role="alert" className="mt-4 max-w-3xl rounded-lg border border-danger-line bg-danger-soft px-4 py-3 text-[13px] text-danger">
-                This run stopped before an answer was written. Check that your documents finished indexing, then ask again.
+                This run stopped before an answer was written. Make sure your documents are ready, then ask again.
               </p>
             )}
           </div>

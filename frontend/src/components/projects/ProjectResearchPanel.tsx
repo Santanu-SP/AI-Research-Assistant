@@ -15,6 +15,9 @@ import { LoadingOrb } from '../common/LoadingOrb';
 interface ProjectResearchPanelProps {
   project: ResearchProject;
   isArchived: boolean;
+  /** Documents ready to answer from. Leave undefined when unknown. */
+  readyCount?: number;
+  preparingCount?: number;
 }
 
 type ResearchState = 'idle' | 'submitting' | 'complete' | 'failed';
@@ -24,6 +27,8 @@ const MAX_QUESTION_LENGTH = 2000;
 export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
   project,
   isArchived,
+  readyCount,
+  preparingCount = 0,
 }) => {
   const [question, setQuestion] = useState('');
   const [researchState, setResearchState] = useState<ResearchState>('idle');
@@ -42,8 +47,10 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
     setSelectedCitationId(null);
   }, [project.id]);
 
+  const noReadyDocuments = readyCount === 0;
   const isDisabled =
     isArchived ||
+    noReadyDocuments ||
     researchState === 'submitting' ||
     !question.trim() ||
     question.trim().length > MAX_QUESTION_LENGTH;
@@ -97,7 +104,11 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
     <div className="space-y-6">
       <div className="rounded-lg border border-line bg-panel p-4 shadow-xs sm:p-5">
         <p className="mb-3 text-xs text-ink-muted">
-          Only documents in <span className="font-medium text-ink-soft">{project.name}</span> are searched.
+          {noReadyDocuments && !isArchived
+            ? preparingCount > 0
+              ? 'Your documents are almost ready. You can ask as soon as one is ready.'
+              : 'Upload a document to this project to start asking questions.'
+            : <>Answers come only from documents in <span className="font-medium text-ink-soft">{project.name}</span>.</>}
         </p>
 
         {isArchived ? (
@@ -172,8 +183,8 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
             Researching your question…
           </p>
           <p className="text-xs text-ink-muted max-w-xs">
-            Searching indexed documents, reranking evidence, and generating a
-            grounded answer.
+            Reading through your documents and writing an answer with
+            citations.
           </p>
         </div>
       )}
@@ -301,5 +312,5 @@ const InlineCitationLabel: React.FC<{ citation: Citation }> = ({
       </>
     );
   }
-  return <span className="font-mono text-[10px]">[{citation.chunkId.slice(0, 8)}]</span>;
+  return <span>Source</span>;
 };

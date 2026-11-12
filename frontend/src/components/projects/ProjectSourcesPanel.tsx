@@ -1,20 +1,16 @@
 import React, { useCallback, useState } from 'react';
-import {
-  Upload,
-  Search,
-  FolderUp,
-  X,
-} from 'lucide-react';
+import { FolderUp, Search, Upload, X } from 'lucide-react';
 import { ResearchProject } from '../../types/project';
 import { Document } from '../../types/document';
 import { SourceCard } from './SourceCard';
 import { ProjectUploadModal } from './ProjectUploadModal';
+import { DocumentViewer } from '../documents/DocumentViewer';
 import { EmptyState } from '../common/EmptyState';
 import { ErrorState } from '../common/ErrorState';
 import { LoadingState } from '../common/LoadingState';
 import { PrimaryButton } from '../common/PrimaryButton';
-import { useProjectDocuments } from '../../hooks/useProjectDocuments';
-import { documentsService, getDocumentErrorMessage } from '../../services/documents.service';
+import { useDocumentLibrary } from '../../hooks/useDocumentLibrary';
+import { useDocumentActions } from '../../hooks/useDocumentActions';
 import { useToast } from '../../app/ToastContext';
 
 interface ProjectSourcesPanelProps {
@@ -22,87 +18,23 @@ interface ProjectSourcesPanelProps {
   isArchived: boolean;
 }
 
-export const ProjectSourcesPanel: React.FC<ProjectSourcesPanelProps> = ({
-  project,
-  isArchived,
-}) => {
+/** The project's Documents tab: every document that belongs to this project. */
+export const ProjectSourcesPanel: React.FC<ProjectSourcesPanelProps> = ({ project, isArchived }) => {
   const { addToast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
   const [isUploadOpen, setIsUploadOpen] = useState(false);
-  const [isDeletingId, setIsDeletingId] = useState<string | null>(null);
-  const [retryingId, setRetryingId] = useState<string | null>(null);
-
-  const params = {
-    search: searchQuery.trim() || undefined,
-    status: statusFilter !== 'all' ? statusFilter : undefined,
-  };
-
-  const { documents, total, isLoading, error, pollingStopped, reload } = useProjectDocuments(
-    project.id,
-    params
-  );
+  const { documents, total, isLoading, error, readyCount, preparingCount, refreshPaused, reload } =
+    useDocumentLibrary({ projectId: project.id }, searchQuery);
+  const actions = useDocumentActions(reload);
+  const searching = Boolean(searchQuery.trim());
 
   const handleUploaded = useCallback(
     (doc: Document) => {
       reload();
-      addToast({
-        type: 'success',
-        title: 'Document uploaded',
-        description: doc.name,
-      });
+      addToast({ type: 'success', title: 'Uploaded', description: `${doc.name} will be ready in a moment.` });
     },
-    [reload, addToast]
+    [reload, addToast],
   );
-
-  const handleDelete = useCallback(
-    async (id: string) => {
-      if (
-        !window.confirm(
-          'Delete this document? This action cannot be undone.'
-        )
-      )
-        return;
-
-      setIsDeletingId(id);
-      try {
-        await documentsService.deleteDocument(id);
-        reload();
-        addToast({ type: 'success', title: 'Document deleted' });
-      } catch {
-        addToast({
-          type: 'error',
-          title: 'Delete failed',
-          description: 'Could not delete the document. Please try again.',
-        });
-      } finally {
-        setIsDeletingId(null);
-      }
-    },
-    [reload, addToast]
-  );
-
-  const handleRetry = useCallback(
-    async (id: string) => {
-      setRetryingId(id);
-      try {
-        await documentsService.retryDocument(id);
-        reload();
-        addToast({ type: 'success', title: 'Processing restarted' });
-      } catch (err) {
-        addToast({
-          type: 'error',
-          title: 'Retry failed',
-          description: getDocumentErrorMessage(err, 'Could not retry this document.'),
-        });
-      } finally {
-        setRetryingId(null);
-      }
-    },
-    [reload, addToast]
-  );
-
-  const hasFilters = Boolean(searchQuery) || statusFilter !== 'all';
 
   return (
     <div className="space-y-4">
@@ -125,71 +57,40 @@ export const ProjectSourcesPanel: React.FC<ProjectSourcesPanelProps> = ({
               onClick={() => setSearchQuery('')}
               className="absolute right-2.5 top-1/2 -translate-y-1/2 text-ink-muted hover:text-ink"
             >
-              <X className="w-3.5 h-3.5" />
+              <X className="h-3.5 w-3.5" />
             </button>
           )}
         </div>
 
-        <select
-          aria-label="Filter by ingestion status"
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="field h-9 w-auto pr-8 text-[13px]"
-        >
-          <option value="all">All statuses</option>
-          <option value="uploaded">Uploaded</option>
-          <option value="processing">Processing</option>
-          <option value="indexed">Indexed</option>
-          <option value="failed">Failed</option>
-        </select>
+        {!isLoading && !error && total > 0 && (
+          <p className="text-xs tabular-nums text-ink-muted sm:ml-1" aria-live="polite">
+            {searching
+              ? `${total} match${total === 1 ? '' : 'es'}`
+              : [`${total} document${total === 1 ? '' : 's'}`, preparingCount > 0 && `${preparingCount} preparing`]
+                  .filter(Boolean)
+                  .join(' · ')}
+          </p>
+        )}
 
         {!isArchived && (
-          <PrimaryButton
-            id="upload-document-btn"
-            onClick={() => setIsUploadOpen(true)}
-            className="sm:ml-auto"
-          >
+          <PrimaryButton id="upload-document-btn" onClick={() => setIsUploadOpen(true)} className="sm:ml-auto">
             <Upload className="h-4 w-4" />
             Upload
           </PrimaryButton>
         )}
       </div>
 
-      {!isLoading && !error && (
-        <p className="text-xs tabular-nums text-ink-muted">
-          {total} document{total !== 1 ? 's' : ''}
-          {hasFilters && ' matching filters'}
-        </p>
-      )}
-
-      {pollingStopped && (
-        <p role="status" className="text-xs text-warning">
-          Some documents are taking longer than expected. Automatic refresh has
-          paused.{' '}
-          <button type="button" onClick={reload} className="underline font-medium">
-            Refresh now
-          </button>
-        </p>
-      )}
-
       {isLoading ? (
         <LoadingState rows={3} />
       ) : error ? (
-        <ErrorState
-          title="Could not load documents"
-          message={error}
-          onRetry={reload}
-        />
-      ) : documents.length === 0 && hasFilters ? (
+        <ErrorState title="Couldn’t load documents" message={error} onRetry={reload} />
+      ) : documents.length === 0 && searching ? (
         <EmptyState
-          icon={FolderUp}
-          title="No documents match filters"
-          description="Try clearing your search or status filter."
-          primaryActionLabel="Clear filters"
-          onPrimaryAction={() => {
-            setSearchQuery('');
-            setStatusFilter('all');
-          }}
+          icon={Search}
+          title="No matching documents"
+          description="Try a different search."
+          primaryActionLabel="Clear search"
+          onPrimaryAction={() => setSearchQuery('')}
         />
       ) : documents.length === 0 ? (
         <EmptyState
@@ -197,8 +98,8 @@ export const ProjectSourcesPanel: React.FC<ProjectSourcesPanelProps> = ({
           title="No documents yet"
           description={
             isArchived
-              ? 'This project is archived. Documents cannot be added.'
-              : 'Upload PDF or DOCX papers. Questions in this project will only search these documents.'
+              ? 'This project is archived, so documents can’t be added.'
+              : 'Upload PDF or DOCX papers. Questions in this project are answered only from these documents.'
           }
           primaryActionLabel={isArchived ? undefined : 'Upload document'}
           onPrimaryAction={isArchived ? undefined : () => setIsUploadOpen(true)}
@@ -213,19 +114,31 @@ export const ProjectSourcesPanel: React.FC<ProjectSourcesPanelProps> = ({
             <div key={doc.id} role="listitem">
               <SourceCard
                 document={doc}
-                onDelete={!isArchived ? handleDelete : undefined}
-                onRetry={!isArchived ? handleRetry : undefined}
-                isRetrying={retryingId === doc.id}
+                onOpen={actions.open}
+                onDelete={!isArchived ? actions.remove : undefined}
+                onRetry={!isArchived ? actions.retry : undefined}
+                isRetrying={actions.retryingId === doc.id}
+                isDeleting={actions.deletingId === doc.id}
                 isArchived={isArchived}
               />
-              {isDeletingId === doc.id && (
-                <p className="px-5 pb-3 text-xs text-ink-muted">
-                  Deleting…
-                </p>
-              )}
             </div>
           ))}
         </div>
+      )}
+
+      {refreshPaused && (
+        <p className="text-xs text-ink-muted">
+          Some files are taking a little longer.{' '}
+          <button type="button" onClick={reload} className="font-medium text-ink-soft underline hover:text-ink">
+            Refresh
+          </button>
+        </p>
+      )}
+
+      {readyCount === 0 && preparingCount > 0 && !searching && (
+        <p className="sr-only" role="status">
+          Your documents will be ready in a moment.
+        </p>
       )}
 
       <ProjectUploadModal
@@ -234,6 +147,7 @@ export const ProjectSourcesPanel: React.FC<ProjectSourcesPanelProps> = ({
         onClose={() => setIsUploadOpen(false)}
         onUploaded={handleUploaded}
       />
+      {actions.viewing && <DocumentViewer document={actions.viewing} onClose={actions.close} />}
     </div>
   );
 };

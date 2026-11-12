@@ -2,6 +2,7 @@ import React, { Suspense, lazy } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AppLayout } from '../components/layout/AppLayout';
 import { useAuth } from './AuthContext';
+import { useProject } from './ProjectContext';
 import { CenteredLoadingState } from '../components/common/LoadingState';
 import { ErrorBoundary } from '../components/common/ErrorBoundary';
 import { LandingPage } from '../pages/Landing';
@@ -19,7 +20,6 @@ const NewResearch = page(() => import('../pages/NewResearch'), 'NewResearch');
 const ResearchProgressPage = page(() => import('../pages/ResearchProgress'), 'ResearchProgressPage');
 const SettingsPage = page(() => import('../pages/Settings'), 'SettingsPage');
 const ResearchReportPage = page(() => import('../pages/ResearchReport'), 'ResearchReportPage');
-const DocumentsPage = page(() => import('../pages/Documents'), 'DocumentsPage');
 const ProjectsPage = page(() => import('../pages/Projects'), 'ProjectsPage');
 const ProjectWorkspacePage = page(() => import('../pages/ProjectWorkspace'), 'ProjectWorkspacePage');
 const NotFoundPage = page(() => import('../pages/NotFound'), 'NotFoundPage');
@@ -27,6 +27,17 @@ const GoogleAuthCompletePage = page(
   () => import('../pages/GoogleAuthComplete'),
   'GoogleAuthCompletePage',
 );
+
+/** Documents live inside projects now; send old links to the closest match. */
+const DocumentsRedirect: React.FC = () => {
+  const { selectedProject } = useProject();
+  return (
+    <Navigate
+      to={selectedProject ? `/projects/${selectedProject.id}?tab=documents` : '/projects'}
+      replace
+    />
+  );
+};
 
 const ProtectedLayout: React.FC = () => {
   const { user, loading } = useAuth();
@@ -54,7 +65,7 @@ export const AppRouter: React.FC = () => {
             <Route path="/my-research" element={<Navigate to="/research/new" replace />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/research/:id" element={<ResearchReportPage />} />
-            <Route path="/documents" element={<DocumentsPage />} />
+            <Route path="/documents" element={<DocumentsRedirect />} />
             <Route path="*" element={<NotFoundPage />} />
           </Route>
         </Routes>

@@ -101,7 +101,7 @@ describe('getDocumentErrorMessage', () => {
   it('returns duplicate message for 409', () => {
     const err = new ApiError('Conflict', 409);
     expect(getDocumentErrorMessage(err, 'fallback')).toBe(
-      'This document already exists in this project.'
+      'This file has already been added.'
     );
   });
 
@@ -146,7 +146,7 @@ describe('409 codes other than duplicates', () => {
     });
     expect(isDuplicateDocumentError(err)).toBe(false);
     expect(getDocumentErrorMessage(err, 'fallback')).toBe(
-      'Only documents that failed processing can be retried.'
+      'This file is already being prepared.'
     );
   });
 
