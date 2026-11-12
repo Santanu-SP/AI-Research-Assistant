@@ -95,17 +95,17 @@ export const getDocumentErrorMessage = (
   fallback: string
 ): string => {
   if (isDuplicateDocumentError(error)) {
-    return 'This document already exists in this project.';
+    return 'This file has already been added.';
   }
   if (error instanceof ApiError) {
     if (error.status === 403) return 'You do not have permission to upload to this project.';
     if (error.status === 413) return 'File is too large to upload.';
     if (error.status === 429) return 'Too many uploads. Please wait a minute and try again.';
     if (apiErrorCode(error) === 'document_not_retryable') {
-      return 'Only documents that failed processing can be retried.';
+      return 'This file is already being prepared.';
     }
     if (apiErrorCode(error) === 'document_file_missing') {
-      return 'The original file is no longer available. Delete the document and upload it again.';
+      return 'The original file is no longer available. Remove it and upload it again.';
     }
     if (error.status === 422) {
       const data = error.data as { detail?: unknown } | null;

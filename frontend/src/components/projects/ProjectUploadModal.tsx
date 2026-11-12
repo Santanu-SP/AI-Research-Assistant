@@ -27,7 +27,8 @@ interface QueuedFile {
 
 interface ProjectUploadModalProps {
   isOpen: boolean;
-  projectId: string;
+  /** Uploads into this project; without one the file joins the user's general documents. */
+  projectId?: string | null;
   onClose: () => void;
   onUploaded: (document: Document) => void;
 }
@@ -74,10 +75,10 @@ const StatusIcon: React.FC<{ status: FileItemStatus }> = ({ status }) => {
 const STATUS_LABELS: Record<FileItemStatus, string> = {
   waiting: 'Waiting',
   uploading: 'Uploading…',
-  processing: 'Uploaded · processing',
-  done: 'Indexed',
-  duplicate: 'Already exists',
-  failed: 'Failed',
+  processing: 'Preparing…',
+  done: 'Ready',
+  duplicate: 'Already added',
+  failed: 'Couldn’t upload',
 };
 
 export const ProjectUploadModal: React.FC<ProjectUploadModalProps> = ({
@@ -150,10 +151,9 @@ export const ProjectUploadModal: React.FC<ProjectUploadModalProps> = ({
       );
 
       try {
-        const doc = await documentsService.uploadProjectDocument(
-          projectId,
-          item.file
-        );
+        const doc = projectId
+          ? await documentsService.uploadProjectDocument(projectId, item.file)
+          : await documentsService.uploadDocument(item.file);
 
         // A 202 response means the file is stored and queued for the worker;
         // the sources list keeps polling until it is indexed or fails.
@@ -170,7 +170,7 @@ export const ProjectUploadModal: React.FC<ProjectUploadModalProps> = ({
                   status: nextStatus,
                   errorMessage:
                     nextStatus === 'failed'
-                      ? doc.processingError || 'Processing failed.'
+                      ? 'Couldn’t process this file.'
                       : undefined,
                 }
               : q
@@ -185,15 +185,17 @@ export const ProjectUploadModal: React.FC<ProjectUploadModalProps> = ({
                 ? {
                     ...q,
                     status: 'duplicate',
-                    errorMessage: 'This document already exists in this project.',
+                    errorMessage: projectId
+                      ? 'This file is already in this project.'
+                      : 'This file is already in your documents.',
                   }
                 : q
             )
           );
           addToast({
             type: 'warning',
-            title: 'Duplicate document',
-            description: `"${item.file.name}" already exists in this project.`,
+            title: 'Already added',
+            description: `“${item.file.name}” is already ${projectId ? 'in this project' : 'in your documents'}.`,
           });
         } else {
           const msg = getDocumentErrorMessage(err, 'Upload failed.');
@@ -241,10 +243,10 @@ export const ProjectUploadModal: React.FC<ProjectUploadModalProps> = ({
               id="upload-modal-title"
               className="font-semibold text-base text-ink"
             >
-              Upload Documents
+              Upload documents
             </h3>
             <p className="text-xs text-ink-soft mt-0.5">
-              PDF and DOCX files supported · Max 100 MB per file
+              PDF or DOCX, up to 100 MB each. Files are ready to use a moment after upload.
             </p>
           </div>
           <button

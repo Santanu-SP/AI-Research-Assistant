@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   ChevronsUpDown,
-  FileText,
   LayoutGrid,
   LogOut,
   Moon,
@@ -145,7 +144,6 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
     `h-4 w-4 shrink-0 ${active ? 'text-accent' : 'text-ink-muted group-hover:text-ink-soft'}`;
 
   const projectsActive = location.pathname.startsWith('/projects');
-  const documentsActive = location.pathname.startsWith('/documents');
   const settingsActive = location.pathname.startsWith('/settings');
   const isDark = getAppliedTheme() === 'dark';
 
@@ -203,10 +201,6 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
           <NavLink to="/projects" onClick={onNavigate} className={() => navItem(projectsActive)}>
             <LayoutGrid className={iconClass(projectsActive)} />
             <span>Projects</span>
-          </NavLink>
-          <NavLink to="/documents" onClick={onNavigate} className={() => navItem(documentsActive)}>
-            <FileText className={iconClass(documentsActive)} />
-            <span>Documents</span>
           </NavLink>
         </nav>
 

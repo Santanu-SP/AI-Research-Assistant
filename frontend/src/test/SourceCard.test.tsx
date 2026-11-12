@@ -17,22 +17,32 @@ describe('SourceCard', () => {
     expect(screen.getByText('paper.pdf')).toBeInTheDocument();
   });
 
-  it('renders indexed status badge', () => {
-    const doc = makeDocument({ ingestionStatus: 'indexed' });
-    render(<SourceCard document={doc} />);
-    expect(screen.getByText('Indexed')).toBeInTheDocument();
+  it('opens a ready document when its name is clicked', () => {
+    const doc = makeDocument();
+    const onOpen = vi.fn();
+    render(<SourceCard document={doc} onOpen={onOpen} />);
+    fireEvent.click(screen.getByRole('button', { name: /Open A Study of Membrane Proteins/i }));
+    expect(onOpen).toHaveBeenCalledWith(doc);
   });
 
-  it('renders processing status badge with spinner', () => {
-    const doc = makeProcessingDocument();
-    render(<SourceCard document={doc} />);
-    expect(screen.getByText('Processing')).toBeInTheDocument();
+  it('shows a calm preparing state that cannot be opened', () => {
+    const onOpen = vi.fn();
+    render(<SourceCard document={makeProcessingDocument()} onOpen={onOpen} />);
+    expect(screen.getByText('Preparing…')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Open/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/processing|indexed|chunk/i)).not.toBeInTheDocument();
   });
 
-  it('renders failed status badge', () => {
-    const doc = makeFailedDocument();
-    render(<SourceCard document={doc} />);
-    expect(screen.getByText('Failed')).toBeInTheDocument();
+  it('treats freshly uploaded files as preparing', () => {
+    render(<SourceCard document={makeDocument({ status: 'uploaded', ingestionStatus: 'uploaded' })} onOpen={vi.fn()} />);
+    expect(screen.getByText('Preparing…')).toBeInTheDocument();
+  });
+
+  it('shows a plain message for failed files', () => {
+    render(<SourceCard document={makeFailedDocument()} onOpen={vi.fn()} />);
+    expect(screen.getByText(/Couldn’t process this file/)).toBeInTheDocument();
+    expect(screen.queryByText(/Failed to parse/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Open/i })).not.toBeInTheDocument();
   });
 
   it('does not show raw stack trace in error summary', () => {
@@ -84,10 +94,9 @@ describe('SourceCard', () => {
     expect(screen.getByText('12 pages')).toBeInTheDocument();
   });
 
-  it('renders chunk count when available and greater than 0', () => {
-    const doc = makeDocument({ chunkCount: 48 });
-    render(<SourceCard document={doc} />);
-    expect(screen.getByText('48 chunks')).toBeInTheDocument();
+  it('never shows chunk counts', () => {
+    render(<SourceCard document={makeDocument({ chunkCount: 48 })} />);
+    expect(screen.queryByText(/chunk/i)).not.toBeInTheDocument();
   });
 
   it('offers a retry button only for failed documents', () => {
@@ -95,13 +104,13 @@ describe('SourceCard', () => {
     const { rerender } = render(
       <SourceCard document={makeFailedDocument()} onRetry={onRetry} />
     );
-    fireEvent.click(screen.getByRole('button', { name: /retry processing/i }));
+    fireEvent.click(screen.getByRole('button', { name: /try again/i }));
     expect(onRetry).toHaveBeenCalledWith('doc-003');
 
     rerender(<SourceCard document={makeDocument()} onRetry={onRetry} />);
-    expect(screen.queryByRole('button', { name: /retry processing/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /try again/i })).not.toBeInTheDocument();
 
     rerender(<SourceCard document={makeFailedDocument()} onRetry={onRetry} isArchived />);
-    expect(screen.queryByRole('button', { name: /retry processing/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /try again/i })).not.toBeInTheDocument();
   });
 });
