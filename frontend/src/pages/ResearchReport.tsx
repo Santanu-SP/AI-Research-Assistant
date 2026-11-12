@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { TopBar } from '../components/layout/TopBar';
 import { StatusBadge } from '../components/common/StatusBadge';
 import { CitationChip } from '../components/research/CitationChip';
@@ -148,14 +148,9 @@ export const ResearchReportPage: React.FC = () => {
       <TopBar
         breadcrumbs={
           <div className="flex min-w-0 items-center gap-2">
-            <Link
-              to="/research"
-              className="shrink-0 rounded-sm text-ink-soft hover:text-ink"
-            >
-              My research
-            </Link>
+            <span className="shrink-0 text-ink-soft">Research</span>
             <ChevronRight className="h-3.5 w-3.5 shrink-0 text-ink-muted" />
-            <span className="truncate font-medium text-ink">Report</span>
+            <span className="truncate font-medium text-ink" title={report.title}>{report.title}</span>
             <span className="hidden font-mono text-[11px] text-ink-muted sm:inline">
               {report.dossierRef}
             </span>

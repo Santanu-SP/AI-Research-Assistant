@@ -17,7 +17,7 @@ const page = <T extends Record<string, React.ComponentType>>(
 
 const NewResearch = page(() => import('../pages/NewResearch'), 'NewResearch');
 const ResearchProgressPage = page(() => import('../pages/ResearchProgress'), 'ResearchProgressPage');
-const MyResearchPage = page(() => import('../pages/MyResearch'), 'MyResearchPage');
+const SettingsPage = page(() => import('../pages/Settings'), 'SettingsPage');
 const ResearchReportPage = page(() => import('../pages/ResearchReport'), 'ResearchReportPage');
 const DocumentsPage = page(() => import('../pages/Documents'), 'DocumentsPage');
 const ProjectsPage = page(() => import('../pages/Projects'), 'ProjectsPage');
@@ -49,7 +49,10 @@ export const AppRouter: React.FC = () => {
             <Route path="/projects/:projectId" element={<ProjectWorkspacePage />} />
             <Route path="/research/new" element={<NewResearch />} />
             <Route path="/research/:id/progress" element={<ResearchProgressPage />} />
-            <Route path="/research" element={<MyResearchPage />} />
+            {/* Research history lives in the sidebar now; keep old links working. */}
+            <Route path="/research" element={<Navigate to="/research/new" replace />} />
+            <Route path="/my-research" element={<Navigate to="/research/new" replace />} />
+            <Route path="/settings" element={<SettingsPage />} />
             <Route path="/research/:id" element={<ResearchReportPage />} />
             <Route path="/documents" element={<DocumentsPage />} />
             <Route path="*" element={<NotFoundPage />} />

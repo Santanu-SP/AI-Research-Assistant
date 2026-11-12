@@ -33,6 +33,27 @@ export const applyTheme = (theme: AppTheme, persist = false) => {
   );
 };
 
+export type ThemePreference = AppTheme | 'system';
+
+const getSystemTheme = (): AppTheme =>
+  window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+
+/** What the user picked: an explicit theme, or follow the operating system. */
+export const getThemePreference = (): ThemePreference => getStoredTheme() ?? 'system';
+
+export const setThemePreference = (preference: ThemePreference) => {
+  if (preference !== 'system') {
+    applyTheme(preference, true);
+    return;
+  }
+  try {
+    window.localStorage.removeItem(THEME_STORAGE_KEY);
+  } catch {
+    // Nothing stored means the system theme is used anyway.
+  }
+  applyTheme(getSystemTheme());
+};
+
 export const initializeTheme = () => {
   const storedTheme = getStoredTheme();
   const systemTheme: AppTheme = window.matchMedia('(prefers-color-scheme: dark)')

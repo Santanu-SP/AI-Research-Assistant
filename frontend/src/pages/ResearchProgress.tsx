@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { ChevronRight } from 'lucide-react';
 import { StatusBadge } from '../components/common/StatusBadge';
 import { TopBar } from '../components/layout/TopBar';
@@ -53,7 +53,7 @@ export const ResearchProgressPage: React.FC = () => {
     if (error instanceof ApiError && error.status === 404) {
       return (
         <div className="flex min-h-screen items-center justify-center px-4">
-          <div className="w-full max-w-md"><ErrorState title="Research not found" message="It may have been deleted, or the link is wrong." onRetry={() => navigate('/research')} /></div>
+          <div className="w-full max-w-md"><ErrorState title="Research not found" message="It may have been deleted, or the link is wrong." onRetry={() => navigate('/research/new')} /></div>
         </div>
       );
     }
@@ -88,9 +88,7 @@ export const ResearchProgressPage: React.FC = () => {
       <TopBar
         breadcrumbs={
           <div className="flex min-w-0 items-center gap-2">
-            <Link to="/research" className="shrink-0 rounded-sm text-ink-soft hover:text-ink">
-              My research
-            </Link>
+            <span className="shrink-0 text-ink-soft">Research</span>
             <ChevronRight className="h-3.5 w-3.5 shrink-0 text-ink-muted" />
             <span className="truncate font-medium text-ink">{statusLabel}</span>
           </div>
