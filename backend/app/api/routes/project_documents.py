@@ -8,16 +8,20 @@ from app.api.dependencies import CurrentUser
 from app.api.uploads import enforce_upload_rate_limit, upload_status_code
 from app.db.session import get_db
 from app.domain.documents import DocumentStatus, DocumentType
-from app.schemas.documents import DocumentListResponse, DocumentResponse
+from app.schemas.documents import (
+    DocumentListResponse,
+    DocumentResponse,
+    UrlDocumentCreateRequest,
+)
 from app.services.documents import records as document_service
-from app.services.documents.storage import LocalDocumentStorage, get_document_storage
+from app.services.documents.storage import DocumentStorageBackend, get_document_storage
 
 router = APIRouter(
     prefix="/projects/{project_id}/documents",
     tags=["project documents"],
 )
 DatabaseSession = Annotated[Session, Depends(get_db)]
-DocumentStorage = Annotated[LocalDocumentStorage, Depends(get_document_storage)]
+DocumentStorage = Annotated[DocumentStorageBackend, Depends(get_document_storage)]
 
 
 @router.post(
@@ -42,6 +46,35 @@ async def upload_project_document(
         request.app.state.settings,
         user.id,
         project_id,
+        notify_worker=request.app.state.job_worker.wake,
+    )
+    response.status_code = upload_status_code(document)
+    return document
+
+
+@router.post(
+    "/url",
+    response_model=DocumentResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def ingest_project_url_document(
+    project_id: UUID,
+    payload: UrlDocumentCreateRequest,
+    session: DatabaseSession,
+    storage: DocumentStorage,
+    request: Request,
+    response: Response,
+    user: CurrentUser,
+) -> DocumentResponse:
+    enforce_upload_rate_limit(request, user.id)
+    document = await document_service.create_url_document(
+        session,
+        payload.url,
+        storage,
+        request.app.state.settings,
+        user.id,
+        project_id,
+        title=payload.title,
         notify_worker=request.app.state.job_worker.wake,
     )
     response.status_code = upload_status_code(document)
