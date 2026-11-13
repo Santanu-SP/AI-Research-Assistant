@@ -35,23 +35,35 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
   preparingCount = 0,
 }) => {
   const [question, setQuestion] = useState('');
-  const [researchDepth, setResearchDepth] = useState<ResearchDepth>('quick');
+  const [researchDepth, setResearchDepth] = useState<ResearchDepth>('standard');
   const [researchState, setResearchState] = useState<ResearchState>('idle');
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [result, setResult] = useState<ResearchQueryResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedCitationId, setSelectedCitationId] = useState<string | null>(null);
 
-  // Track the project ID at submission time to guard against stale results
+  // Track active project id and request epoch so stale responses after a project switch are ignored
+  const activeProjectIdRef = useRef(project.id);
   const submittedProjectIdRef = useRef<string | null>(null);
+  const requestEpochRef = useRef(0);
 
-  // When project changes, clear previous results
+  // When project changes, invalidate in-flight work and clear previous results
   useEffect(() => {
+    activeProjectIdRef.current = project.id;
+    requestEpochRef.current += 1;
+    submittedProjectIdRef.current = null;
     setResult(null);
     setError(null);
     setResearchState('idle');
     setSelectedCitationId(null);
   }, [project.id]);
+
+  useEffect(() => {
+    return () => {
+      requestEpochRef.current += 1;
+      submittedProjectIdRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     if (researchState !== 'submitting') {
@@ -78,7 +90,14 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
     if (isDisabled) return;
 
     const currentProjectId = project.id;
+    const submitEpoch = requestEpochRef.current + 1;
+    requestEpochRef.current = submitEpoch;
     submittedProjectIdRef.current = currentProjectId;
+
+    const isStaleSubmission = () =>
+      activeProjectIdRef.current !== currentProjectId ||
+      submittedProjectIdRef.current !== currentProjectId ||
+      requestEpochRef.current !== submitEpoch;
 
     setResearchState('submitting');
     setError(null);
@@ -92,13 +111,13 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
         researchDepth,
       });
 
-      // Guard: if project changed while request was in flight, discard result
-      if (submittedProjectIdRef.current !== currentProjectId) return;
+      // Guard: if project changed or reset while request was in flight, discard result
+      if (isStaleSubmission()) return;
 
       setResult(response);
       setResearchState('complete');
     } catch (err) {
-      if (submittedProjectIdRef.current !== currentProjectId) return;
+      if (isStaleSubmission()) return;
       setError(getResearchErrorMessage(err, 'Research failed. Please try again.'));
       setResearchState('failed');
     }
@@ -112,6 +131,8 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
   };
 
   const handleReset = () => {
+    requestEpochRef.current += 1;
+    submittedProjectIdRef.current = null;
     setResearchState('idle');
     setResult(null);
     setError(null);

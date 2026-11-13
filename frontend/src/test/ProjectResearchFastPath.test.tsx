@@ -40,7 +40,7 @@ describe('ProjectResearchPanel & ResearchProgress fast-path UX', () => {
     cleanup();
   });
 
-  it('defaults inline project research to quick depth and supports switching depth', async () => {
+  it('defaults inline project research to standard depth and supports switching to quick or deep', async () => {
     queryResearchMock.mockResolvedValue({
       researchId: 'res-1',
       projectId: 'proj-1',
@@ -74,6 +74,21 @@ describe('ProjectResearchPanel & ResearchProgress fast-path UX', () => {
       expect(queryResearchMock).toHaveBeenCalledWith({
         query: 'What is attention?',
         projectId: 'proj-1',
+        researchDepth: 'standard',
+      });
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'New question' }));
+    fireEvent.click(screen.getByRole('button', { name: 'quick' }));
+    fireEvent.change(screen.getByLabelText('Question'), {
+      target: { value: 'Quick check' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Research' }));
+
+    await waitFor(() => {
+      expect(queryResearchMock).toHaveBeenLastCalledWith({
+        query: 'Quick check',
+        projectId: 'proj-1',
         researchDepth: 'quick',
       });
     });
@@ -92,6 +107,63 @@ describe('ProjectResearchPanel & ResearchProgress fast-path UX', () => {
         researchDepth: 'deep',
       });
     });
+  });
+
+  it('discards stale in-flight project answers when switching projects', async () => {
+    let resolveDeferred!: (value: unknown) => void;
+    queryResearchMock.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveDeferred = resolve;
+        })
+    );
+
+    const projectA = {
+      id: 'proj-a',
+      name: 'Project Alpha',
+      description: null,
+      createdAt: '2026-11-12T00:00:00Z',
+      updatedAt: '2026-11-12T00:00:00Z',
+      archivedAt: null,
+    };
+    const projectB = {
+      id: 'proj-b',
+      name: 'Project Beta',
+      description: null,
+      createdAt: '2026-11-12T00:00:00Z',
+      updatedAt: '2026-11-12T00:00:00Z',
+      archivedAt: null,
+    };
+
+    const { rerender } = render(
+      <ProjectResearchPanel project={projectA} isArchived={false} readyCount={1} />
+    );
+
+    fireEvent.change(screen.getByLabelText('Question'), {
+      target: { value: 'Alpha question?' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Research' }));
+
+    // Switch to Project Beta while Project Alpha request is still in flight
+    rerender(<ProjectResearchPanel project={projectB} isArchived={false} readyCount={1} />);
+
+    // Switching back to Project Alpha before the old response arrives must still drop it
+    rerender(<ProjectResearchPanel project={projectA} isArchived={false} readyCount={1} />);
+
+    resolveDeferred({
+      researchId: 'res-a',
+      projectId: 'proj-a',
+      answer: 'Stale Alpha answer.',
+      citations: [],
+      hybridCandidateCount: 1,
+      evidenceCount: 1,
+      insufficientEvidence: false,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Research' })).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/Stale Alpha answer/)).not.toBeInTheDocument();
   });
 
   it('auto-navigates to the completed report as soon as progress finishes', async () => {
