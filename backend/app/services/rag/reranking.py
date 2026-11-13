@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import math
+import re
 from functools import lru_cache
 from threading import RLock
 
@@ -11,9 +12,17 @@ import httpx
 
 from app.core.config import Settings
 from app.core.errors import AppError
+from app.providers.base import post_json_with_client
 from app.schemas.retrieval import RetrievalCandidate
 
 logger = logging.getLogger(__name__)
+_QUERY_TOKEN_RE = re.compile(r"[a-z0-9]{2,}")
+_QUERY_STOPWORDS = frozenset({
+    "the", "and", "for", "with", "from", "that", "this", "what", "when", "where",
+    "which", "who", "whom", "whose", "how", "why", "are", "was", "were", "can",
+    "could", "would", "should", "does", "did", "not", "into", "about", "explain",
+    "define", "summarize", "describe", "tell",
+})
 
 
 def _apply_scores_and_sort(
@@ -69,7 +78,15 @@ class RerankerService:
                     kwargs["device"] = self.device
                 if self.cache_dir:
                     kwargs["cache_folder"] = self.cache_dir
-                self._model = CrossEncoder(self.model_name, **kwargs)
+                try:
+                    # Prefer local HF cache first to avoid slow Hub network checks.
+                    self._model = CrossEncoder(
+                        self.model_name,
+                        **kwargs,
+                        local_files_only=True,
+                    )
+                except Exception:
+                    self._model = CrossEncoder(self.model_name, **kwargs)
             except Exception as exc:
                 raise AppError(
                     "The local reranker is unavailable",
@@ -155,20 +172,13 @@ class JinaRerankerService:
             "Content-Type": "application/json",
         }
         try:
-            if self._client is not None:
-                response = self._client.post(
-                    "https://api.jina.ai/v1/rerank",
-                    headers=headers,
-                    json=payload,
-                    timeout=self.timeout_seconds,
-                )
-            else:
-                with httpx.Client(timeout=self.timeout_seconds) as client:
-                    response = client.post(
-                        "https://api.jina.ai/v1/rerank",
-                        headers=headers,
-                        json=payload,
-                    )
+            response = post_json_with_client(
+                self._client,
+                "https://api.jina.ai/v1/rerank",
+                headers=headers,
+                json=payload,
+                timeout_seconds=self.timeout_seconds,
+            )
             response.raise_for_status()
             data = response.json()
             results = data.get("results", [])
@@ -235,16 +245,13 @@ class CloudflareBGERerankerService:
             "Content-Type": "application/json",
         }
         try:
-            if self._client is not None:
-                response = self._client.post(
-                    url,
-                    headers=headers,
-                    json=payload,
-                    timeout=self.timeout_seconds,
-                )
-            else:
-                with httpx.Client(timeout=self.timeout_seconds) as client:
-                    response = client.post(url, headers=headers, json=payload)
+            response = post_json_with_client(
+                self._client,
+                url,
+                headers=headers,
+                json=payload,
+                timeout_seconds=self.timeout_seconds,
+            )
             response.raise_for_status()
             body = response.json()
             result_data = body.get("result", body)
@@ -272,7 +279,7 @@ class CloudflareBGERerankerService:
 
 
 class LexicalFallbackReranker:
-    """Zero-cost deterministic fallback when a remote free-tier reranker hits quota or network errors."""
+    """Zero-cost deterministic reranker combining RRF, dense vector similarity, and term overlap."""
 
     def rerank(
         self,
@@ -281,18 +288,20 @@ class LexicalFallbackReranker:
     ) -> list[RetrievalCandidate]:
         query_terms = {
             token
-            for token in query.lower().split()
-            if len(token) > 2
+            for token in _QUERY_TOKEN_RE.findall(query.lower())
+            if token not in _QUERY_STOPWORDS
         }
         scores: list[float] = []
         for candidate in candidates:
-            base = float(candidate.hybrid_score or 0.0)
+            # Hybrid RRF scores are ~0.01-0.033; scale so retrieval rank remains meaningful.
+            base = float(candidate.hybrid_score or 0.0) * 10.0
+            vector_boost = max(0.0, float(candidate.vector_score or 0.0)) * 0.5
             if not query_terms:
-                scores.append(base)
+                scores.append(round(base + vector_boost, 6))
                 continue
-            text_lower = candidate.text.lower()
+            text_lower = f"{candidate.section or ''} {candidate.text}".lower()
             overlap = sum(1 for term in query_terms if term in text_lower) / len(query_terms)
-            scores.append(round(base + overlap, 6))
+            scores.append(round(base + vector_boost + overlap, 6))
         return _apply_scores_and_sort(candidates, scores)
 
 
@@ -317,6 +326,8 @@ def _cached_reranker(
 
 def reranker_service_for(settings: Settings):
     provider = settings.reranker_provider.strip().lower()
+    if provider == "lexical":
+        return LexicalFallbackReranker()
     if provider == "jina" and settings.jina_api_key:
         return JinaRerankerService(
             api_key=settings.jina_api_key,

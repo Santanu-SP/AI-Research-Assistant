@@ -1,14 +1,18 @@
 """Local Qwen and Cloudflare Workers AI embedding runtimes used by ingestion and retrieval."""
 
+from collections import OrderedDict
+from collections.abc import Callable
 from functools import lru_cache
 import logging
 import math
+from threading import RLock
 from typing import Protocol
 
 import httpx
 
 from app.core.config import Settings
 from app.core.errors import AppError
+from app.providers.base import post_json_with_client
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +46,35 @@ def _normalize_vector(vec: list[float]) -> list[float]:
     return [float(v / norm) for v in vec]
 
 
+class _QueryEmbeddingCache:
+    """Thread-safe bounded LRU cache for repeated or identical query strings."""
+
+    def __init__(self, maxsize: int = 256) -> None:
+        self.maxsize = max(0, maxsize)
+        self._entries: OrderedDict[str, tuple[float, ...]] = OrderedDict()
+        self._lock = RLock()
+
+    def get_or_compute(
+        self,
+        query: str,
+        compute: Callable[[str], list[float]],
+    ) -> list[float]:
+        if self.maxsize <= 0:
+            return compute(query)
+        with self._lock:
+            cached = self._entries.get(query)
+            if cached is not None:
+                self._entries.move_to_end(query)
+                return list(cached)
+        vector = compute(query)
+        with self._lock:
+            self._entries[query] = tuple(vector)
+            self._entries.move_to_end(query)
+            while len(self._entries) > self.maxsize:
+                self._entries.popitem(last=False)
+        return vector
+
+
 class QwenEmbeddingService:
     """Loads SentenceTransformers once, only when embeddings are requested."""
 
@@ -50,6 +83,7 @@ class QwenEmbeddingService:
         self.batch_size = settings.embedding_batch_size
         self.model_name = settings.embedding_model_name
         self.model_version = settings.embedding_model_revision
+        self._query_cache = _QueryEmbeddingCache(settings.query_embedding_cache_size)
         try:
             from sentence_transformers import SentenceTransformer
 
@@ -57,13 +91,24 @@ class QwenEmbeddingService:
             cache_folder = (
                 str(settings.model_cache_dir) if settings.model_cache_dir else None
             )
-            self._model = SentenceTransformer(
-                settings.embedding_model_name,
-                cache_folder=cache_folder,
-                device=device,
-                revision=settings.embedding_model_revision,
-                trust_remote_code=settings.model_trust_remote_code,
-            )
+            init_kwargs: dict[str, object] = {
+                "cache_folder": cache_folder,
+                "device": device,
+                "revision": settings.embedding_model_revision,
+                "trust_remote_code": settings.model_trust_remote_code,
+            }
+            try:
+                # Prefer cached local weights first to skip HuggingFace Hub network HEAD checks.
+                self._model = SentenceTransformer(
+                    settings.embedding_model_name,
+                    **init_kwargs,
+                    local_files_only=True,
+                )
+            except Exception:
+                self._model = SentenceTransformer(
+                    settings.embedding_model_name,
+                    **init_kwargs,
+                )
             logger.info(
                 "Loaded embedding model %s on %s",
                 settings.embedding_model_name,
@@ -105,7 +150,7 @@ class QwenEmbeddingService:
         return self._encode(texts)
 
     def embed_query(self, query: str) -> list[float]:
-        return self._encode([query])[0]
+        return self._query_cache.get_or_compute(query, lambda q: self._encode([q])[0])
 
 
 class CloudflareWorkersAIEmbeddingService:
@@ -121,6 +166,7 @@ class CloudflareWorkersAIEmbeddingService:
         batch_size: int = 16,
         timeout_seconds: float = 30.0,
         client: httpx.Client | None = None,
+        query_cache_size: int = 256,
     ) -> None:
         self.account_id = (account_id or "").strip()
         self.api_token = (api_token or "").strip()
@@ -128,7 +174,9 @@ class CloudflareWorkersAIEmbeddingService:
         self.model_version = "cloudflare-workers-ai-v1"
         self.dimension = dimension
         self.batch_size = max(1, batch_size)
-        self._client = client or httpx.Client(timeout=httpx.Timeout(timeout_seconds, connect=10.0))
+        self.timeout_seconds = timeout_seconds
+        self._client = client
+        self._query_cache = _QueryEmbeddingCache(query_cache_size)
 
     def _encode(self, texts: list[str]) -> list[list[float]]:
         if not texts:
@@ -155,7 +203,13 @@ class CloudflareWorkersAIEmbeddingService:
         for idx in range(0, len(texts), self.batch_size):
             batch = texts[idx : idx + self.batch_size]
             try:
-                response = self._client.post(url, headers=headers, json={"text": batch})
+                response = post_json_with_client(
+                    self._client,
+                    url,
+                    headers=headers,
+                    json={"text": batch},
+                    timeout_seconds=self.timeout_seconds,
+                )
                 response.raise_for_status()
                 payload = response.json()
             except httpx.HTTPStatusError as exc:
@@ -200,7 +254,7 @@ class CloudflareWorkersAIEmbeddingService:
         return self._encode(texts)
 
     def embed_query(self, query: str) -> list[float]:
-        return self._encode([query])[0]
+        return self._query_cache.get_or_compute(query, lambda q: self._encode([q])[0])
 
 
 def active_embedding_model_identity(
@@ -218,7 +272,7 @@ def active_embedding_model_identity(
     return settings.embedding_model_name, settings.embedding_model_revision
 
 
-@lru_cache(maxsize=1)
+@lru_cache(maxsize=2)
 def get_embedding_service(
     model_name: str,
     revision: str,
@@ -227,6 +281,7 @@ def get_embedding_service(
     cache_dir: str | None,
     batch_size: int,
     dimension: int,
+    query_cache_size: int = 256,
 ) -> QwenEmbeddingService:
     runtime_settings = Settings(
         embedding_model_name=model_name,
@@ -236,6 +291,7 @@ def get_embedding_service(
         model_cache_dir=cache_dir,
         embedding_batch_size=batch_size,
         embedding_dimension=dimension,
+        query_embedding_cache_size=query_cache_size,
     )
     return QwenEmbeddingService(runtime_settings)
 
@@ -247,6 +303,7 @@ def get_cloudflare_embedding_service(
     model_name: str,
     dimension: int,
     batch_size: int,
+    query_cache_size: int = 256,
 ) -> CloudflareWorkersAIEmbeddingService:
     return CloudflareWorkersAIEmbeddingService(
         account_id=account_id,
@@ -254,6 +311,7 @@ def get_cloudflare_embedding_service(
         model_name=model_name,
         dimension=dimension,
         batch_size=batch_size,
+        query_cache_size=query_cache_size,
     )
 
 
@@ -265,6 +323,7 @@ def embedding_service_for(settings: Settings) -> EmbeddingService:
             settings.cloudflare_embedding_model,
             settings.embedding_dimension,
             settings.embedding_batch_size,
+            settings.query_embedding_cache_size,
         )
     cache_dir = (
         str(settings.model_cache_dir) if settings.model_cache_dir else None
@@ -277,4 +336,5 @@ def embedding_service_for(settings: Settings) -> EmbeddingService:
         cache_dir,
         settings.embedding_batch_size,
         settings.embedding_dimension,
+        settings.query_embedding_cache_size,
     )

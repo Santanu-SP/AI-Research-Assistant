@@ -127,8 +127,8 @@ class Settings(BaseSettings):
     embedding_enabled: bool = True
     allow_sqlite_retrieval_fallback: bool = False
 
-    # Reranking configuration (local Qwen3-Reranker-0.6B, Jina Reranker API, or Cloudflare BGE).
-    reranker_provider: Literal["local", "jina", "cloudflare"] = "local"
+    # Reranking configuration (local Qwen3-Reranker-0.6B, Jina Reranker API, Cloudflare BGE, or fast lexical).
+    reranker_provider: Literal["local", "jina", "cloudflare", "lexical"] = "local"
     reranker_model_name: str = "Qwen/Qwen3-Reranker-0.6B"
     reranker_model_revision: str = "e61197ed45024b0ed8a2d74b80b4d909f1255473"
     reranker_batch_size: int = Field(default=8, ge=1, le=64)
@@ -138,6 +138,8 @@ class Settings(BaseSettings):
     final_context_k: int = Field(default=8, ge=1, le=12)
     minimum_evidence_count: int = Field(default=1, ge=1, le=8)
     reranker_min_score: float = 0.0
+    adaptive_fast_path_enabled: bool = True
+    query_embedding_cache_size: int = Field(default=256, ge=0, le=4096)
 
     # Multimodal ingestion (Groq Whisper, FFmpeg, Gemini Flash Vision).
     groq_api_key: str | None = None
@@ -177,6 +179,7 @@ class Settings(BaseSettings):
     generation_max_new_tokens: int = Field(default=768, ge=64, le=4096)
     generation_temperature: float = Field(default=0.1, ge=0.0, le=1.0)
     generation_timeout_seconds: float = Field(default=120.0, gt=0.0, le=600.0)
+    llm_provider_timeout_seconds: float = Field(default=18.0, gt=0.0, le=120.0)
     generation_connect_timeout_seconds: float = Field(default=5.0, gt=0.0, le=60.0)
     generation_max_retries: int = Field(default=2, ge=0, le=5)
     generation_retry_backoff_seconds: float = Field(default=0.5, ge=0.0, le=30.0)

@@ -382,6 +382,80 @@ def update_progress_counts(
     return research
 
 
+def advance_research_progress(
+    session: Session,
+    research_id: UUID,
+    *,
+    project_status: ProjectStatus | None = None,
+    sources_discovered: int | None = None,
+    sources_reviewed: int | None = None,
+    documents_found: int | None = None,
+    commit: bool = True,
+) -> Research:
+    """Atomically apply progress counters and/or lifecycle stage in a single transaction."""
+    research = get_research(session, research_id)
+    timestamp = utc_now()
+
+    if any(value is not None for value in (sources_discovered, sources_reviewed, documents_found)):
+        next_sources_discovered = (
+            research.sources_discovered
+            if sources_discovered is None
+            else sources_discovered
+        )
+        next_sources_reviewed = (
+            research.sources_reviewed if sources_reviewed is None else sources_reviewed
+        )
+        next_documents_found = (
+            research.documents_found if documents_found is None else documents_found
+        )
+        if (
+            next_sources_discovered < 0
+            or next_sources_reviewed < 0
+            or next_documents_found < 0
+            or next_sources_reviewed > next_sources_discovered
+        ):
+            raise AppError(
+                "Research progress counts are invalid",
+                status_code=422,
+                code="invalid_research_progress_counts",
+            )
+        research.sources_discovered = next_sources_discovered
+        research.sources_reviewed = next_sources_reviewed
+        research.documents_found = next_documents_found
+
+    if project_status is not None:
+        if research.started_at is None:
+            raise AppError(
+                "Research progress has not started",
+                status_code=409,
+                code="research_not_started",
+            )
+        summary_status, progress_stage = map_project_status(
+            project_status,
+            started=True,
+            current_stage=research.progress_stage,
+        )
+        if progress_stage != research.progress_stage:
+            research.stage_started_at = timestamp
+        research.status = summary_status
+        research.project_status = project_status
+        research.progress_stage = progress_stage
+        research.completed_at = (
+            timestamp if project_status == ProjectStatus.REPORT_READY else None
+        )
+        research.failed_at = (
+            timestamp if project_status == ProjectStatus.PROCESSING_FAILED else None
+        )
+
+    research.updated_at = timestamp
+    if commit:
+        _commit(session)
+        session.refresh(research)
+    else:
+        session.flush()
+    return research
+
+
 def mark_research_completed(session: Session, research_id: UUID) -> Research:
     return update_research_lifecycle(session, research_id, ProjectStatus.REPORT_READY)
 

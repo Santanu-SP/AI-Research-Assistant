@@ -57,6 +57,8 @@ def persist_report(
     session: Session,
     research_id: UUID,
     payload: ResearchReportCreate,
+    *,
+    commit: bool = True,
 ) -> ResearchReport:
     """Atomically persist a future pipeline's report and evidence graph.
 
@@ -130,7 +132,10 @@ def persist_report(
 
     session.add(report)
     try:
-        session.commit()
+        if commit:
+            session.commit()
+        else:
+            session.flush()
     except SQLAlchemyError as exc:
         session.rollback()
         raise AppError(
@@ -138,7 +143,8 @@ def persist_report(
             status_code=500,
             code="report_persistence_error",
         ) from exc
-    session.refresh(report)
+    if commit:
+        session.refresh(report)
     return report
 
 
