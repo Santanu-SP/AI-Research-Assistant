@@ -60,6 +60,9 @@ class LLMRequest:
     timeout_seconds: float = 45.0
     model_override: str | None = None
     api_key_override: str | None = None
+    provider_timeout_seconds: float | None = None
+    primary_timeout_seconds: float | None = None
+    allow_sticky_fallback: bool = True
     metadata: dict[str, Any] = field(default_factory=dict)
 
 

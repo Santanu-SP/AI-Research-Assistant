@@ -38,8 +38,12 @@ _COMPLEX_QUERY_RE = re.compile(
     r"\b(?:"
     r"compare|contrast|difference|differences|versus|vs\.?|relationship|"
     r"trade[- ]?off|evaluate|analyze|analyse|synthesize|synthesise|"
+    r"summarize|summarise|summary|explain|explanation|list|overview|"
+    r"detail|details|detailed|finding|findings|mechanism|mechanisms|"
+    r"describe|outline|discuss|elaborate|implication|implications|"
     r"comprehensive|thorough|critique|limitation|limitations|methodology|"
-    r"methodologies|architecture|why does|step by step|timeline|"
+    r"methodologies|architecture|why does|why do|why is|how does|how do|"
+    r"step by step|timeline|"
     r"across (?:the )?(?:papers|documents|sources|studies|chapters)|"
     r"all (?:papers|documents|sources|studies)"
     r")\b",
@@ -54,7 +58,7 @@ def is_simple_question(question: str) -> bool:
         return False
     if "\n" in question.strip() or ";" in normalized or normalized.count("?") > 1:
         return False
-    if len(normalized.split()) > 16:
+    if len(normalized.split()) > 12:
         return False
     return _COMPLEX_QUERY_RE.search(normalized) is None
 
@@ -65,6 +69,32 @@ class ResearchExecutionProfile:
 
     mode: str
     settings: Settings
+    provider_timeout_seconds: float | None = None
+    primary_timeout_seconds: float | None = None
+    allow_sticky_fallback: bool = True
+
+
+def _depth_timeout_controls(
+    depth: ResearchDepth,
+    settings: Settings,
+) -> tuple[float, float, bool]:
+    if depth == ResearchDepth.QUICK:
+        return (
+            settings.llm_quick_timeout_seconds,
+            min(settings.llm_quick_timeout_seconds, settings.gemini_primary_timeout_seconds),
+            True,
+        )
+    if depth == ResearchDepth.DEEP:
+        return (
+            settings.llm_deep_timeout_seconds,
+            settings.llm_deep_timeout_seconds,
+            False,
+        )
+    return (
+        settings.llm_provider_timeout_seconds,
+        settings.gemini_primary_timeout_seconds,
+        True,
+    )
 
 
 def resolve_execution_profile(
@@ -72,14 +102,24 @@ def resolve_execution_profile(
     depth: ResearchDepth | str,
     settings: Settings,
 ) -> ResearchExecutionProfile:
-    """Tune retrieval top-k, reranker backend, and generation tokens to query difficulty."""
+    """Tune retrieval top-k, reranker backend, timeouts, and generation tokens to query difficulty."""
     try:
         resolved_depth = ResearchDepth(depth)
     except ValueError:
         resolved_depth = ResearchDepth.STANDARD
 
+    provider_timeout, primary_timeout, allow_sticky = _depth_timeout_controls(
+        resolved_depth, settings
+    )
+
     if not settings.adaptive_fast_path_enabled:
-        return ResearchExecutionProfile(mode=resolved_depth.value, settings=settings)
+        return ResearchExecutionProfile(
+            mode=resolved_depth.value,
+            settings=settings,
+            provider_timeout_seconds=provider_timeout,
+            primary_timeout_seconds=primary_timeout,
+            allow_sticky_fallback=allow_sticky,
+        )
 
     if resolved_depth == ResearchDepth.QUICK:
         return ResearchExecutionProfile(
@@ -94,6 +134,9 @@ def resolve_execution_profile(
                     "generation_max_new_tokens": min(settings.generation_max_new_tokens, 384),
                 }
             ),
+            provider_timeout_seconds=provider_timeout,
+            primary_timeout_seconds=primary_timeout,
+            allow_sticky_fallback=allow_sticky,
         )
 
     if resolved_depth == ResearchDepth.STANDARD and is_simple_question(question):
@@ -109,23 +152,27 @@ def resolve_execution_profile(
                     "generation_max_new_tokens": min(settings.generation_max_new_tokens, 448),
                 }
             ),
+            provider_timeout_seconds=provider_timeout,
+            primary_timeout_seconds=primary_timeout,
+            allow_sticky_fallback=allow_sticky,
         )
 
     if resolved_depth == ResearchDepth.STANDARD:
         return ResearchExecutionProfile(
             mode="standard",
-            settings=settings.model_copy(
-                update={
-                    "vector_top_k": min(settings.vector_top_k, 16),
-                    "keyword_top_k": min(settings.keyword_top_k, 16),
-                    "hybrid_candidate_k": min(settings.hybrid_candidate_k, 16),
-                    "final_context_k": min(settings.final_context_k, 6),
-                    "generation_max_new_tokens": min(settings.generation_max_new_tokens, 640),
-                }
-            ),
+            settings=settings,
+            provider_timeout_seconds=provider_timeout,
+            primary_timeout_seconds=primary_timeout,
+            allow_sticky_fallback=allow_sticky,
         )
 
-    return ResearchExecutionProfile(mode="deep", settings=settings)
+    return ResearchExecutionProfile(
+        mode="deep",
+        settings=settings,
+        provider_timeout_seconds=provider_timeout,
+        primary_timeout_seconds=primary_timeout,
+        allow_sticky_fallback=allow_sticky,
+    )
 
 
 def _plain_answer(answer: str) -> str:
@@ -315,9 +362,19 @@ def execute_research(
                     normalized_query,
                     evidence,
                     user_api_keys=user_keys or None,
+                    provider_timeout_seconds=profile.provider_timeout_seconds,
+                    primary_timeout_seconds=profile.primary_timeout_seconds,
+                    allow_sticky_fallback=profile.allow_sticky_fallback,
                 )
             except TypeError:
-                generated = active_generator.generate(normalized_query, evidence)
+                try:
+                    generated = active_generator.generate(
+                        normalized_query,
+                        evidence,
+                        user_api_keys=user_keys or None,
+                    )
+                except TypeError:
+                    generated = active_generator.generate(normalized_query, evidence)
 
             last_resp = getattr(active_generator, "last_response", None)
             if last_resp is not None and getattr(last_resp, "used_byok", False):

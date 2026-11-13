@@ -299,8 +299,12 @@ class LexicalFallbackReranker:
             if not query_terms:
                 scores.append(round(base + vector_boost, 6))
                 continue
-            text_lower = f"{candidate.section or ''} {candidate.text}".lower()
-            overlap = sum(1 for term in query_terms if term in text_lower) / len(query_terms)
+            text_terms = set(
+                _QUERY_TOKEN_RE.findall(
+                    f"{candidate.section or ''} {candidate.text}".lower()
+                )
+            )
+            overlap = len(query_terms & text_terms) / len(query_terms)
             scores.append(round(base + vector_boost + overlap, 6))
         return _apply_scores_and_sort(candidates, scores)
 

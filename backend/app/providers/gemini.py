@@ -32,12 +32,16 @@ class GeminiProviderAdapter(LLMProviderAdapter):
         fallback_model: str | None = None,
         base_url: str = "https://generativelanguage.googleapis.com/v1beta",
         client: httpx.Client | None = None,
+        primary_timeout_seconds: float | None = 8.0,
+        fallback_cooldown_seconds: float = 300.0,
     ) -> None:
         self.api_key = api_key
         self.default_model = default_model
         self.fallback_model = (fallback_model or "").strip() or None
         self.base_url = base_url.rstrip("/")
         self._client = client
+        self.primary_timeout_seconds = primary_timeout_seconds
+        self.fallback_cooldown_seconds = max(0.0, float(fallback_cooldown_seconds))
         self._prefer_fallback_until: float = 0.0
 
     def is_configured(self, api_key_override: str | None = None) -> bool:
@@ -119,19 +123,30 @@ class GeminiProviderAdapter(LLMProviderAdapter):
         if not effective_key:
             raise AuthenticationError(self.provider_name, "Missing GEMINI_API_KEY")
 
+        using_byok = bool(request.api_key_override)
         has_distinct_fallback = bool(
             request.model_override is None
             and self.fallback_model
             and self.fallback_model != self.default_model
         )
-        if has_distinct_fallback and monotonic() < self._prefer_fallback_until:
+        if (
+            has_distinct_fallback
+            and request.allow_sticky_fallback
+            and not using_byok
+            and monotonic() < self._prefer_fallback_until
+        ):
             assert self.fallback_model is not None
             return self._generate_with_model(self.fallback_model, effective_key, request)
 
         primary_model = request.model_override or self.default_model
+        primary_timeout_cap = (
+            request.primary_timeout_seconds
+            if request.primary_timeout_seconds is not None
+            else (self.primary_timeout_seconds if request.allow_sticky_fallback else None)
+        )
         primary_request = (
-            replace(request, timeout_seconds=min(request.timeout_seconds, 8.0))
-            if has_distinct_fallback
+            replace(request, timeout_seconds=min(request.timeout_seconds, primary_timeout_cap))
+            if has_distinct_fallback and primary_timeout_cap is not None
             else request
         )
         try:
@@ -145,7 +160,12 @@ class GeminiProviderAdapter(LLMProviderAdapter):
             if has_distinct_fallback:
                 assert self.fallback_model is not None
                 response = self._generate_with_model(self.fallback_model, effective_key, request)
-                self._prefer_fallback_until = monotonic() + 300.0
+                if (
+                    request.allow_sticky_fallback
+                    and not using_byok
+                    and self.fallback_cooldown_seconds > 0
+                ):
+                    self._prefer_fallback_until = monotonic() + self.fallback_cooldown_seconds
                 return response
             raise
 

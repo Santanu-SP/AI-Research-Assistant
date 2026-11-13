@@ -94,6 +94,9 @@ class GenerationService:
         model_check_ttl_seconds: float = 300.0,
         retry_backoff_seconds: float = 0.5,
         router: CentralizedLLMRouter | None = None,
+        provider_timeout_seconds: float | None = None,
+        primary_timeout_seconds: float | None = None,
+        allow_sticky_fallback: bool = True,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.model_name = model_name
@@ -110,6 +113,9 @@ class GenerationService:
         self.retry_backoff_seconds = retry_backoff_seconds
         self._model_verified_at: float | None = None
         self.router = router
+        self.provider_timeout_seconds = provider_timeout_seconds
+        self.primary_timeout_seconds = primary_timeout_seconds
+        self.allow_sticky_fallback = allow_sticky_fallback
         self.last_response: LLMResponse | None = None
 
     def close(self) -> None:
@@ -174,6 +180,9 @@ class GenerationService:
         *,
         user_api_keys: dict[str, str] | None = None,
         preferred_provider: str | None = None,
+        provider_timeout_seconds: float | None = None,
+        primary_timeout_seconds: float | None = None,
+        allow_sticky_fallback: bool | None = None,
     ) -> str:
         prompt = build_grounding_prompt(question, evidence)
         if self.router is not None or user_api_keys:
@@ -189,6 +198,21 @@ class GenerationService:
                     max_tokens=self.max_new_tokens,
                     temperature=self.temperature,
                     timeout_seconds=self.timeout_seconds,
+                    provider_timeout_seconds=(
+                        provider_timeout_seconds
+                        if provider_timeout_seconds is not None
+                        else self.provider_timeout_seconds
+                    ),
+                    primary_timeout_seconds=(
+                        primary_timeout_seconds
+                        if primary_timeout_seconds is not None
+                        else self.primary_timeout_seconds
+                    ),
+                    allow_sticky_fallback=(
+                        allow_sticky_fallback
+                        if allow_sticky_fallback is not None
+                        else self.allow_sticky_fallback
+                    ),
                 ),
                 user_api_keys=user_api_keys,
                 preferred_provider=preferred_provider,
