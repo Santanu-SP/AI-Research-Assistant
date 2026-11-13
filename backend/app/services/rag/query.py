@@ -201,9 +201,29 @@ def execute_research(
             research.update_research_lifecycle(
                 session, record.id, ProjectStatus.REVIEW_READY
             )
-            generated = (generator or generation_service_for(settings)).generate(
-                normalized_query, evidence
+            active_generator = generator or generation_service_for(settings)
+            from app.services.auth import api_keys as api_key_service
+
+            user_keys = api_key_service.get_decrypted_user_api_keys(
+                session, user_id, settings
             )
+            try:
+                generated = active_generator.generate(
+                    normalized_query,
+                    evidence,
+                    user_api_keys=user_keys or None,
+                )
+            except TypeError:
+                generated = active_generator.generate(normalized_query, evidence)
+
+            last_resp = getattr(active_generator, "last_response", None)
+            if last_resp is not None and getattr(last_resp, "used_byok", False):
+                api_key_service.record_key_usage(
+                    session,
+                    user_id,
+                    last_resp.provider,
+                    tokens=last_resp.usage.total_tokens,
+                )
             validated = CitationValidator().validate(generated, evidence)
             if not validated.citations:
                 # An answer that cites none of the evidence is not grounded;

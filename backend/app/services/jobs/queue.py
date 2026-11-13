@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass
 from datetime import timedelta
+import logging
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select, update
@@ -10,8 +12,22 @@ from sqlalchemy.orm import Session
 from app.core.time import utc_now
 from app.models.job import BackgroundJob
 
+logger = logging.getLogger(__name__)
+
 INGEST_DOCUMENT = "ingest_document"
+INGEST_AUDIO = "ingest_audio"
+INGEST_VIDEO = "ingest_video"
+INGEST_URL = "ingest_url"
+GENERATE_EMBEDDINGS = "generate_embeddings"
 RUN_RESEARCH = "run_research"
+
+ALL_INGEST_KINDS = (
+    INGEST_DOCUMENT,
+    INGEST_AUDIO,
+    INGEST_VIDEO,
+    INGEST_URL,
+    GENERATE_EMBEDDINGS,
+)
 
 QUEUED = "queued"
 RUNNING = "running"
@@ -27,11 +43,51 @@ class ClaimedJob:
     attempts: int
 
 
-def enqueue(session: Session, kind: str, target_id: UUID, *, commit: bool = True) -> BackgroundJob:
-    job = BackgroundJob(kind=kind, target_id=target_id, state=QUEUED, attempts=0, run_after=utc_now())
+def enqueue(
+    session: Session,
+    kind: str,
+    target_id: UUID,
+    *,
+    commit: bool = True,
+    settings: Any | None = None,
+) -> BackgroundJob:
+    """Create a background job idempotently and optionally dispatch to Celery/Redis."""
+    existing = session.scalar(
+        select(BackgroundJob)
+        .where(
+            BackgroundJob.kind == kind,
+            BackgroundJob.target_id == target_id,
+            BackgroundJob.state.in_((QUEUED, RUNNING)),
+        )
+        .limit(1)
+    )
+    if existing is not None:
+        return existing
+
+    job = BackgroundJob(
+        kind=kind,
+        target_id=target_id,
+        state=QUEUED,
+        attempts=0,
+        run_after=utc_now(),
+    )
     session.add(job)
     if commit:
         session.commit()
+    else:
+        session.flush()
+
+    if settings is not None and getattr(settings, "queue_backend", "database") == "celery":
+        try:
+            from app.services.jobs.celery_app import dispatch_celery_job
+
+            dispatch_celery_job(job.id, kind, target_id, settings=settings)
+        except Exception:
+            logger.warning(
+                "Celery dispatch unavailable; job remains queued in database for worker",
+                extra={"job_id": str(job.id), "kind": kind},
+                exc_info=True,
+            )
     return job
 
 
@@ -67,6 +123,28 @@ def claim_next(session: Session) -> ClaimedJob | None:
     if result.rowcount != 1:
         return None
     job = session.get(BackgroundJob, candidate)
+    if job is None:
+        return None
+    return ClaimedJob(id=job.id, kind=job.kind, target_id=job.target_id, attempts=job.attempts)
+
+
+def claim_by_id(session: Session, job_id: UUID) -> ClaimedJob | None:
+    """Claim a specific queued job by ID (used by Celery task consumers)."""
+    now = utc_now()
+    result = session.execute(
+        update(BackgroundJob)
+        .where(BackgroundJob.id == job_id, BackgroundJob.state == QUEUED)
+        .values(
+            state=RUNNING,
+            locked_at=now,
+            attempts=BackgroundJob.attempts + 1,
+            updated_at=now,
+        )
+    )
+    session.commit()
+    if result.rowcount != 1:
+        return None
+    job = session.get(BackgroundJob, job_id)
     if job is None:
         return None
     return ClaimedJob(id=job.id, kind=job.kind, target_id=job.target_id, attempts=job.attempts)
@@ -112,11 +190,12 @@ def stale_running_jobs(session: Session, stale_after_seconds: int) -> list[Backg
     )
 
 
-def has_active_job(session: Session, kind: str, target_id: UUID) -> bool:
+def has_active_job(session: Session, kind: str | tuple[str, ...], target_id: UUID) -> bool:
+    kinds = (kind,) if isinstance(kind, str) else kind
     return (
         session.scalar(
             select(BackgroundJob.id).where(
-                BackgroundJob.kind == kind,
+                BackgroundJob.kind.in_(kinds),
                 BackgroundJob.target_id == target_id,
                 BackgroundJob.state.in_((QUEUED, RUNNING)),
             ).limit(1)

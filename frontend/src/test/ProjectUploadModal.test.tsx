@@ -52,14 +52,14 @@ describe('ProjectUploadModal', () => {
     renderModal();
     expect(screen.getByText('Upload documents')).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: /Choose PDF or DOCX documents/i })
+      screen.getByRole('button', { name: /Choose (research documents|PDF or DOCX)/i })
     ).toBeInTheDocument();
   });
 
   it('shows upload button when files are queued', async () => {
     renderModal();
     const dropzone = screen.getByRole('button', {
-      name: /Choose PDF or DOCX documents/i,
+      name: /Choose (research documents|PDF or DOCX)/i,
     });
 
     // Simulate file input change via the hidden input

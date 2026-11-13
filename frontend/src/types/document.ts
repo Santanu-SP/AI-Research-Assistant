@@ -1,6 +1,26 @@
 export type DocumentStatus = 'uploaded' | 'processing' | 'indexed' | 'failed';
-export type DocumentFormat = 'pdf' | 'docx' | 'txt';
-export type SourceType = 'uploaded_file' | 'web_page' | 'doi' | 'openalex' | 'crossref';
+export type DocumentFormat =
+  | 'pdf'
+  | 'docx'
+  | 'txt'
+  | 'pptx'
+  | 'xlsx'
+  | 'html'
+  | 'audio'
+  | 'video'
+  | 'image'
+  | 'youtube'
+  | 'web';
+export type SourceType =
+  | 'uploaded_file'
+  | 'web_page'
+  | 'doi'
+  | 'openalex'
+  | 'crossref'
+  | 'youtube_transcript'
+  | 'audio_transcript'
+  | 'video_transcript'
+  | 'user_byok';
 export type ContentLevel = 'full_text' | 'abstract' | 'metadata_only' | 'web_page' | 'user_document';
 
 export interface Document {

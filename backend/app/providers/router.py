@@ -1,0 +1,313 @@
+"""Centralized LLM Router with cascading fallback, circuit breakers, health & quota tracking."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, replace
+from datetime import datetime, timezone
+import logging
+from threading import RLock
+from time import monotonic, sleep
+from typing import Callable
+
+from app.core.config import Settings
+from app.core.errors import AppError
+from app.providers.base import (
+    InvalidRequestError,
+    LLMProviderAdapter,
+    LLMRequest,
+    LLMResponse,
+    ProviderError,
+    RateLimitError,
+)
+from app.providers.cerebras import CerebrasProviderAdapter
+from app.providers.gemini import GeminiProviderAdapter
+from app.providers.mistral import MistralProviderAdapter
+from app.providers.ollama import OllamaProviderAdapter
+from app.providers.openrouter import OpenRouterProviderAdapter
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ProviderHealth:
+    provider: str
+    circuit_state: str = "closed"  # closed | open | half_open
+    consecutive_failures: int = 0
+    success_count: int = 0
+    failure_count: int = 0
+    avg_latency_ms: float = 0.0
+    cooldown_until: float | None = None
+    tokens_used_today: int = 0
+    daily_token_budget: int = 1_000_000
+    budget_day: str = ""
+    last_error: str | None = None
+
+
+class CentralizedLLMRouter:
+    """Routes LLM generation across Cerebras -> Gemini Flash -> Mistral -> OpenRouter (+ Ollama)."""
+
+    def __init__(
+        self,
+        adapters: list[LLMProviderAdapter],
+        *,
+        failure_threshold: int = 3,
+        cooldown_seconds: float = 60.0,
+        max_transient_retries: int = 1,
+        retry_backoff_seconds: float = 0.25,
+        daily_token_budget: int = 1_000_000,
+        on_event: Callable[[dict[str, object]], None] | None = None,
+    ) -> None:
+        self.adapters = list(adapters)
+        self.failure_threshold = max(1, failure_threshold)
+        self.cooldown_seconds = max(1.0, cooldown_seconds)
+        self.max_transient_retries = max(0, max_transient_retries)
+        self.retry_backoff_seconds = max(0.0, retry_backoff_seconds)
+        self.daily_token_budget = max(1000, daily_token_budget)
+        self._on_event = on_event
+        self._lock = RLock()
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        self._health: dict[str, ProviderHealth] = {
+            adapter.provider_name: ProviderHealth(
+                provider=adapter.provider_name,
+                daily_token_budget=self.daily_token_budget,
+                budget_day=today,
+            )
+            for adapter in self.adapters
+        }
+
+    def get_health_snapshot(self) -> dict[str, dict[str, object]]:
+        now = monotonic()
+        with self._lock:
+            result: dict[str, dict[str, object]] = {}
+            for name, state in self._health.items():
+                circuit = state.circuit_state
+                if circuit == "open" and state.cooldown_until is not None and now >= state.cooldown_until:
+                    circuit = "half_open"
+                result[name] = {
+                    "provider": state.provider,
+                    "circuit_state": circuit,
+                    "consecutive_failures": state.consecutive_failures,
+                    "success_count": state.success_count,
+                    "failure_count": state.failure_count,
+                    "avg_latency_ms": round(state.avg_latency_ms, 2),
+                    "tokens_used_today": state.tokens_used_today,
+                    "daily_token_budget": state.daily_token_budget,
+                    "last_error": state.last_error,
+                }
+            return result
+
+    def _is_provider_available(self, name: str, *, using_byok: bool) -> bool:
+        now = monotonic()
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        with self._lock:
+            state = self._health.get(name)
+            if state is None:
+                return True
+            if state.budget_day != today:
+                state.budget_day = today
+                state.tokens_used_today = 0
+            if not using_byok and state.tokens_used_today >= state.daily_token_budget:
+                return False
+            if state.circuit_state == "open":
+                if state.cooldown_until is not None and now >= state.cooldown_until:
+                    state.circuit_state = "half_open"
+                    return True
+                return False
+            return True
+
+    def _record_success(self, response: LLMResponse) -> None:
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        with self._lock:
+            state = self._health.setdefault(
+                response.provider,
+                ProviderHealth(provider=response.provider, daily_token_budget=self.daily_token_budget, budget_day=today),
+            )
+            if state.budget_day != today:
+                state.budget_day = today
+                state.tokens_used_today = 0
+            state.circuit_state = "closed"
+            state.consecutive_failures = 0
+            state.cooldown_until = None
+            state.success_count += 1
+            if not response.used_byok:
+                state.tokens_used_today += max(0, response.usage.total_tokens)
+            if state.avg_latency_ms == 0.0:
+                state.avg_latency_ms = response.latency_ms
+            else:
+                state.avg_latency_ms = 0.8 * state.avg_latency_ms + 0.2 * response.latency_ms
+
+    def _record_failure(self, provider: str, exc: ProviderError) -> None:
+        now = monotonic()
+        with self._lock:
+            state = self._health.setdefault(
+                provider,
+                ProviderHealth(provider=provider, daily_token_budget=self.daily_token_budget),
+            )
+            state.failure_count += 1
+            state.last_error = exc.message
+            if exc.trips_circuit:
+                state.consecutive_failures += 1
+                if isinstance(exc, RateLimitError) or state.consecutive_failures >= self.failure_threshold:
+                    state.circuit_state = "open"
+                    cooldown = exc.retry_after_seconds or self.cooldown_seconds
+                    state.cooldown_until = now + max(1.0, float(cooldown))
+
+    def generate(
+        self,
+        request: LLMRequest,
+        *,
+        user_api_keys: dict[str, str] | None = None,
+        preferred_provider: str | None = None,
+    ) -> LLMResponse:
+        keys = user_api_keys or {}
+        ordered_adapters = list(self.adapters)
+        if preferred_provider:
+            preferred = [a for a in ordered_adapters if a.provider_name == preferred_provider]
+            others = [a for a in ordered_adapters if a.provider_name != preferred_provider]
+            ordered_adapters = preferred + others
+
+        errors: list[ProviderError] = []
+        fallback_attempts = 0
+
+        for adapter in ordered_adapters:
+            provider = adapter.provider_name
+            byok_key = keys.get(provider) or request.api_key_override
+            if not adapter.is_configured(api_key_override=byok_key):
+                continue
+            if not self._is_provider_available(provider, using_byok=bool(byok_key)):
+                logger.info("Skipping LLM provider %s (circuit open or budget exceeded)", provider)
+                continue
+
+            provider_request = replace(request, api_key_override=byok_key)
+            attempt = 0
+            while True:
+                try:
+                    response = adapter.generate(provider_request)
+                    final_response = replace(
+                        response,
+                        fallback_attempts=fallback_attempts,
+                        used_byok=bool(byok_key),
+                    )
+                    self._record_success(final_response)
+                    if self._on_event:
+                        try:
+                            self._on_event(
+                                {
+                                    "event_type": "llm_generation",
+                                    "provider": final_response.provider,
+                                    "model": final_response.model,
+                                    "status": "success",
+                                    "latency_ms": final_response.latency_ms,
+                                    "prompt_tokens": final_response.usage.prompt_tokens,
+                                    "completion_tokens": final_response.usage.completion_tokens,
+                                    "total_tokens": final_response.usage.total_tokens,
+                                    "used_byok": final_response.used_byok,
+                                    "fallback_attempts": final_response.fallback_attempts,
+                                }
+                            )
+                        except Exception:
+                            pass
+                    return final_response
+                except ProviderError as exc:
+                    if isinstance(exc, InvalidRequestError):
+                        self._record_failure(provider, exc)
+                        raise AppError(
+                            f"Invalid LLM generation request: {exc.message}",
+                            status_code=422,
+                            code="generation_invalid_request",
+                        ) from exc
+
+                    if exc.retryable and attempt < self.max_transient_retries:
+                        delay = self.retry_backoff_seconds * (2**attempt)
+                        if delay > 0:
+                            sleep(delay)
+                        attempt += 1
+                        continue
+
+                    self._record_failure(provider, exc)
+                    errors.append(exc)
+                    fallback_attempts += 1
+                    logger.warning(
+                        "LLM provider %s failed (%s); cascading to next provider",
+                        provider,
+                        exc.message,
+                    )
+                    if self._on_event:
+                        try:
+                            self._on_event(
+                                {
+                                    "event_type": "llm_generation",
+                                    "provider": provider,
+                                    "model": getattr(adapter, "default_model", None),
+                                    "status": "error",
+                                    "error_code": exc.__class__.__name__,
+                                    "used_byok": bool(byok_key),
+                                }
+                            )
+                        except Exception:
+                            pass
+                    break
+
+        if errors:
+            summary = "; ".join(f"{e.provider}: {e.message}" for e in errors)
+            raise AppError(
+                f"All configured LLM providers failed ({summary})",
+                status_code=503,
+                code="generation_unavailable",
+            )
+        raise AppError(
+            "No LLM providers are configured or available",
+            status_code=503,
+            code="generation_unavailable",
+        )
+
+
+def build_router_for_settings(
+    settings: Settings,
+    *,
+    on_event: Callable[[dict[str, object]], None] | None = None,
+) -> CentralizedLLMRouter:
+    catalog: dict[str, LLMProviderAdapter] = {
+        "cerebras": CerebrasProviderAdapter(
+            api_key=settings.cerebras_api_key,
+            default_model=settings.cerebras_model_name,
+        ),
+        "gemini": GeminiProviderAdapter(
+            api_key=settings.gemini_api_key,
+            default_model=settings.gemini_model_name,
+        ),
+        "mistral": MistralProviderAdapter(
+            api_key=settings.mistral_api_key,
+            default_model=settings.mistral_model_name,
+        ),
+        "openrouter": OpenRouterProviderAdapter(
+            api_key=settings.openrouter_api_key,
+            default_model=settings.openrouter_model_name,
+        ),
+        "ollama": OllamaProviderAdapter(
+            base_url=settings.ollama_base_url,
+            default_model=settings.generation_model_name,
+        ),
+    }
+    raw_providers = settings.llm_router_providers
+    if isinstance(raw_providers, str):
+        order = [item.strip().lower() for item in raw_providers.split(",") if item.strip()]
+    else:
+        order = [str(item).strip().lower() for item in raw_providers if str(item).strip()]
+    adapters = [catalog[name] for name in order if name in catalog]
+    if not adapters:
+        adapters = [
+            catalog["gemini"],
+            catalog["openrouter"],
+            catalog["cerebras"],
+            catalog["mistral"],
+        ]
+    return CentralizedLLMRouter(
+        adapters,
+        failure_threshold=settings.llm_circuit_breaker_threshold,
+        cooldown_seconds=settings.llm_circuit_breaker_cooldown_seconds,
+        retry_backoff_seconds=settings.generation_retry_backoff_seconds,
+        daily_token_budget=settings.llm_daily_token_quota_per_provider,
+        on_event=on_event,
+    )
+

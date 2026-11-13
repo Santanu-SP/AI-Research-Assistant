@@ -33,6 +33,9 @@ class DocumentResponse(ApiSchema):
     parser_name: str | None
     parser_version: str | None
     ingestion_version: str | None
+    storage_backend: str = "local"
+    embedding_model: str | None = None
+    embedding_version: str | None = None
     page_count: int | None = Field(default=None, ge=0)
     uploaded_at: datetime
     processing_error: str | None
@@ -60,3 +63,17 @@ class DocumentChunkResponse(ApiSchema):
     chunk_index: int = Field(ge=0)
     token_count: int | None = Field(default=None, ge=0)
     node_metadata: dict[str, object] | None
+
+
+class UrlDocumentCreateRequest(ApiSchema):
+    url: str = Field(min_length=8, max_length=2048)
+    title: str | None = Field(default=None, max_length=500)
+    project_id: UUID | None = None
+
+
+class SignedUrlResponse(ApiSchema):
+    document_id: UUID
+    url: str
+    expires_in_seconds: int
+    storage_backend: str = "local"
+
