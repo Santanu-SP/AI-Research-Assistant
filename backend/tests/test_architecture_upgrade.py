@@ -1116,7 +1116,11 @@ def test_free_tier_graceful_fallbacks_reranker_vision_and_audio(tmp_path: Path) 
         )
 
     transcriber = audio_transcriber_for(
-        Settings(_env_file=None, gemini_api_key="gm-key", groq_api_key="groq-key"),
+        Settings(
+            _env_file=None,
+            gemini_api_key="gm-key",
+            groq_api_key="groq-key",
+        ),
         client=httpx.Client(transport=httpx.MockTransport(audio_gemini_handler)),
     )
     segs = transcriber.transcribe_file(wav_path)

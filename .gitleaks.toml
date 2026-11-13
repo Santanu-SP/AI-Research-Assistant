@@ -1,0 +1,8 @@
+title = "gitleaks config"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Placeholder keys in architecture upgrade tests"
+paths = ["backend/tests/test_architecture_upgrade.py"]
