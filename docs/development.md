@@ -219,3 +219,31 @@ pip install pip-audit && pip-audit -r backend/requirements.txt
 cd frontend && npm audit --omit=dev
 gitleaks git . --redact
 ```
+
+## Production Architecture Upgrade (Neon, R2, Celery, Multimodal, LLM Router & BYOK)
+
+### 1. Database Migration: Supabase to Neon PostgreSQL
+- Set `NEON_DATABASE_URL` (pooled `-pooler` endpoint) for runtime traffic and `NEON_DIRECT_DATABASE_URL` for Alembic migrations.
+- Run a dry-run migration check from Supabase to Neon:
+  ```bash
+  PYTHONPATH=backend python backend/scripts/migrate_supabase_to_neon.py --dry-run
+  ```
+- Execute the live copy and verification (row counts, document/chunk IDs, 1024-d vector dimensions, and `pgvector` cosine similarity):
+  ```bash
+  PYTHONPATH=backend python backend/scripts/migrate_supabase_to_neon.py --execute
+  ```
+- Existing Supabase configuration (`SUPABASE_DB_*`) remains supported for immediate zero-data-loss rollback (`--print-rollback`).
+
+### 2. Cloudflare R2 Object Storage & Free Database Job Queue
+- Set `STORAGE_BACKEND=r2` (**Standard storage class only** — 10 GB-month, 1M Class A ops, 10M Class B ops, and $0 egress free/month; avoid Infrequent Access) along with `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, and `R2_BUCKET_NAME` to store original uploaded files in Cloudflare R2 and serve signed download URLs via `GET /api/v1/documents/{id}/signed-url`.
+- Keep `QUEUE_BACKEND=database` for ₹0/month operation (uses Neon PostgreSQL `background_jobs` with `GET /api/v1/jobs/{job_id}`). Optionally switch to `QUEUE_BACKEND=celery` with `REDIS_URL=redis://localhost:6379/0` only if running Redis/Celery workers.
+
+### 3. Multimodal Ingestion & Hybrid RAG
+- **Supported Uploads**: `.pdf`, `.docx`, `.pptx`, `.xlsx`, `.html` (parsed locally at ₹0 via Docling & Python extractors), audio (`.mp3`, `.wav`, `.m4a`, `.ogg`, `.flac`, `.webm` via Groq `whisper-large-v3-turbo` with 25 MB Free upload limit and automatic Gemini `gemini-3.8-flash` fallback for files <= 15 MB), video (`.mp4`, `.mov`, `.mkv` with `VIDEO_MAX_FRAMES=3`), and images/diagrams (`.png`, `.jpg`, `.webp` via Gemini `gemini-3.8-flash` -> `gemini-3.1-flash-lite` fallback).
+- **URL Ingestion**: `POST /api/v1/documents/url` and `POST /api/v1/projects/{project_id}/documents/url` ingest YouTube transcripts (with timestamps) and public websites (via keyless `https://r.jina.ai` Reader + BeautifulSoup SSRF-protected fallback).
+- **Embeddings & Rerankers**: Switch between local `Qwen/Qwen3-Embedding-0.6B` and Cloudflare Workers AI `@cf/baai/bge-m3` (`EMBEDDING_PROVIDER=cloudflare`, 1024-d, 10,000 Neurons/day free), and between local `Qwen/Qwen3-Reranker-0.6B` and Cloudflare BGE Reranker (`RERANKER_PROVIDER=cloudflare`, `@cf/baai/bge-reranker-base`, with automatic zero-cost lexical fallback if free quota is exhausted). Avoid Jina Reranker for commercial/recurring workloads (one-time 10M starter tokens are CC-BY-NC non-commercial).
+
+### 4. Centralized LLM Router (₹0/Month Priority) & BYOK
+- Set `GENERATION_RUNTIME=router` with `LLM_ROUTER_PROVIDERS=["gemini","openrouter","cerebras","mistral"]` to prioritize recurring ₹0 free tiers first: **Google Gemini (`gemini-3.8-flash`) -> OpenRouter (`openrouter/free`, 50 RPD free)**, with optional Cerebras (`gpt-oss-120b`, one-time $5 30-day starter credit requiring a payment card) and Mistral (`mistral-small-4`, requires payment activation) left disabled unless configured, while `GENERATION_RUNTIME=ollama` preserves local `qwen3.5:9b`.
+- Users can manage encrypted-at-rest personal API keys via `GET /api/v1/auth/api-keys`, `PUT /api/v1/auth/api-keys/{provider}`, and `DELETE /api/v1/auth/api-keys/{provider}`.
+
