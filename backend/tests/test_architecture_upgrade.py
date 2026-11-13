@@ -25,6 +25,7 @@ from app.db.base import Base
 from app.db.neon_migration import generate_rollback_plan, migrate_database
 from app.db.session import create_db_engine, is_neon_pooled_url, normalize_database_url
 from app.domain.documents import DocumentStatus, DocumentType
+from app.domain.research import ResearchDepth
 from app.models.api_key import UserAPIKey
 from app.models.document import Document, DocumentChunk
 from app.models.user import User
@@ -41,7 +42,11 @@ from app.providers.cerebras import CerebrasProviderAdapter
 from app.providers.gemini import GeminiProviderAdapter
 from app.providers.mistral import MistralProviderAdapter
 from app.providers.openrouter import OpenRouterProviderAdapter
-from app.providers.router import CentralizedLLMRouter, build_router_for_settings
+from app.providers.router import (
+    CentralizedLLMRouter,
+    build_router_for_settings,
+    get_cached_router_for_settings,
+)
 from app.schemas.retrieval import RetrievalCandidate
 from app.services.documents.storage import R2DocumentStorage
 from app.services.ingestion.audio import (
@@ -55,8 +60,12 @@ from app.services.ingestion.vision import GeminiVisionAnalyzer, inspect_image_fo
 from app.services.ingestion.web import WebsiteIngestionAdapter, validate_public_url
 from app.services.ingestion.youtube import YouTubeIngestionAdapter, extract_youtube_video_id
 from app.services.observability.telemetry import record_telemetry_event
-from app.services.rag.embeddings import CloudflareWorkersAIEmbeddingService
+from app.services.rag.embeddings import (
+    CloudflareWorkersAIEmbeddingService,
+    _QueryEmbeddingCache,
+)
 from app.services.rag.generation import GenerationService
+from app.services.rag.query import is_simple_question, resolve_execution_profile
 from app.services.rag.reranking import (
     CloudflareBGERerankerService,
     JinaRerankerService,
@@ -1116,11 +1125,7 @@ def test_free_tier_graceful_fallbacks_reranker_vision_and_audio(tmp_path: Path) 
         )
 
     transcriber = audio_transcriber_for(
-        Settings(
-            _env_file=None,
-            gemini_api_key="gm-key",
-            groq_api_key="groq-key",
-        ),
+        Settings(_env_file=None, gemini_api_key="gm-key", groq_api_key="groq-key"),
         client=httpx.Client(transport=httpx.MockTransport(audio_gemini_handler)),
     )
     segs = transcriber.transcribe_file(wav_path)
@@ -1135,3 +1140,175 @@ def test_free_tier_graceful_fallbacks_reranker_vision_and_audio(tmp_path: Path) 
         too_big_transcriber.transcribe_file(wav_path)
     assert exc_info.value.code == "audio_file_too_large"
     assert exc_info.value.status_code == 413
+
+
+def test_adaptive_fast_path_and_lexical_reranking_profile() -> None:
+    cfg = Settings(_env_file=None, reranker_provider="local")
+    assert is_simple_question("What is FlashAttention?") is True
+    assert is_simple_question("Compare FlashAttention vs standard attention across all papers") is False
+    assert is_simple_question("") is False
+
+    quick_profile = resolve_execution_profile("Any question", ResearchDepth.QUICK, cfg)
+    assert quick_profile.mode == "quick"
+    assert quick_profile.settings.reranker_provider == "lexical"
+    assert quick_profile.settings.final_context_k <= 4
+    assert quick_profile.settings.generation_max_new_tokens <= 384
+
+    fast_standard = resolve_execution_profile("What is FlashAttention?", ResearchDepth.STANDARD, cfg)
+    assert fast_standard.mode == "fast_standard"
+    assert fast_standard.settings.reranker_provider == "lexical"
+    assert fast_standard.settings.final_context_k <= 5
+    assert fast_standard.settings.generation_max_new_tokens <= 448
+
+    complex_standard = resolve_execution_profile(
+        "Compare attention trade-offs across papers",
+        ResearchDepth.STANDARD,
+        cfg,
+    )
+    assert complex_standard.mode == "standard"
+    assert complex_standard.settings.reranker_provider == "local"
+
+    deep_profile = resolve_execution_profile("What is FlashAttention?", ResearchDepth.DEEP, cfg)
+    assert deep_profile.mode == "deep"
+    assert deep_profile.settings.reranker_provider == "local"
+    assert deep_profile.settings.final_context_k == cfg.final_context_k
+
+    reranker = reranker_service_for(Settings(_env_file=None, reranker_provider="lexical"))
+    assert isinstance(reranker, LexicalFallbackReranker)
+    low = RetrievalCandidate(
+        chunk_id=uuid4(),
+        document_id=uuid4(),
+        paper_title="Paper A",
+        authors=None,
+        doi=None,
+        page=1,
+        section="Comp",
+        text="Unrelated discussion of compilers.",
+        vector_score=0.2,
+        hybrid_score=0.015,
+    )
+    high = RetrievalCandidate(
+        chunk_id=uuid4(),
+        document_id=uuid4(),
+        paper_title="Paper B",
+        authors=["A. Author"],
+        doi=None,
+        page=2,
+        section="Attention",
+        text="FlashAttention tiles softmax attention in SRAM.",
+        vector_score=0.88,
+        hybrid_score=0.032,
+    )
+    ranked = reranker.rerank("What is FlashAttention?", [low, high])
+    assert ranked[0].chunk_id == high.chunk_id
+    assert (ranked[0].rerank_score or 0.0) > 0.0
+
+
+def test_query_embedding_cache_and_cached_router_failover(monkeypatch) -> None:
+    calls = 0
+
+    def compute(text: str) -> list[float]:
+        nonlocal calls
+        calls += 1
+        return [float(len(text)), 1.0]
+
+    cache = _QueryEmbeddingCache(maxsize=2)
+    first = cache.get_or_compute("What is LoRA?", compute)
+    first.append(999.0)  # caller mutation must not pollute cached tuple
+    second = cache.get_or_compute("What is LoRA?", compute)
+    assert calls == 1
+    assert second == [13.0, 1.0]
+    cache.get_or_compute("Q2", compute)
+    cache.get_or_compute("Q3", compute)
+    assert calls == 3
+    cache.get_or_compute("What is LoRA?", compute)  # evicted
+    assert calls == 4
+
+    # Router instances are cached across profile budget variations so breaker state persists.
+    base_cfg = Settings(_env_file=None, gemini_api_key="gm-1", openrouter_api_key="or-1")
+    fast_cfg = resolve_execution_profile("What is LoRA?", ResearchDepth.QUICK, base_cfg).settings
+    assert get_cached_router_for_settings(base_cfg) is get_cached_router_for_settings(fast_cfg)
+
+    # Gemini falls back to fallback_model seamlessly on 503 outage.
+    urls: list[str] = []
+
+    def gemini_fallback_handler(request: httpx.Request) -> httpx.Response:
+        urls.append(str(request.url))
+        if "gemini-3.8-flash" in str(request.url):
+            return httpx.Response(503, json={"error": {"message": "high demand"}})
+        return httpx.Response(
+            200,
+            json={
+                "candidates": [{"content": {"parts": [{"text": "LoRA uses low-rank adapters [S1]."}]}}],
+                "usageMetadata": {"promptTokenCount": 12, "candidatesTokenCount": 8, "totalTokenCount": 20},
+            },
+        )
+
+    adapter = GeminiProviderAdapter(
+        api_key="gm-key",
+        default_model="gemini-3.8-flash",
+        fallback_model="gemini-flash-lite-latest",
+        client=httpx.Client(transport=httpx.MockTransport(gemini_fallback_handler)),
+    )
+    resp = adapter.generate(LLMRequest(system_prompt="rules", user_prompt="prompt"))
+    assert "low-rank adapters" in resp.content
+    assert resp.model == "gemini-flash-lite-latest"
+    assert len(urls) == 2
+
+    # Subsequent call reuses sticky healthy fallback model directly without wasting time on primary.
+    resp_warm = adapter.generate(LLMRequest(system_prompt="rules", user_prompt="prompt"))
+    assert resp_warm.model == "gemini-flash-lite-latest"
+    assert len(urls) == 3
+
+    # When a backup provider exists, router fails over immediately without sleep retries.
+    monkeypatch.setattr("app.providers.router.sleep", lambda _s: (_ for _ in ()).throw(AssertionError("should not sleep when backup exists")))
+
+    class FailingOutageAdapter(LLMProviderAdapter):
+        provider_name = "gemini"
+        default_model = "gemini-3.8-flash"
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def is_configured(self, api_key_override: str | None = None) -> bool:
+            return True
+
+        def generate(self, request: LLMRequest) -> LLMResponse:
+            self.calls += 1
+            raise ProviderOutageError("gemini", "overloaded", status_code=503)
+
+    class BackupAdapter(LLMProviderAdapter):
+        provider_name = "openrouter"
+        default_model = "openrouter/free"
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def is_configured(self, api_key_override: str | None = None) -> bool:
+            return True
+
+        def generate(self, request: LLMRequest) -> LLMResponse:
+            self.calls += 1
+            assert (request.timeout_seconds or 999) <= 12.0
+            return LLMResponse(
+                provider="openrouter",
+                model="openrouter/free",
+                content="Fast backup [S1].",
+                usage=TokenUsage(total_tokens=10),
+            )
+
+    failing = FailingOutageAdapter()
+    backup = BackupAdapter()
+    router = CentralizedLLMRouter(
+        [failing, backup],
+        failure_threshold=1,
+        cooldown_seconds=60.0,
+        retry_backoff_seconds=1.0,
+        provider_timeout_seconds=12.0,
+    )
+    first_res = router.generate(LLMRequest(system_prompt="s", user_prompt="u", timeout_seconds=120.0))
+    second_res = router.generate(LLMRequest(system_prompt="s", user_prompt="u", timeout_seconds=120.0))
+    assert first_res.provider == "openrouter"
+    assert second_res.provider == "openrouter"
+    assert failing.calls == 1  # tripped circuit on first outage; second call skipped primary immediately
+    assert backup.calls == 2
