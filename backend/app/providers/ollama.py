@@ -14,6 +14,7 @@ from app.providers.base import (
     ProviderTimeoutError,
     TokenUsage,
     classify_http_error,
+    post_json_with_client,
 )
 
 
@@ -50,15 +51,12 @@ class OllamaProviderAdapter(LLMProviderAdapter):
         url = f"{self.base_url}/api/generate"
         started = monotonic()
         try:
-            if self._client is not None:
-                response = self._client.post(
-                    url,
-                    json=payload,
-                    timeout=request.timeout_seconds,
-                )
-            else:
-                with httpx.Client(timeout=request.timeout_seconds) as client:
-                    response = client.post(url, json=payload)
+            response = post_json_with_client(
+                self._client,
+                url,
+                json=payload,
+                timeout_seconds=request.timeout_seconds,
+            )
         except httpx.TimeoutException as exc:
             raise ProviderTimeoutError(self.provider_name, f"Ollama timed out: {exc}") from exc
         except httpx.HTTPError as exc:

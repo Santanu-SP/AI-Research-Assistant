@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from time import monotonic
 import httpx
 
@@ -10,10 +11,13 @@ from app.providers.base import (
     LLMProviderAdapter,
     LLMRequest,
     LLMResponse,
+    ModelUnavailableError,
     ProviderOutageError,
     ProviderTimeoutError,
+    RateLimitError,
     TokenUsage,
     classify_http_error,
+    post_json_with_client,
 )
 
 
@@ -25,23 +29,26 @@ class GeminiProviderAdapter(LLMProviderAdapter):
         *,
         api_key: str | None = None,
         default_model: str = "gemini-3.8-flash",
+        fallback_model: str | None = None,
         base_url: str = "https://generativelanguage.googleapis.com/v1beta",
         client: httpx.Client | None = None,
     ) -> None:
         self.api_key = api_key
         self.default_model = default_model
+        self.fallback_model = (fallback_model or "").strip() or None
         self.base_url = base_url.rstrip("/")
         self._client = client
+        self._prefer_fallback_until: float = 0.0
 
     def is_configured(self, api_key_override: str | None = None) -> bool:
         return bool(api_key_override or self.api_key)
 
-    def generate(self, request: LLMRequest) -> LLMResponse:
-        effective_key = request.api_key_override or self.api_key
-        if not effective_key:
-            raise AuthenticationError(self.provider_name, "Missing GEMINI_API_KEY")
-
-        model = request.model_override or self.default_model
+    def _generate_with_model(
+        self,
+        model: str,
+        effective_key: str,
+        request: LLMRequest,
+    ) -> LLMResponse:
         payload = {
             "systemInstruction": {
                 "parts": [{"text": request.system_prompt}],
@@ -64,16 +71,13 @@ class GeminiProviderAdapter(LLMProviderAdapter):
         url = f"{self.base_url}/models/{model}:generateContent"
         started = monotonic()
         try:
-            if self._client is not None:
-                response = self._client.post(
-                    url,
-                    headers=headers,
-                    json=payload,
-                    timeout=request.timeout_seconds,
-                )
-            else:
-                with httpx.Client(timeout=request.timeout_seconds) as client:
-                    response = client.post(url, headers=headers, json=payload)
+            response = post_json_with_client(
+                self._client,
+                url,
+                headers=headers,
+                json=payload,
+                timeout_seconds=request.timeout_seconds,
+            )
         except httpx.TimeoutException as exc:
             raise ProviderTimeoutError(self.provider_name, f"Request timed out: {exc}") from exc
         except httpx.HTTPError as exc:
@@ -109,4 +113,39 @@ class GeminiProviderAdapter(LLMProviderAdapter):
             latency_ms=latency_ms,
             used_byok=bool(request.api_key_override),
         )
+
+    def generate(self, request: LLMRequest) -> LLMResponse:
+        effective_key = request.api_key_override or self.api_key
+        if not effective_key:
+            raise AuthenticationError(self.provider_name, "Missing GEMINI_API_KEY")
+
+        has_distinct_fallback = bool(
+            request.model_override is None
+            and self.fallback_model
+            and self.fallback_model != self.default_model
+        )
+        if has_distinct_fallback and monotonic() < self._prefer_fallback_until:
+            assert self.fallback_model is not None
+            return self._generate_with_model(self.fallback_model, effective_key, request)
+
+        primary_model = request.model_override or self.default_model
+        primary_request = (
+            replace(request, timeout_seconds=min(request.timeout_seconds, 8.0))
+            if has_distinct_fallback
+            else request
+        )
+        try:
+            return self._generate_with_model(primary_model, effective_key, primary_request)
+        except (
+            ModelUnavailableError,
+            ProviderOutageError,
+            ProviderTimeoutError,
+            RateLimitError,
+        ):
+            if has_distinct_fallback:
+                assert self.fallback_model is not None
+                response = self._generate_with_model(self.fallback_model, effective_key, request)
+                self._prefer_fallback_until = monotonic() + 300.0
+                return response
+            raise
 

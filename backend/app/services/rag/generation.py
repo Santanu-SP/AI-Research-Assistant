@@ -12,7 +12,7 @@ import httpx
 from app.core.config import Settings
 from app.core.errors import AppError
 from app.providers.base import LLMRequest, LLMResponse
-from app.providers.router import CentralizedLLMRouter, build_router_for_settings
+from app.providers.router import CentralizedLLMRouter, get_cached_router_for_settings
 from app.schemas.rag import EvidenceItem
 
 logger = logging.getLogger(__name__)
@@ -181,7 +181,7 @@ class GenerationService:
             if active_router is None:
                 from app.core.config import get_settings
 
-                active_router = build_router_for_settings(get_settings())
+                active_router = get_cached_router_for_settings(get_settings())
             llm_response = active_router.generate(
                 LLMRequest(
                     system_prompt=GROUNDING_RULES,
@@ -283,7 +283,7 @@ def generation_service_for(settings: Settings) -> GenerationService:
             connect_timeout_seconds=settings.generation_connect_timeout_seconds,
             max_retries=settings.generation_max_retries,
             model_check_ttl_seconds=settings.generation_model_check_ttl_seconds,
-            router=build_router_for_settings(settings),
+            router=get_cached_router_for_settings(settings),
         )
     return _cached_generation_service(
         settings.ollama_base_url,
