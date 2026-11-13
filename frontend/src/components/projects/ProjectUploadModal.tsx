@@ -33,23 +33,7 @@ interface ProjectUploadModalProps {
   onUploaded: (document: Document) => void;
 }
 
-const ALLOWED_EXTENSIONS = [
-  'pdf',
-  'docx',
-  'pptx',
-  'xlsx',
-  'html',
-  'htm',
-  'mp3',
-  'wav',
-  'm4a',
-  'ogg',
-  'flac',
-  'mp4',
-  'png',
-  'jpg',
-  'jpeg',
-];
+const ALLOWED_EXTENSIONS = ['pdf', 'docx'];
 const MAX_SIZE_BYTES = 100 * 1024 * 1024; // 100 MB
 
 let fileIdCounter = 0;
@@ -61,7 +45,7 @@ const validateFile = (
   if (!ALLOWED_EXTENSIONS.includes(ext)) {
     return {
       valid: false,
-      error: `Unsupported format. Supported: PDF, DOCX, PPTX, XLSX, HTML, Audio (MP3, WAV, M4A, OGG, FLAC), Video (MP4) (got .${ext || 'unknown'}).`,
+      error: `Unsupported format. Please use PDF or DOCX (got .${ext || 'unknown'}).`,
     };
   }
   if (file.size > MAX_SIZE_BYTES) {
@@ -289,7 +273,7 @@ export const ProjectUploadModal: React.FC<ProjectUploadModalProps> = ({
             }}
             role="button"
             tabIndex={0}
-            aria-label="Choose research documents or media files"
+            aria-label="Choose PDF or DOCX documents"
             className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed px-6 py-8 text-center transition-colors duration-150 ${
               dragOver
                 ? 'border-accent bg-accent-soft'
@@ -299,7 +283,7 @@ export const ProjectUploadModal: React.FC<ProjectUploadModalProps> = ({
             <input
               ref={fileInputRef}
               type="file"
-              accept=".pdf,.docx,.pptx,.xlsx,.html,.htm,.mp3,.wav,.m4a,.ogg,.flac,.mp4,.png,.jpg,.jpeg"
+              accept=".pdf,.docx"
               multiple
               onChange={handleFileChange}
               className="hidden"
@@ -310,7 +294,7 @@ export const ProjectUploadModal: React.FC<ProjectUploadModalProps> = ({
             <p className="font-medium text-sm text-ink mb-1">
               Drop files here or click to browse
             </p>
-            <p className="text-xs text-ink-muted">PDF, Word, Slides, Sheets, HTML, Audio (MP3, WAV, M4A) & Video</p>
+            <p className="text-xs text-ink-muted">PDF and DOCX</p>
           </div>
 
           {queue.length > 0 && (

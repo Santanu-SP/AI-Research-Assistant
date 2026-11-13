@@ -47,7 +47,6 @@ def test_cors_does_not_allow_unconfigured_origin(client: TestClient) -> None:
 
 def test_development_cors_allows_private_lan_origin_when_opted_in() -> None:
     settings = Settings(
-        _env_file=None,
         app_environment="development",
         cors_allow_local_network=True,
         worker_enabled=False,
@@ -85,14 +84,13 @@ def test_application_error_uses_shared_response_contract(
 
 
 def test_settings_accept_future_postgresql_url() -> None:
-    settings = Settings(_env_file=None, database_url="postgresql+psycopg://user:pass@db/app")
+    settings = Settings(database_url="postgresql+psycopg://user:pass@db/app")
 
     assert settings.database_url.startswith("postgresql+psycopg://")
 
 
 def test_settings_builds_a_secure_supabase_url_from_connection_fields() -> None:
     settings = Settings(
-        _env_file=None,
         SUPABASE_DB_USER="postgres.example",
         SUPABASE_DB_PASSWORD="reserved@characters?are/safe",
         SUPABASE_DB_HOST="aws-0-example.pooler.supabase.com",

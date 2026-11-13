@@ -1,4 +1,17 @@
-"""In-process background worker for ingestion, multimodal, embedding, and research jobs."""
+"""In-process background worker for ingestion and research jobs.
+
+Each API process starts ``worker_threads`` daemon threads (see
+``Settings.worker_enabled``). They claim rows from ``background_jobs``,
+run the blocking work off the event loop, and periodically:
+
+* re-queue (or fail) jobs whose worker died mid-run,
+* mark documents stuck in ``processing`` without a live job as failed so
+  the user can retry them, and
+* purge expired login sessions and OAuth states.
+
+The same loop can run on its own with ``python -m app.worker`` when you want
+API and workers in separate processes.
+"""
 
 from __future__ import annotations
 
@@ -21,8 +34,8 @@ from app.models.document import Document
 from app.models.research import Research
 from app.services.auth import sessions as auth_sessions
 from app.services.documents import records as document_records
-from app.services.documents.storage import storage_for_settings
-from app.services.ingestion.pipeline import process_document, reembed_document
+from app.services.documents.storage import LocalDocumentStorage
+from app.services.ingestion.pipeline import process_document
 from app.services.jobs import queue as job_queue
 
 logger = logging.getLogger(__name__)
@@ -37,15 +50,8 @@ def _run_ingestion(session: Session, document_id: UUID, settings: Settings) -> N
     document = session.get(Document, document_id)
     if document is None or document.status == DocumentStatus.INDEXED:
         return
-    storage = storage_for_settings(settings)
+    storage = LocalDocumentStorage(settings.document_upload_dir, settings.document_max_upload_bytes)
     process_document(session, document, storage.path_for(document.stored_name), settings)
-
-
-def _run_reembedding(session: Session, document_id: UUID, settings: Settings) -> None:
-    document = session.get(Document, document_id)
-    if document is None:
-        return
-    reembed_document(session, document, settings)
 
 
 def _run_research(session: Session, research_id: UUID, settings: Settings) -> None:
@@ -60,7 +66,7 @@ def _run_research(session: Session, research_id: UUID, settings: Settings) -> No
 
 
 def _fail_target(session: Session, kind: str, target_id: UUID) -> None:
-    if kind in job_queue.ALL_INGEST_KINDS:
+    if kind == job_queue.INGEST_DOCUMENT:
         document_records.mark_interrupted(session, target_id, INTERRUPTED_MESSAGE)
     elif kind == job_queue.RUN_RESEARCH:
         from app.services.research import runs as research_runs
@@ -68,17 +74,6 @@ def _fail_target(session: Session, kind: str, target_id: UUID) -> None:
         record = session.get(Research, target_id)
         if record is not None and record.project_status != ProjectStatus.REPORT_READY:
             research_runs.mark_research_failed(session, target_id)
-
-
-def default_job_handlers() -> dict[str, JobHandler]:
-    return {
-        job_queue.INGEST_DOCUMENT: _run_ingestion,
-        job_queue.INGEST_AUDIO: _run_ingestion,
-        job_queue.INGEST_VIDEO: _run_ingestion,
-        job_queue.INGEST_URL: _run_ingestion,
-        job_queue.GENERATE_EMBEDDINGS: _run_reembedding,
-        job_queue.RUN_RESEARCH: _run_research,
-    }
 
 
 class JobWorker:
@@ -90,7 +85,10 @@ class JobWorker:
     ) -> None:
         self.session_factory = session_factory
         self.settings = settings
-        self.handlers = handlers or default_job_handlers()
+        self.handlers = handlers or {
+            job_queue.INGEST_DOCUMENT: _run_ingestion,
+            job_queue.RUN_RESEARCH: _run_research,
+        }
         self._wake = threading.Event()
         self._stop = threading.Event()
         self._threads: list[threading.Thread] = []
@@ -145,15 +143,6 @@ class JobWorker:
             self._execute(session, claimed)
             return True
 
-    def run_job_by_id(self, job_id: UUID) -> bool:
-        """Claim and run a specific job by ID (used by Celery workers)."""
-        with self.session_factory() as session:
-            claimed = job_queue.claim_by_id(session, job_id)
-            if claimed is None:
-                return False
-            self._execute(session, claimed)
-            return True
-
     def run_until_empty(self, limit: int = 100) -> int:
         processed = 0
         while processed < limit and self.run_once():
@@ -169,6 +158,8 @@ class JobWorker:
         try:
             handler(session, job.target_id, self.settings)
         except AppError as exc:
+            # Expected, user-visible failures (bad PDF, missing model, ...)
+            # are already recorded on the target; retrying will not help.
             session.rollback()
             job_queue.mark_failed(session, job.id, f"{exc.code}: {exc.message}")
             logger.info(
@@ -190,14 +181,13 @@ class JobWorker:
                 extra={"job_id": str(job.id), "kind": job.kind, "attempt": job.attempts},
             )
             return
-        duration_ms = round((monotonic() - started) * 1000, 1)
         job_queue.mark_succeeded(session, job.id)
         logger.info(
             "Background job succeeded",
             extra={
                 "job_id": str(job.id),
                 "kind": job.kind,
-                "duration_ms": duration_ms,
+                "duration_ms": round((monotonic() - started) * 1000, 1),
             },
         )
 
@@ -250,10 +240,12 @@ class JobWorker:
         ).all()
         count = 0
         for document_id in stuck:
-            if job_queue.has_active_job(session, job_queue.ALL_INGEST_KINDS, document_id):
+            if job_queue.has_active_job(session, job_queue.INGEST_DOCUMENT, document_id):
                 continue
             document_records.mark_interrupted(session, document_id, INTERRUPTED_MESSAGE)
             count += 1
+        # Uploads saved but never queued (for example the process died
+        # between the two steps) are queued now, or failed in inline mode.
         waiting = session.scalars(
             select(Document.id).where(
                 Document.status == DocumentStatus.UPLOADED,
@@ -261,7 +253,7 @@ class JobWorker:
             )
         ).all()
         for document_id in waiting:
-            if job_queue.has_active_job(session, job_queue.ALL_INGEST_KINDS, document_id):
+            if job_queue.has_active_job(session, job_queue.INGEST_DOCUMENT, document_id):
                 continue
             if self.settings.ingestion_mode == "background":
                 job_queue.enqueue(session, job_queue.INGEST_DOCUMENT, document_id)
@@ -277,9 +269,7 @@ class JobWorker:
         try:
             if self.settings.embedding_enabled:
                 embedding_service_for(self.settings)
-            reranker = reranker_service_for(self.settings)
-            if hasattr(reranker, "_load_model"):
-                reranker._load_model()
+            reranker_service_for(self.settings)._load_model()
             logger.info("Model warm-up finished")
         except Exception:
             logger.exception("Model warm-up failed; models will load on first use")

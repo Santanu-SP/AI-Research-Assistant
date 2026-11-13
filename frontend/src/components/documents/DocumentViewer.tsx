@@ -18,8 +18,6 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({ document: doc, o
   const [failed, setFailed] = useState(false);
   const closeRef = useRef<HTMLButtonElement>(null);
   const isPdf = doc.type === 'pdf';
-  const isAudio = doc.type === 'audio';
-  const isVideo = doc.type === 'video';
   const title = doc.title || doc.name;
 
   useEffect(() => {
@@ -34,9 +32,7 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({ document: doc, o
         return res.blob();
       })
       .then((blob) => {
-        let mediaType = doc.mimeType || 'application/octet-stream';
-        if (isPdf) mediaType = 'application/pdf';
-        objectUrl = URL.createObjectURL(new Blob([blob], { type: mediaType }));
+        objectUrl = URL.createObjectURL(isPdf ? new Blob([blob], { type: 'application/pdf' }) : blob);
         setUrl(objectUrl);
       })
       .catch(() => {
@@ -46,7 +42,7 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({ document: doc, o
       controller.abort();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [doc.id, doc.mimeType, isPdf]);
+  }, [doc.id, isPdf]);
 
   useEffect(() => {
     closeRef.current?.focus();
@@ -117,35 +113,10 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({ document: doc, o
             </div>
           ) : isPdf ? (
             <iframe title={title} src={url} className="h-full w-full border-0" />
-          ) : isAudio ? (
-            <div className="flex h-full items-center justify-center p-6 text-center">
-              <div className="max-w-md w-full bg-panel p-6 rounded-xl border border-line shadow-xs">
-                <p className="text-sm font-medium text-ink mb-4">{doc.name}</p>
-                <audio controls className="w-full mb-4" src={url}>
-                  Your browser does not support audio playback.
-                </audio>
-                <a
-                  href={url}
-                  download={doc.name}
-                  className="inline-flex h-9 items-center gap-2 rounded-md bg-solid px-3.5 text-[13px] font-medium text-on-solid shadow-xs hover:bg-solid-hover"
-                >
-                  <Download className="h-4 w-4" />
-                  Download Audio
-                </a>
-              </div>
-            </div>
-          ) : isVideo ? (
-            <div className="flex h-full items-center justify-center p-6 text-center">
-              <div className="max-w-2xl w-full bg-panel p-4 rounded-xl border border-line shadow-xs">
-                <video controls className="w-full max-h-[70vh] rounded-lg mb-4" src={url}>
-                  Your browser does not support video playback.
-                </video>
-              </div>
-            </div>
           ) : (
             <div className="flex h-full items-center justify-center p-6 text-center">
               <div>
-                <p className="text-sm font-medium text-ink">This document format can’t be previewed directly.</p>
+                <p className="text-sm font-medium text-ink">Word documents can’t be previewed here.</p>
                 <a
                   href={url}
                   download={doc.name}

@@ -21,8 +21,3 @@ htmlcov/
 .ollama/
 .idea/
 .vscode/
-.neon
-node_modules/
-/neon.ts
-/package.json
-/package-lock.json

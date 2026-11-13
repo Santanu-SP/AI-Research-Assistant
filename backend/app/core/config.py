@@ -8,8 +8,6 @@ from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import URL
 
-from app.db.session import normalize_database_url
-
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_DATABASE_URL = "sqlite:///./backend/data/research_assistant.db"
@@ -51,11 +49,10 @@ class Settings(BaseSettings):
     enable_api_docs: bool | None = None
     api_v1_prefix: str = "/api/v1"
     database_url: str = DEFAULT_DATABASE_URL
-    # Neon PostgreSQL configuration (pooled URL for runtime, direct URL for migrations).
-    neon_database_url: str | None = None
-    neon_direct_database_url: str | None = None
-    database_url_unpooled: str | None = None
-    # Legacy Supabase configuration preserved for backward compatibility and migration.
+    # These optional values support the connection details copied from the
+    # Supabase Connect dialog.  ``DATABASE_URL`` remains the preferred generic
+    # setting; when all five values are present, this app safely constructs it
+    # with the psycopg driver, URL-encoded credentials, and TLS enabled.
     supabase_db_user: str | None = Field(
         default=LEGACY_SUPABASE_DEFAULTS["user"],
         validation_alias="SUPABASE_DB_USER",
@@ -76,28 +73,16 @@ class Settings(BaseSettings):
         default=LEGACY_SUPABASE_DEFAULTS["dbname"],
         validation_alias="SUPABASE_DB_NAME",
     )
-    # Storage configuration (local filesystem or Cloudflare R2 S3-compatible storage).
-    storage_backend: Literal["local", "r2"] = "local"
     document_upload_dir: Path = Path("backend/data/uploads")
     document_max_upload_bytes: int = Field(default=25 * 1024 * 1024, gt=0)
-    r2_account_id: str | None = None
-    r2_access_key_id: str | None = None
-    r2_secret_access_key: str | None = None
-    r2_bucket_name: str | None = None
-    r2_endpoint_url: str | None = None
-    r2_region: str = "auto"
-    r2_signed_url_ttl_seconds: int = Field(default=900, ge=60, le=86400)
-
-    # Ingestion & chunking configuration.
     document_chunk_size: int = Field(default=4000, ge=256)
     document_chunk_overlap: int = Field(default=400, ge=0)
     document_ingestion_backend: Literal["docling", "legacy"] = "docling"
     ingestion_version: str = Field(default="docling-llamaindex-v1", min_length=1)
     document_chunk_max_tokens: int = Field(default=512, ge=64, le=8192)
     docling_ocr_mode: Literal["auto", "disabled", "force"] = "auto"
-
-    # Authentication & security.
     auth_session_days: int = Field(default=7, ge=1, le=30)
+    # Unset means "secure in production, plain HTTP everywhere else".
     auth_cookie_secure: bool | None = None
     auth_max_sessions_per_user: int = Field(default=10, ge=1, le=100)
     frontend_url: str = "http://localhost:3000"
@@ -105,16 +90,10 @@ class Settings(BaseSettings):
     google_client_secret: str | None = None
     google_redirect_uri: str = "http://localhost:8000/api/v1/auth/google/callback"
     google_oauth_state_minutes: int = Field(default=10, ge=1, le=30)
-    api_key_encryption_secret: str = "dev-only-byok-encryption-secret-change-in-production"
-
-    # Embeddings configuration (local Qwen3-Embedding-0.6B or Cloudflare Workers AI).
-    embedding_provider: Literal["local", "cloudflare"] = "local"
     embedding_model_name: str = "Qwen/Qwen3-Embedding-0.6B"
+    # Pinned Hugging Face commits so a changed upstream repo cannot swap the
+    # model (or its code) underneath the app. Use "main" to opt out.
     embedding_model_revision: str = "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3"
-    cloudflare_account_id: str | None = None
-    cloudflare_api_token: str | None = None
-    cloudflare_embedding_model: str = "@cf/baai/bge-m3"
-    cloudflare_reranker_model: str = "@cf/baai/bge-reranker-base"
     model_trust_remote_code: bool = False
     model_device: str = "auto"
     model_cache_dir: Path | None = None
@@ -123,78 +102,22 @@ class Settings(BaseSettings):
     vector_top_k: int = Field(default=24, ge=1, le=100)
     keyword_top_k: int = Field(default=24, ge=1, le=100)
     hybrid_candidate_k: int = Field(default=24, ge=1, le=30)
-    rrf_k: int = Field(default=60, ge=1, le=200)
     embedding_enabled: bool = True
-    allow_sqlite_retrieval_fallback: bool = False
-
-    # Reranking configuration (local Qwen3-Reranker-0.6B, Jina Reranker API, or Cloudflare BGE).
-    reranker_provider: Literal["local", "jina", "cloudflare"] = "local"
     reranker_model_name: str = "Qwen/Qwen3-Reranker-0.6B"
     reranker_model_revision: str = "e61197ed45024b0ed8a2d74b80b4d909f1255473"
     reranker_batch_size: int = Field(default=8, ge=1, le=64)
-    jina_api_key: str | None = None
-    jina_reranker_model: str = "jina-reranker-v2-base-multilingual"
-    jina_reader_base_url: str = "https://r.jina.ai"
     final_context_k: int = Field(default=8, ge=1, le=12)
     minimum_evidence_count: int = Field(default=1, ge=1, le=8)
     reranker_min_score: float = 0.0
-
-    # Multimodal ingestion (Groq Whisper, FFmpeg, Gemini Flash Vision).
-    groq_api_key: str | None = None
-    groq_base_url: str = "https://api.groq.com/openai/v1"
-    groq_whisper_model: str = "whisper-large-v3-turbo"
-    ffmpeg_binary: str = "ffmpeg"
-    ffprobe_binary: str = "ffprobe"
-    video_max_frames: int = Field(default=3, ge=1, le=30)
-    video_scene_threshold: float = Field(default=0.35, ge=0.05, le=0.95)
-    vision_enabled: bool = True
-    vision_min_image_dimension: int = Field(default=160, ge=32, le=4096)
-
-    # Centralized LLM Router & Generation providers.
-    generation_runtime: Literal["ollama", "router"] = "ollama"
+    generation_runtime: str = "ollama"
     generation_model_name: str = "qwen3.5:9b"
     ollama_base_url: str = "http://localhost:11434"
-    llm_router_providers: list[str] = Field(
-        default_factory=lambda: ["gemini", "openrouter", "cerebras", "mistral"]
-    )
-    cerebras_api_key: str | None = None
-    cerebras_base_url: str = "https://api.cerebras.ai/v1"
-    cerebras_model_name: str = "gpt-oss-120b"
-    gemini_api_key: str | None = None
-    gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
-    gemini_model_name: str = "gemini-3.8-flash"
-    gemini_fallback_model_name: str = "gemini-3.1-flash-lite"
-    mistral_api_key: str | None = None
-    mistral_base_url: str = "https://api.mistral.ai/v1"
-    mistral_model_name: str = "mistral-small-4"
-    openrouter_api_key: str | None = None
-    openrouter_base_url: str = "https://openrouter.ai/api/v1"
-    openrouter_model_name: str = "openrouter/free"
-    llm_circuit_breaker_threshold: int = Field(default=3, ge=1, le=20)
-    llm_circuit_breaker_cooldown_seconds: float = Field(default=60.0, ge=1.0, le=3600.0)
-    llm_daily_token_quota_per_provider: int = Field(default=250_000, ge=1000)
-
     generation_max_new_tokens: int = Field(default=768, ge=64, le=4096)
     generation_temperature: float = Field(default=0.1, ge=0.0, le=1.0)
     generation_timeout_seconds: float = Field(default=120.0, gt=0.0, le=600.0)
     generation_connect_timeout_seconds: float = Field(default=5.0, gt=0.0, le=60.0)
     generation_max_retries: int = Field(default=2, ge=0, le=5)
-    generation_retry_backoff_seconds: float = Field(default=0.5, ge=0.0, le=30.0)
-    generation_model_check_ttl_seconds: float = Field(default=300, ge=0)
-
-    # Optional client-side AI integrations (Puter.js, WebLLM).
-    enable_puter_ai: bool = True
-    enable_webllm: bool = True
-    webllm_default_model: str = "Qwen2.5-1.5B-Instruct-q4f16_1-MLC"
-
-    # Observability (Langfuse & internal telemetry).
-    telemetry_enabled: bool = True
-    langfuse_public_key: str | None = None
-    langfuse_secret_key: str | None = None
-    langfuse_host: str = "https://cloud.langfuse.com"
-    langfuse_enabled: bool = False
-
-    # HTTP & CORS settings.
+    generation_model_check_ttl_seconds: int = Field(default=300, ge=0)
     cors_origins: list[str] = Field(
         default_factory=lambda: [
             "http://localhost:3000",
@@ -202,18 +125,20 @@ class Settings(BaseSettings):
         ]
     )
     cors_origin_regex: str | None = None
+    # Private-LAN origins are an explicit development opt-in only.
     cors_allow_local_network: bool = False
+    # Reject cookie-authenticated unsafe requests that carry neither an
+    # Origin nor a Referer header (defence in depth on top of SameSite=Lax).
     require_origin_header: bool = True
+    # Requests larger than this are refused before the body is parsed.
+    # Uploads may use document_max_upload_bytes plus multipart overhead.
     max_json_body_bytes: int = Field(default=1024 * 1024, ge=1024)
-
-    # Database connection pool (tuned for Neon PostgreSQL & concurrent FastAPI requests).
-    db_pool_size: int = Field(default=10, ge=1, le=200)
-    db_max_overflow: int = Field(default=20, ge=0, le=200)
+    # Database pool. Sized above the default 40-thread FastAPI worker pool so
+    # sync endpoints never queue on a connection for long.
+    db_pool_size: int = Field(default=20, ge=1, le=200)
+    db_max_overflow: int = Field(default=30, ge=0, le=200)
     db_pool_timeout_seconds: float = Field(default=10.0, gt=0.0, le=120.0)
-    db_pool_recycle_seconds: int = Field(default=300, ge=30, le=7200)
-    db_pool_use_lifo: bool = True
-
-    # Rate limiting.
+    # In-process rate limiting (per worker process).
     rate_limit_enabled: bool = True
     rate_limit_login_per_minute: int = Field(default=10, ge=1)
     rate_limit_login_per_account_per_hour: int = Field(default=30, ge=1)
@@ -222,15 +147,9 @@ class Settings(BaseSettings):
     rate_limit_upload_per_minute: int = Field(default=20, ge=1)
     rate_limit_oauth_start_per_minute: int = Field(default=20, ge=1)
     trust_forwarded_for: bool = False
-
-    # Background jobs, Redis & Celery.
+    # Background jobs. "background" hands ingestion and research runs to the
+    # in-process worker; "inline" keeps the old request-bound behaviour.
     ingestion_mode: Literal["background", "inline"] = "background"
-    queue_backend: Literal["database", "celery"] = "database"
-    redis_url: str = "redis://localhost:6379/0"
-    celery_broker_url: str | None = None
-    celery_result_backend: str | None = None
-    celery_task_time_limit_seconds: int = Field(default=600, ge=30, le=3600)
-    celery_task_soft_time_limit_seconds: int = Field(default=540, ge=15, le=3500)
     worker_enabled: bool = True
     worker_threads: int = Field(default=1, ge=1, le=8)
     worker_poll_seconds: float = Field(default=2.0, gt=0.0, le=60.0)
@@ -239,56 +158,29 @@ class Settings(BaseSettings):
     maintenance_interval_seconds: int = Field(default=600, ge=10)
     model_warmup_on_startup: bool = False
 
-    @field_validator(
-        "google_client_id",
-        "google_client_secret",
-        "neon_database_url",
-        "neon_direct_database_url",
-        "database_url_unpooled",
-        "r2_account_id",
-        "r2_access_key_id",
-        "r2_secret_access_key",
-        "r2_bucket_name",
-        "r2_endpoint_url",
-        "cloudflare_account_id",
-        "cloudflare_api_token",
-        "jina_api_key",
-        "groq_api_key",
-        "cerebras_api_key",
-        "gemini_api_key",
-        "mistral_api_key",
-        "openrouter_api_key",
-        "langfuse_public_key",
-        "langfuse_secret_key",
-        "celery_broker_url",
-        "celery_result_backend",
-        mode="before",
-    )
+    @field_validator("google_client_id", "google_client_secret", mode="before")
     @classmethod
-    def blank_optional_values_are_unset(cls, value: str | None) -> str | None:
-        """Allow the checked-in example env file to leave optional credentials unset."""
+    def blank_google_values_are_unset(cls, value: str | None) -> str | None:
+        """Allow the checked-in example env file to leave OAuth disabled."""
         if value is None:
             return None
         value = value.strip()
         return value or None
 
     model_config = SettingsConfigDict(
+        # Resolve the shared development env file from the repository root,
+        # not from the shell's current working directory.
         env_file=PROJECT_ROOT / ".env",
         env_file_encoding="utf-8",
         extra="ignore",
         protected_namespaces=("settings_",),
     )
 
-    def _apply_database_url_fallbacks(self) -> None:
-        # 1. Explicit DATABASE_URL overrides everything.
-        if self.database_url != DEFAULT_DATABASE_URL:
-            self.database_url = normalize_database_url(self.database_url)
-            return
-        # 2. Neon PostgreSQL URL takes precedence over legacy Supabase fields.
-        if self.neon_database_url:
-            self.database_url = normalize_database_url(self.neon_database_url)
-            return
-        # 3. Legacy Supabase configuration fallback.
+    def _apply_supabase_database_url(self) -> None:
+        # An explicitly supplied DATABASE_URL always wins. This keeps the
+        # generic deployment setting authoritative and lets tests select their
+        # own isolated SQLite database even when a developer's .env contains
+        # Supabase fields.
         supabase_values = (
             self.supabase_db_user,
             self.supabase_db_password,
@@ -297,6 +189,8 @@ class Settings(BaseSettings):
             self.supabase_db_name,
         )
         if not any(value is not None for value in supabase_values):
+            return
+        if self.database_url != DEFAULT_DATABASE_URL:
             return
         if any(value is None for value in supabase_values):
             raise ValueError(
@@ -314,7 +208,7 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_chunk_settings(self) -> "Settings":
-        self._apply_database_url_fallbacks()
+        self._apply_supabase_database_url()
         if self.document_chunk_overlap >= self.document_chunk_size:
             raise ValueError(
                 "document_chunk_overlap must be smaller than document_chunk_size"
@@ -325,23 +219,9 @@ class Settings(BaseSettings):
             raise ValueError("AUTH_COOKIE_SECURE must be true in production")
         if (self.google_client_id is None) != (self.google_client_secret is None):
             raise ValueError("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set together")
+        if self.generation_runtime != "ollama":
+            raise ValueError("GENERATION_RUNTIME must be ollama")
         return self
-
-    @property
-    def migration_database_url(self) -> str:
-        """Direct connection URL for DDL/Alembic migrations (bypasses Neon pooler when provided)."""
-        direct_url = self.neon_direct_database_url or self.database_url_unpooled
-        if direct_url:
-            return normalize_database_url(direct_url)
-        return self.database_url
-
-    @property
-    def effective_celery_broker_url(self) -> str:
-        return self.celery_broker_url or self.redis_url
-
-    @property
-    def effective_celery_result_backend(self) -> str:
-        return self.celery_result_backend or self.redis_url
 
     @property
     def api_docs_enabled(self) -> bool:

@@ -1,7 +1,5 @@
 from collections.abc import Callable
-import hashlib
-from urllib.parse import urlparse
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from fastapi import UploadFile
 from fastapi.concurrency import run_in_threadpool
@@ -109,7 +107,6 @@ def _register_upload(
         project_id=project_id,
         name=metadata.original_name,
         stored_name=stored.stored_name,
-        storage_backend=stored.storage_backend,
         file_type=metadata.file_type,
         mime_type=metadata.mime_type,
         size=stored.size,
@@ -136,126 +133,6 @@ def _register_upload(
     return document
 
 
-def _is_youtube_url(url: str) -> bool:
-    parsed = urlparse(url)
-    host = (parsed.hostname or "").lower()
-    return host in {
-        "youtube.com",
-        "www.youtube.com",
-        "m.youtube.com",
-        "youtu.be",
-        "www.youtu.be",
-    }
-
-
-def _register_url_document(
-    session: Session,
-    storage: LocalDocumentStorage,
-    url: str,
-    title: str | None,
-    user_id: UUID,
-    project_id: UUID | None,
-) -> Document:
-    from app.services.ingestion.web import validate_public_url
-
-    normalized_url = url.strip()
-    validate_public_url(normalized_url)
-    is_yt = _is_youtube_url(normalized_url)
-    checksum = hashlib.sha256(normalized_url.encode("utf-8")).hexdigest()
-    duplicate = _find_duplicate(session, user_id, checksum, project_id)
-    if duplicate is not None and duplicate.status == DocumentStatus.FAILED:
-        _remove_document(session, duplicate, storage)
-        duplicate = None
-    if duplicate is not None:
-        raise AppError(
-            "This URL source has already been added to this project",
-            status_code=409,
-            code="duplicate_document",
-        )
-
-    extension = ".youtube" if is_yt else ".web"
-    stored_name = f"{uuid4().hex}{extension}"
-    storage.root.mkdir(parents=True, exist_ok=True)
-    descriptor_path = storage._path_for(stored_name)
-    descriptor_bytes = normalized_url.encode("utf-8")
-    descriptor_path.write_bytes(descriptor_bytes)
-
-    parsed_url = urlparse(normalized_url)
-    display_name = (
-        (title or "").strip()
-        or (f"YouTube ({parsed_url.path.strip('/') or parsed_url.query})" if is_yt else f"{parsed_url.netloc}{parsed_url.path}")
-    )[:255]
-    document = Document(
-        user_id=user_id,
-        project_id=project_id,
-        name=display_name or normalized_url[:255],
-        stored_name=stored_name,
-        storage_backend=storage.storage_backend_name,
-        file_type=DocumentType.YOUTUBE if is_yt else DocumentType.WEB,
-        mime_type="text/uri-list",
-        size=len(descriptor_bytes),
-        source_type=SourceType.YOUTUBE_VIDEO if is_yt else SourceType.WEB_PAGE,
-        source_url=normalized_url,
-        source_uri=normalized_url,
-        content_level=ContentLevel.TRANSCRIPT if is_yt else ContentLevel.WEB_PAGE,
-        checksum=checksum,
-        status=DocumentStatus.UPLOADED,
-    )
-    session.add(document)
-    try:
-        _commit(session, "The URL source metadata could not be saved")
-        session.refresh(document)
-    except AppError:
-        descriptor_path.unlink(missing_ok=True)
-        raise
-    return document
-
-
-async def create_url_document(
-    session: Session,
-    url: str,
-    storage: LocalDocumentStorage,
-    settings: Settings,
-    user_id: UUID,
-    project_id: UUID | None = None,
-    *,
-    title: str | None = None,
-    adapter: DocumentIngestionAdapter | None = None,
-    embeddings: EmbeddingService | None = None,
-    notify_worker: Callable[[], None] | None = None,
-) -> Document:
-    if project_id is not None:
-        await run_in_threadpool(project_service.get_project, session, project_id, user_id)
-    document = await run_in_threadpool(
-        _register_url_document,
-        session,
-        storage,
-        url,
-        title,
-        user_id,
-        project_id,
-    )
-    return await start_ingestion(
-        session,
-        document,
-        storage,
-        settings,
-        adapter=adapter,
-        embeddings=embeddings,
-        notify_worker=notify_worker,
-    )
-
-
-def _job_kind_for_document(document: Document) -> str:
-    if document.file_type == DocumentType.AUDIO:
-        return job_queue.INGEST_AUDIO
-    if document.file_type == DocumentType.VIDEO:
-        return job_queue.INGEST_VIDEO
-    if document.file_type in (DocumentType.YOUTUBE, DocumentType.WEB):
-        return job_queue.INGEST_URL
-    return job_queue.INGEST_DOCUMENT
-
-
 async def start_ingestion(
     session: Session,
     document: Document,
@@ -277,8 +154,7 @@ async def start_ingestion(
             embeddings=embeddings,
         )
     def _enqueue() -> Document:
-        kind = _job_kind_for_document(document)
-        job_queue.enqueue(session, kind, document.id, settings=settings)
+        job_queue.enqueue(session, job_queue.INGEST_DOCUMENT, document.id)
         session.refresh(document)
         return document
 

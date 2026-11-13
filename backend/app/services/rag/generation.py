@@ -1,4 +1,4 @@
-"""Grounded generation supporting both Local Ollama and Centralized LLM Router."""
+"""Grounded generation through the local Ollama HTTP API only."""
 
 from __future__ import annotations
 
@@ -11,8 +11,6 @@ import httpx
 
 from app.core.config import Settings
 from app.core.errors import AppError
-from app.providers.base import LLMRequest, LLMResponse
-from app.providers.router import CentralizedLLMRouter, build_router_for_settings
 from app.schemas.rag import EvidenceItem
 
 logger = logging.getLogger(__name__)
@@ -83,23 +81,21 @@ class GenerationService:
     def __init__(
         self,
         *,
-        base_url: str = "http://127.0.0.1:11434",
-        model_name: str = "qwen3.5:9b-q4_K_M",
-        max_new_tokens: int = 700,
-        temperature: float = 0.1,
-        timeout_seconds: float = 120.0,
+        base_url: str,
+        model_name: str,
+        max_new_tokens: int,
+        temperature: float,
+        timeout_seconds: float,
         client: httpx.Client | None = None,
         connect_timeout_seconds: float = 5.0,
         max_retries: int = 2,
         model_check_ttl_seconds: float = 300.0,
         retry_backoff_seconds: float = 0.5,
-        router: CentralizedLLMRouter | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.model_name = model_name
         self.max_new_tokens = max_new_tokens
         self.temperature = temperature
-        self.timeout_seconds = timeout_seconds
         self._client = client or httpx.Client(
             base_url=self.base_url,
             timeout=httpx.Timeout(timeout_seconds, connect=connect_timeout_seconds),
@@ -109,8 +105,6 @@ class GenerationService:
         self.model_check_ttl_seconds = model_check_ttl_seconds
         self.retry_backoff_seconds = retry_backoff_seconds
         self._model_verified_at: float | None = None
-        self.router = router
-        self.last_response: LLMResponse | None = None
 
     def close(self) -> None:
         if self._owns_client:
@@ -167,48 +161,13 @@ class GenerationService:
                 sleep(delay)
                 attempt += 1
 
-    def generate(
-        self,
-        question: str,
-        evidence: list[EvidenceItem],
-        *,
-        user_api_keys: dict[str, str] | None = None,
-        preferred_provider: str | None = None,
-    ) -> str:
-        prompt = build_grounding_prompt(question, evidence)
-        if self.router is not None or user_api_keys:
-            active_router = self.router
-            if active_router is None:
-                from app.core.config import get_settings
-
-                active_router = build_router_for_settings(get_settings())
-            llm_response = active_router.generate(
-                LLMRequest(
-                    system_prompt=GROUNDING_RULES,
-                    user_prompt=prompt,
-                    max_tokens=self.max_new_tokens,
-                    temperature=self.temperature,
-                    timeout_seconds=self.timeout_seconds,
-                ),
-                user_api_keys=user_api_keys,
-                preferred_provider=preferred_provider,
-            )
-            self.last_response = llm_response
-            answer = llm_response.content.strip()
-            if not answer:
-                raise AppError(
-                    "The generation model returned an empty answer",
-                    status_code=503,
-                    code="generation_empty_response",
-                )
-            return answer
-
+    def generate(self, question: str, evidence: list[EvidenceItem]) -> str:
         self._verify_model()
         try:
             payload = {
                 "model": self.model_name,
                 "system": GROUNDING_RULES,
-                "prompt": prompt,
+                "prompt": build_grounding_prompt(question, evidence),
                 "stream": False,
                 "think": False,
                 "options": {
@@ -273,18 +232,6 @@ def _cached_generation_service(
 
 
 def generation_service_for(settings: Settings) -> GenerationService:
-    if settings.generation_runtime.strip().lower() == "router":
-        return GenerationService(
-            base_url=settings.ollama_base_url,
-            model_name=settings.generation_model_name,
-            max_new_tokens=settings.generation_max_new_tokens,
-            temperature=settings.generation_temperature,
-            timeout_seconds=settings.generation_timeout_seconds,
-            connect_timeout_seconds=settings.generation_connect_timeout_seconds,
-            max_retries=settings.generation_max_retries,
-            model_check_ttl_seconds=settings.generation_model_check_ttl_seconds,
-            router=build_router_for_settings(settings),
-        )
     return _cached_generation_service(
         settings.ollama_base_url,
         settings.generation_model_name,

@@ -58,50 +58,12 @@ def _check_ollama(request: Request) -> ReadinessCheck:
     return ReadinessCheck(name="ollama", ok=True, detail=settings.generation_model_name)
 
 
-def _check_llm_router(request: Request) -> ReadinessCheck:
-    settings = request.app.state.settings
-    key_by_provider = {
-        "cerebras": bool(settings.cerebras_api_key),
-        "gemini": bool(settings.gemini_api_key),
-        "mistral": bool(settings.mistral_api_key),
-        "openrouter": bool(settings.openrouter_api_key),
-        "ollama": True,
-    }
-    raw_order = settings.llm_router_providers
-    order = (
-        [item.strip().lower() for item in raw_order.split(",") if item.strip()]
-        if isinstance(raw_order, str)
-        else [str(item).strip().lower() for item in raw_order if str(item).strip()]
-    )
-    configured = [
-        name
-        for name in order
-        if name in key_by_provider and (key_by_provider[name] if name != "ollama" else True)
-    ]
-    if configured:
-        return ReadinessCheck(
-            name="llm_router",
-            ok=True,
-            detail=",".join(configured),
-        )
-    return ReadinessCheck(
-        name="llm_router",
-        ok=False,
-        detail="no cloud LLM provider keys configured",
-    )
-
-
 @router.get("/health/ready", response_model=ReadinessResponse)
 async def readiness_check(request: Request) -> JSONResponse:
     """Readiness: dependencies needed to serve real traffic are reachable."""
-    settings = request.app.state.settings
-    if settings.generation_runtime.strip().lower() == "router":
-        llm_check = await run_in_threadpool(_check_llm_router, request)
-    else:
-        llm_check = await run_in_threadpool(_check_ollama, request)
     checks = [
         await run_in_threadpool(_check_database, request),
-        llm_check,
+        await run_in_threadpool(_check_ollama, request),
     ]
     ready = all(check.ok for check in checks)
     body = ReadinessResponse(status="ready" if ready else "not_ready", checks=checks)

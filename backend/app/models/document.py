@@ -98,12 +98,6 @@ class Document(TimestampMixin, Base):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     stored_name: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
-    storage_backend: Mapped[str] = mapped_column(
-        String(32),
-        default="local",
-        server_default="local",
-        nullable=False,
-    )
     file_type: Mapped[DocumentType] = mapped_column(
         document_type_enum,
         nullable=False,
@@ -153,8 +147,6 @@ class Document(TimestampMixin, Base):
     parser_name: Mapped[str | None] = mapped_column(String(100))
     parser_version: Mapped[str | None] = mapped_column(String(100))
     ingestion_version: Mapped[str | None] = mapped_column(String(100), index=True)
-    embedding_model: Mapped[str | None] = mapped_column(String(160))
-    embedding_version: Mapped[str | None] = mapped_column(String(100))
     page_count: Mapped[int | None] = mapped_column(Integer)
     uploaded_at: Mapped[datetime] = mapped_column(
         UTCDateTime(), default=utc_now, server_default=func.now(), nullable=False

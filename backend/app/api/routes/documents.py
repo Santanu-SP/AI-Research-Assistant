@@ -10,19 +10,13 @@ from app.api.uploads import enforce_upload_rate_limit, upload_status_code
 from app.core.errors import AppError
 from app.db.session import get_db
 from app.domain.documents import DocumentStatus, DocumentType
-from app.schemas.documents import (
-    DocumentListResponse,
-    DocumentResponse,
-    SignedUrlResponse,
-    UrlDocumentCreateRequest,
-)
+from app.schemas.documents import DocumentListResponse, DocumentResponse
 from app.services.documents import records as document_service
-from app.services.documents.storage import DocumentStorageBackend, get_document_storage
-from app.services.ingestion.pipeline import reembed_document
+from app.services.documents.storage import LocalDocumentStorage, get_document_storage
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
-DocumentStorage = Annotated[DocumentStorageBackend, Depends(get_document_storage)]
+DocumentStorage = Annotated[LocalDocumentStorage, Depends(get_document_storage)]
 
 
 @router.post("", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
@@ -46,31 +40,6 @@ async def upload_document(
         storage,
         request.app.state.settings,
         user.id,
-        notify_worker=request.app.state.job_worker.wake,
-    )
-    response.status_code = upload_status_code(document)
-    return document
-
-
-@router.post("/url", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
-async def ingest_url_document(
-    payload: UrlDocumentCreateRequest,
-    session: DatabaseSession,
-    storage: DocumentStorage,
-    request: Request,
-    response: Response,
-    user: CurrentUser,
-) -> DocumentResponse:
-    """Ingest a YouTube video transcript or public web page into the unified document pipeline."""
-    enforce_upload_rate_limit(request, user.id)
-    document = await document_service.create_url_document(
-        session,
-        payload.url,
-        storage,
-        request.app.state.settings,
-        user.id,
-        payload.project_id,
-        title=payload.title,
         notify_worker=request.app.state.job_worker.wake,
     )
     response.status_code = upload_status_code(document)
@@ -119,38 +88,6 @@ def get_document(
     return document_service.get_document(session, document_id, user.id)
 
 
-@router.get("/{document_id}/signed-url", response_model=SignedUrlResponse)
-def get_document_signed_url(
-    document_id: UUID,
-    session: DatabaseSession,
-    storage: DocumentStorage,
-    request: Request,
-    user: CurrentUser,
-    expires_in: Annotated[int | None, Query(ge=60, le=86400)] = None,
-) -> SignedUrlResponse:
-    """Return a presigned R2 URL or authenticated file URL for downloading the document."""
-    document = document_service.get_document(session, document_id, user.id)
-    ttl = expires_in or request.app.state.settings.r2_signed_url_ttl_seconds
-    presigned = storage.generate_presigned_url(
-        document.stored_name,
-        expires_in=ttl,
-        filename=document.name,
-    )
-    if presigned:
-        return SignedUrlResponse(
-            document_id=document.id,
-            url=presigned,
-            expires_in_seconds=ttl,
-            storage_backend="r2",
-        )
-    return SignedUrlResponse(
-        document_id=document.id,
-        url=f"/api/v1/documents/{document.id}/file",
-        expires_in_seconds=ttl,
-        storage_backend=document.storage_backend or "local",
-    )
-
-
 @router.get("/{document_id}/file")
 def open_document(
     document_id: UUID,
@@ -175,24 +112,6 @@ def open_document(
             # built-in PDF viewer, so file responses only forbid framing.
             "Content-Security-Policy": "frame-ancestors 'none'",
         },
-    )
-
-
-@router.post("/{document_id}/reembed", response_model=DocumentResponse)
-def reembed_existing_document(
-    document_id: UUID,
-    session: DatabaseSession,
-    request: Request,
-    user: CurrentUser,
-    force: Annotated[bool, Query()] = False,
-) -> DocumentResponse:
-    """Recompute chunk embeddings only if the embedding model/version changed or force=true."""
-    document = document_service.get_document(session, document_id, user.id)
-    return reembed_document(
-        session,
-        document,
-        request.app.state.settings,
-        force=force,
     )
 
 

@@ -8,10 +8,7 @@ from app.db.session import create_db_engine
 import app.models  # noqa: F401 - registers model metadata for autogenerate
 
 config = context.config
-database_url = (
-    config.get_main_option("sqlalchemy.url")
-    or getattr(settings, "migration_database_url", settings.database_url)
-)
+database_url = config.get_main_option("sqlalchemy.url") or settings.database_url
 config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 
 if config.config_file_name is not None:

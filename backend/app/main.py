@@ -29,8 +29,6 @@ def create_app(app_settings: Settings | None = None) -> FastAPI:
         pool_size=active_settings.db_pool_size,
         max_overflow=active_settings.db_max_overflow,
         pool_timeout=active_settings.db_pool_timeout_seconds,
-        pool_recycle=active_settings.db_pool_recycle_seconds,
-        pool_use_lifo=active_settings.db_pool_use_lifo,
     )
     session_factory = create_session_factory(engine)
     worker = JobWorker(session_factory, active_settings)

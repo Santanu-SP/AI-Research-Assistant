@@ -27,7 +27,6 @@ def upload_dir(tmp_path: Path) -> Path:
 @pytest.fixture
 def test_settings(tmp_path: Path, upload_dir: Path) -> Settings:
     return Settings(
-        _env_file=None,
         app_environment="test",
         database_url=f"sqlite:///{tmp_path / 'test.db'}",
         cors_origins=["http://localhost:3000"],

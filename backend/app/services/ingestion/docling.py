@@ -188,23 +188,7 @@ def canonicalize_docling_output(
             for value in metadata.get("captions", [])
             if (cleaned := _clean_text(value))
         ]
-        if "table" in labels:
-            content_kind = "table"
-        elif "picture" in labels or "figure" in labels:
-            content_kind = "figure"
-        else:
-            content_kind = labels[0] if labels else "text"
-        figure_refs = [
-            ref for ref in references if "pictures" in ref or "figures" in ref
-        ]
-        node_meta: dict[str, Any] = {
-            "content_kind": content_kind,
-            "docling_labels": labels,
-            "docling_references": references,
-            "captions": captions,
-        }
-        if figure_refs:
-            node_meta["figure_references"] = figure_refs
+        content_kind = "table" if "table" in labels else (labels[0] if labels else "text")
         parsed_nodes.append(
             ParsedNode(
                 node_id=stable_node_id(document_id, index, text),
@@ -215,7 +199,12 @@ def canonicalize_docling_output(
                 section=headings[-1] if headings else None,
                 section_path=headings,
                 token_count=tokenizer.count_tokens(text),
-                metadata=node_meta,
+                metadata={
+                    "content_kind": content_kind,
+                    "docling_labels": labels,
+                    "docling_references": references,
+                    "captions": captions,
+                },
             )
         )
 
@@ -338,14 +327,7 @@ def _cached_docling_adapter(
     if ocr_mode == "force":
         pdf_options.ocr_options.mode = OcrMode.FULL_PAGE
     converter = DocumentConverter(
-        allowed_formats=[
-            InputFormat.PDF,
-            InputFormat.DOCX,
-            InputFormat.PPTX,
-            InputFormat.XLSX,
-            InputFormat.HTML,
-            InputFormat.IMAGE,
-        ],
+        allowed_formats=[InputFormat.PDF, InputFormat.DOCX],
         format_options={
             InputFormat.PDF: PdfFormatOption(pipeline_options=pdf_options),
         },
