@@ -60,6 +60,8 @@ export const ResearchHistoryProvider: React.FC<React.PropsWithChildren> = ({ chi
     void load();
   }, [load, location.pathname]);
 
+  const reload = useCallback(() => void load(), [load]);
+
   const rename = useCallback(async (id: string, title: string) => {
     const updated = await researchService.updateResearch(id, { title });
     setItems((current) => current.map((item) => (item.id === id ? { ...item, ...updated } : item)));
@@ -78,11 +80,11 @@ export const ResearchHistoryProvider: React.FC<React.PropsWithChildren> = ({ chi
       loading,
       error,
       complete: items.length >= total,
-      reload: () => void load(),
+      reload,
       rename,
       remove,
     }),
-    [items, total, loading, error, load, rename, remove],
+    [items, total, loading, error, reload, rename, remove],
   );
 
   return <ResearchHistoryContext.Provider value={value}>{children}</ResearchHistoryContext.Provider>;

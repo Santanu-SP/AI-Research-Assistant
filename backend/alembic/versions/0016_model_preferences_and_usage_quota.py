@@ -17,6 +17,18 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    # This revision id is longer than Alembic's default 32-character
+    # version column, so PostgreSQL refused to record it. Widen the column
+    # first (SQLite does not enforce the length).
+    if op.get_bind().dialect.name == "postgresql":
+        op.alter_column(
+            "alembic_version",
+            "version_num",
+            type_=sa.String(64),
+            existing_type=sa.String(32),
+            existing_nullable=False,
+        )
+
     with op.batch_alter_table("users") as batch_op:
         batch_op.add_column(
             sa.Column("local_fallback_enabled", sa.Boolean(), nullable=True),

@@ -12,6 +12,9 @@ from app.domain.research import (
     ResearchStatus,
 )
 from app.domain.states import ProjectStatus
+from app.domain.documents import DocumentStatus
+from app.models.document import Document
+from app.models.job import BackgroundJob
 from app.models.report import Source
 from app.models.research import Research
 from app.schemas.research import (
@@ -240,6 +243,12 @@ def get_research_progress(
 ) -> ResearchProgressResponse:
     research = get_research(session, research_id, user_id)
     current_step_index = _stage_index(research.progress_stage)
+    documents_ready, documents_preparing = _document_readiness(session, research)
+    failure_reason = (
+        _failure_reason(session, research, documents_ready)
+        if research.status == ResearchStatus.FAILED
+        else None
+    )
     return ResearchProgressResponse(
         id=research.id,
         project_id=research.project_id,
@@ -257,7 +266,84 @@ def get_research_progress(
         updated_at=research.updated_at,
         completed_at=research.completed_at,
         failed_at=research.failed_at,
+        failure_reason=failure_reason,
+        documents_ready=documents_ready,
+        documents_preparing=documents_preparing,
     )
+
+
+def _document_readiness(session: Session, research: Research) -> tuple[int, int]:
+    """Count ready and still-processing documents in the run's scope."""
+    if research.user_id is None:
+        return 0, 0
+    filters = [Document.user_id == research.user_id]
+    if research.project_id is not None:
+        filters.append(Document.project_id == research.project_id)
+    counts = dict(
+        session.execute(
+            select(Document.status, func.count(Document.id))
+            .where(*filters)
+            .group_by(Document.status)
+        ).all()
+    )
+    ready = int(counts.get(DocumentStatus.INDEXED, 0))
+    preparing = int(counts.get(DocumentStatus.UPLOADED, 0)) + int(
+        counts.get(DocumentStatus.PROCESSING, 0)
+    )
+    return ready, preparing
+
+
+# Error codes from the pipeline mapped to the few reasons the UI explains.
+_FAILURE_REASONS = {
+    "generation_unavailable": "model_unavailable",
+    "generation_invalid_request": "model_unavailable",
+    "daily_model_quota_exceeded": "quota_reached",
+}
+
+
+def _failure_reason(session: Session, research: Research, documents_ready: int) -> str:
+    last_error = session.scalar(
+        select(BackgroundJob.last_error)
+        .where(BackgroundJob.target_id == research.id, BackgroundJob.last_error.is_not(None))
+        .order_by(BackgroundJob.updated_at.desc())
+        .limit(1)
+    )
+    if last_error:
+        code = last_error.split(":", 1)[0].strip()
+        if code in _FAILURE_REASONS:
+            return _FAILURE_REASONS[code]
+    if documents_ready == 0:
+        return "no_ready_documents"
+    return "unexpected"
+
+
+def restart_research(session: Session, research_id: UUID, *, commit: bool = True) -> Research:
+    """Put a failed run back to the start so it can be run again in place."""
+    research = get_research(session, research_id)
+    if research.status != ResearchStatus.FAILED:
+        raise AppError(
+            "Only research that stopped before finishing can be run again",
+            status_code=409,
+            code="research_not_retryable",
+        )
+    timestamp = utc_now()
+    research.status = ResearchStatus.RESEARCHING
+    research.project_status = ProjectStatus.DRAFT
+    research.progress_stage = ResearchProgressStage.PLANNING
+    research.sources_discovered = 0
+    research.sources_reviewed = 0
+    research.documents_found = 0
+    research.started_at = timestamp
+    research.stage_started_at = timestamp
+    research.completed_at = None
+    research.failed_at = None
+    research.updated_at = timestamp
+    if commit:
+        _commit(session)
+        session.refresh(research)
+    else:
+        session.flush()
+    return research
 
 
 def start_research(session: Session, research_id: UUID) -> Research:

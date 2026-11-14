@@ -1,6 +1,5 @@
 import React from 'react';
-import { Menu, PanelLeftOpen, X } from 'lucide-react';
-import { shortcutLabel } from '../../lib/shortcuts';
+import { Menu, X } from 'lucide-react';
 import { ThemeToggle } from './ThemeToggle';
 import { useMobileNav } from './MobileNavContext';
 
@@ -27,17 +26,6 @@ export const TopBar: React.FC<TopBarProps> = ({
             className="-ml-1 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-ink-soft hover:bg-subtle hover:text-ink lg:hidden"
           >
             {mobileNav.open ? <X className="h-[18px] w-[18px]" /> : <Menu className="h-[18px] w-[18px]" />}
-          </button>
-        )}
-        {mobileNav?.collapsed && mobileNav.toggleCollapsed && (
-          <button
-            type="button"
-            onClick={mobileNav.toggleCollapsed}
-            aria-label="Show sidebar"
-            title={`Show sidebar (${shortcutLabel('S', { shift: true })})`}
-            className="-ml-1 hidden h-9 w-9 shrink-0 items-center justify-center rounded-md text-ink-soft hover:bg-subtle hover:text-ink lg:inline-flex"
-          >
-            <PanelLeftOpen className="h-[18px] w-[18px]" />
           </button>
         )}
         <div className="flex min-w-0 items-center gap-2 overflow-hidden text-[13px] text-ink-soft">

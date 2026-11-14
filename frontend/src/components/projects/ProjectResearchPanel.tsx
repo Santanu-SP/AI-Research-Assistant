@@ -10,7 +10,14 @@ import {
   ResearchDepth,
   ResearchQueryResponse,
 } from '../../types/research';
-import { queryResearch, getResearchErrorMessage } from '../../services/research.service';
+import {
+  friendlyResearchError,
+  queryResearch,
+  researchIdFromError,
+  retryResearch,
+} from '../../services/research.service';
+import { ApiError } from '../../services/api';
+import { shortcutLabel } from '../../lib/shortcuts';
 import { SafeMarkdown } from '../common/SafeMarkdown';
 import { CitationPanel } from '../research/CitationPanel';
 import { ModelControlBar } from '../research/ModelControlBar';
@@ -23,6 +30,8 @@ interface ProjectResearchPanelProps {
   /** Documents ready to answer from. Leave undefined when unknown. */
   readyCount?: number;
   preparingCount?: number;
+  /** Opens a run's progress page (used after "Try again"). */
+  onOpenRun?: (researchId: string) => void;
 }
 
 type ResearchState = 'idle' | 'submitting' | 'complete' | 'failed';
@@ -34,6 +43,7 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
   isArchived,
   readyCount,
   preparingCount = 0,
+  onOpenRun,
 }) => {
   const [question, setQuestion] = useState('');
   const [researchDepth, setResearchDepth] = useState<ResearchDepth>('standard');
@@ -45,6 +55,11 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
   const [result, setResult] = useState<ResearchQueryResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedCitationId, setSelectedCitationId] = useState<string | null>(null);
+  // The research item a failed question created. Asking again (edited or
+  // not) runs that same item again instead of adding a duplicate.
+  const [failedResearchId, setFailedResearchId] = useState<string | null>(null);
+  const inFlight = useRef(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Track active project id and request epoch so stale responses after a project switch are ignored
   const activeProjectIdRef = useRef(project.id);
@@ -60,6 +75,7 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
     setError(null);
     setResearchState('idle');
     setSelectedCitationId(null);
+    setFailedResearchId(null);
   }, [project.id]);
 
   useEffect(() => {
@@ -89,9 +105,46 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
     !question.trim() ||
     question.trim().length > MAX_QUESTION_LENGTH;
 
+  const openRun = (researchId: string) => {
+    if (onOpenRun) onOpenRun(researchId);
+    else window.location.assign(`/research/${researchId}/progress`);
+  };
+
+  const runOptions = () => ({
+    researchDepth,
+    ...(preferredProvider ? { preferredProvider } : {}),
+    ...(modelOverride ? { modelOverride } : {}),
+    ...(localFallbackEnabled !== undefined ? { localFallbackEnabled } : {}),
+  });
+
+  const retryFailed = async (researchId: string) => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setResearchState('submitting');
+    setError(null);
+    try {
+      await retryResearch(researchId, { query: question.trim(), ...runOptions() });
+      openRun(researchId);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        openRun(researchId);
+        return;
+      }
+      setError(friendlyResearchError(err, 'This question couldn’t be asked again. Please try once more.'));
+      setResearchState('failed');
+    } finally {
+      inFlight.current = false;
+    }
+  };
+
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (isDisabled) return;
+    if (isDisabled || inFlight.current) return;
+    if (failedResearchId) {
+      await retryFailed(failedResearchId);
+      return;
+    }
+    inFlight.current = true;
 
     const currentProjectId = project.id;
     const submitEpoch = requestEpochRef.current + 1;
@@ -112,10 +165,7 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
       const response = await queryResearch({
         query: question.trim(),
         projectId: currentProjectId,
-        researchDepth,
-        ...(preferredProvider ? { preferredProvider } : {}),
-        ...(modelOverride ? { modelOverride } : {}),
-        ...(localFallbackEnabled !== undefined ? { localFallbackEnabled } : {}),
+        ...runOptions(),
       });
 
       // Guard: if project changed or reset while request was in flight, discard result
@@ -125,8 +175,17 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
       setResearchState('complete');
     } catch (err) {
       if (isStaleSubmission()) return;
-      setError(getResearchErrorMessage(err, 'Research failed. Please try again.'));
+      const researchId = researchIdFromError(err);
+      if (err instanceof ApiError && err.status === 409 && researchId) {
+        // The same question is already running; follow that run.
+        openRun(researchId);
+        return;
+      }
+      setFailedResearchId(researchId);
+      setError(friendlyResearchError(err, 'Research failed. Please try again.'));
       setResearchState('failed');
+    } finally {
+      inFlight.current = false;
     }
   };
 
@@ -145,6 +204,7 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
     setError(null);
     setQuestion('');
     setSelectedCitationId(null);
+    setFailedResearchId(null);
   };
 
   return (
@@ -173,6 +233,7 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
                 Question
               </label>
               <textarea
+                ref={textareaRef}
                 id="research-question"
                 value={question}
                 onChange={(e) => setQuestion(e.target.value)}
@@ -184,7 +245,7 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
                 className="field resize-none"
               />
               <div className="mt-1.5 flex items-center justify-between text-xs text-ink-muted">
-                <span>Press <kbd className="rounded border border-line bg-subtle px-1 font-mono text-[10.5px]">⌘ Enter</kbd> to submit</span>
+                <span>Press <kbd className="rounded border border-line bg-subtle px-1 font-sans text-[10.5px]">{shortcutLabel('Enter')}</kbd> to submit</span>
                 <span
                   className={
                     question.length > MAX_QUESTION_LENGTH * 0.9
@@ -252,13 +313,36 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
       )}
 
       {researchState === 'failed' && error && (
-        <div role="alert" className="flex items-start gap-3 rounded-lg border border-danger-line bg-danger-soft p-4">
-          <AlertTriangle className="w-5 h-5 text-danger shrink-0 mt-0.5" />
-          <div>
-            <p className="text-[13px] font-medium text-danger">
-              Research failed
-            </p>
-            <p className="text-xs text-ink-soft mt-1">{error}</p>
+        <div role="alert" className="rounded-lg border border-danger-line bg-panel shadow-xs">
+          <div className="flex items-start gap-3 p-4">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
+            <div className="min-w-0">
+              <p className="text-[13px] font-medium text-ink">No answer this time</p>
+              <p className="mt-1 text-[13px] leading-relaxed text-ink-soft">{error}</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 border-t border-line px-4 py-3">
+            <button
+              type="button"
+              className="btn-primary"
+              disabled={!question.trim()}
+              onClick={() => (failedResearchId ? void retryFailed(failedResearchId) : void handleSubmit())}
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              Try again
+            </button>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => textareaRef.current?.focus()}
+            >
+              Edit question
+            </button>
+            {failedResearchId && (
+              <span className="w-full text-xs text-ink-muted sm:ml-auto sm:w-auto">
+                Asking again reuses the same history item.
+              </span>
+            )}
           </div>
         </div>
       )}

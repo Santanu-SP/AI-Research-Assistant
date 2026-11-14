@@ -3,19 +3,22 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import timedelta
 import logging
 import re
 from time import monotonic
 from uuid import UUID, uuid5
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
 from app.core.errors import AppError
+from app.core.time import utc_now
 from app.domain.reports import SourceType
-from app.domain.research import ResearchDepth
+from app.domain.research import ResearchDepth, ResearchStatus
 from app.domain.states import ProjectStatus
-from app.schemas.rag import ResearchQueryRequest, ResearchQueryResponse
+from app.schemas.rag import ResearchQueryRequest, ResearchQueryResponse, ResearchRetryRequest
 from app.schemas.reports import ResearchReportCreate
 from app.schemas.research import ResearchCreate
 from app.services.rag import retrieval
@@ -254,16 +257,33 @@ def run_query(
     generator: GenerationService | None = None,
 ) -> ResearchQueryResponse:
     """Create a research run and answer it within the current request."""
+    duplicate = find_recent_duplicate(session, user_id, payload)
+    if duplicate is not None:
+        # The same question was just sent (a double click or a resent
+        # request). Point the client at the run that is already going
+        # instead of starting a second one.
+        raise AppError(
+            "This question is already being researched",
+            status_code=409,
+            code="research_already_running",
+            details={"researchId": str(duplicate.id)},
+        )
     record = _create_started_record(session, user_id, payload, settings)
-    return execute_research(
-        session,
-        record.id,
-        user_id,
-        settings,
-        reranker=reranker,
-        generator=generator,
-        commit_intermediate=False,
-    )
+    try:
+        return execute_research(
+            session,
+            record.id,
+            user_id,
+            settings,
+            reranker=reranker,
+            generator=generator,
+            commit_intermediate=False,
+        )
+    except AppError as exc:
+        # Let the client offer "Try again" on this same run instead of
+        # creating a new one.
+        exc.details = {**(exc.details or {}), "researchId": str(record.id)}
+        raise
 
 
 def queue_query(
@@ -273,9 +293,89 @@ def queue_query(
     settings: Settings | None = None,
 ) -> Research:
     """Create a research run and leave the work to the background worker."""
+    duplicate = find_recent_duplicate(session, user_id, payload)
+    if duplicate is not None:
+        return duplicate
     record = _create_started_record(session, user_id, payload, settings)
     job_queue.enqueue(session, job_queue.RUN_RESEARCH, record.id)
     return research.get_research(session, record.id, user_id)
+
+
+# A repeat of the same question inside this window is treated as the same
+# submission (double clicks, a resent request after a slow network).
+DUPLICATE_SUBMIT_WINDOW_SECONDS = 15
+
+
+def find_recent_duplicate(
+    session: Session,
+    user_id: UUID,
+    payload: ResearchQueryRequest,
+) -> Research | None:
+    normalized_query = payload.query.strip()
+    if not normalized_query:
+        return None
+    cutoff = utc_now() - timedelta(seconds=DUPLICATE_SUBMIT_WINDOW_SECONDS)
+    filters = [
+        Research.user_id == user_id,
+        Research.question == normalized_query,
+        Research.research_depth == payload.research_depth,
+        Research.created_at >= cutoff,
+        Research.archived_at.is_(None),
+        Research.status.in_((ResearchStatus.DRAFT, ResearchStatus.RESEARCHING)),
+    ]
+    if payload.project_id is None:
+        filters.append(Research.project_id.is_(None))
+    else:
+        filters.append(Research.project_id == payload.project_id)
+    return session.scalar(
+        select(Research).where(*filters).order_by(Research.created_at.desc()).limit(1)
+    )
+
+
+def _apply_run_options(
+    session: Session,
+    record: Research,
+    user_id: UUID,
+    *,
+    preferred_provider: str | None,
+    model_override: str | None,
+    local_fallback_enabled: bool | None,
+    settings: Settings,
+) -> tuple[bool, object | None]:
+    """Store the model choices on the run and reserve shared quota for it."""
+    from app.services.auth import api_keys as api_key_service
+
+    pref_provider = preferred_provider.strip().lower() if preferred_provider else None
+    override = model_override.strip() if model_override else None
+    local_fallback = (
+        local_fallback_enabled
+        if local_fallback_enabled is not None
+        else api_key_service.get_local_fallback_pref(session, user_id)
+    )
+    user_byok_keys = api_key_service.get_decrypted_user_api_keys(session, user_id, settings)
+    allow_shared, quota_reserved, quota_date, _ = acquire_run_quota_policy(
+        session,
+        user_id=user_id,
+        preferred_provider=pref_provider,
+        user_byok_providers=set(user_byok_keys.keys()),
+        local_enabled=bool(local_fallback),
+        settings=settings,
+    )
+    record.preferred_provider = pref_provider or None
+    record.model_override = override or None
+    record.local_fallback_enabled = local_fallback
+    record.allow_shared_providers = allow_shared
+    record.shared_quota_reserved = quota_reserved
+    record.shared_quota_date = quota_date
+    return bool(quota_reserved), quota_date
+
+
+def _release_on_error(session: Session, user_id: UUID, reserved: bool, quota_date) -> None:
+    if reserved and quota_date is not None:
+        session.rollback()
+        from app.services.observability.usage import release_shared_quota_slot
+
+        release_shared_quota_slot(session, user_id=user_id, usage_date=quota_date, commit=True)
 
 
 def _create_started_record(
@@ -292,26 +392,7 @@ def _create_started_record(
             code="research_query_required",
         )
     runtime_settings = settings or get_settings()
-    from app.services.auth import api_keys as api_key_service
-
-    pref_provider = payload.preferred_provider.strip().lower() if payload.preferred_provider else None
-    model_override = payload.model_override.strip() if payload.model_override else None
-    local_fallback = (
-        payload.local_fallback_enabled
-        if payload.local_fallback_enabled is not None
-        else api_key_service.get_local_fallback_pref(session, user_id)
-    )
-    user_byok_keys = api_key_service.get_decrypted_user_api_keys(
-        session, user_id, runtime_settings
-    )
-    allow_shared, quota_reserved, quota_date, _ = acquire_run_quota_policy(
-        session,
-        user_id=user_id,
-        preferred_provider=pref_provider,
-        user_byok_providers=set(user_byok_keys.keys()),
-        local_enabled=bool(local_fallback),
-        settings=runtime_settings,
-    )
+    reserved, quota_date = False, None
     try:
         record = research.create_research(
             session,
@@ -322,22 +403,95 @@ def _create_started_record(
             ),
             user_id,
         )
-        record.preferred_provider = pref_provider or None
-        record.model_override = model_override or None
-        record.local_fallback_enabled = local_fallback
-        record.allow_shared_providers = allow_shared
-        record.shared_quota_reserved = quota_reserved
-        record.shared_quota_date = quota_date
+        reserved, quota_date = _apply_run_options(
+            session,
+            record,
+            user_id,
+            preferred_provider=payload.preferred_provider,
+            model_override=payload.model_override,
+            local_fallback_enabled=payload.local_fallback_enabled,
+            settings=runtime_settings,
+        )
         session.add(record)
         research.start_research(session, record.id)
     except Exception:
-        if quota_reserved and quota_date is not None:
-            session.rollback()
-            from app.services.observability.usage import release_shared_quota_slot
-
-            release_shared_quota_slot(session, user_id=user_id, usage_date=quota_date, commit=True)
+        _release_on_error(session, user_id, reserved, quota_date)
         raise
     return record
+
+
+def _first_set(*values: bool | None) -> bool | None:
+    return next((value for value in values if value is not None), None)
+
+
+def retry_research(
+    session: Session,
+    user_id: UUID,
+    research_id: UUID,
+    payload: ResearchRetryRequest,
+    settings: Settings | None = None,
+) -> Research:
+    """Run a failed research item again in place, so history keeps one entry.
+
+    An edited question replaces the old one on the same record. The work is
+    queued for the background worker like any other run.
+    """
+    from app.services.auth import api_keys as api_key_service
+
+    runtime_settings = settings or get_settings()
+    record = research.get_research(session, research_id, user_id)
+    if record.status != ResearchStatus.FAILED:
+        raise AppError(
+            "Only research that stopped before finishing can be run again",
+            status_code=409,
+            code="research_not_retryable",
+        )
+    if job_queue.has_active_job(session, job_queue.RUN_RESEARCH, record.id):
+        raise AppError(
+            "This research is already running again",
+            status_code=409,
+            code="research_already_running",
+            details={"researchId": str(record.id)},
+        )
+    new_question = payload.query.strip() if payload.query else None
+    if new_question and new_question != record.question:
+        if record.title == research.build_fallback_title(record.question):
+            record.title = research.build_fallback_title(new_question)
+        record.question = new_question
+    if payload.research_depth is not None:
+        record.research_depth = payload.research_depth
+    reserved, quota_date = False, None
+    try:
+        reserved, quota_date = _apply_run_options(
+            session,
+            record,
+            user_id,
+            preferred_provider=(
+                payload.preferred_provider
+                if "preferred_provider" in payload.model_fields_set
+                else record.preferred_provider
+            ),
+            model_override=(
+                payload.model_override
+                if "model_override" in payload.model_fields_set
+                else record.model_override
+            ),
+            # A local model switched on since the failure (for example from
+            # the Models menu) should be used by the next attempt.
+            local_fallback_enabled=_first_set(
+                payload.local_fallback_enabled,
+                api_key_service.get_local_fallback_pref(session, user_id),
+                record.local_fallback_enabled,
+            ),
+            settings=runtime_settings,
+        )
+        research.restart_research(session, record.id, commit=False)
+        job_queue.enqueue(session, job_queue.RUN_RESEARCH, record.id, commit=False)
+        session.commit()
+    except Exception:
+        _release_on_error(session, user_id, reserved, quota_date)
+        raise
+    return research.get_research(session, record.id, user_id)
 
 
 def execute_research(
