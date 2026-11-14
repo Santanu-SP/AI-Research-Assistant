@@ -13,6 +13,7 @@ import {
   type ThemePreference,
 } from '../theme';
 import { ReadinessResponse, systemService } from '../services/system.service';
+import { byokService, ModelUsageQuotaSummary } from '../services/clientAi.service';
 import { authErrorMessage } from '../services/auth.service';
 import { shortcutLabel } from '../lib/shortcuts';
 
@@ -53,6 +54,9 @@ const formatDate = (value?: string) =>
     ? new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'long', day: 'numeric' }).format(new Date(value))
     : '—';
 
+const formatCount = (value: number): string =>
+  new Intl.NumberFormat().format(Math.max(0, Math.round(value)));
+
 export const SettingsPage: React.FC = () => {
   const navigate = useNavigate();
   const { user, logout, logoutAll } = useAuth();
@@ -61,6 +65,9 @@ export const SettingsPage: React.FC = () => {
   const [readiness, setReadiness] = useState<ReadinessResponse | null>(null);
   const [readinessError, setReadinessError] = useState(false);
   const [checking, setChecking] = useState(true);
+  const [usageSummary, setUsageSummary] = useState<ModelUsageQuotaSummary | null>(null);
+  const [usageLoading, setUsageLoading] = useState(true);
+  const [usageError, setUsageError] = useState(false);
   const [signingOut, setSigningOut] = useState<'this' | 'all' | null>(null);
 
   useEffect(() => {
@@ -82,9 +89,31 @@ export const SettingsPage: React.FC = () => {
     }
   }, []);
 
+  const checkUsage = useCallback(async () => {
+    setUsageLoading(true);
+    setUsageError(false);
+    try {
+      setUsageSummary(await byokService.getUsage());
+    } catch {
+      setUsageSummary(null);
+      setUsageError(true);
+    } finally {
+      setUsageLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     void checkStatus();
-  }, [checkStatus]);
+    void checkUsage();
+  }, [checkStatus, checkUsage]);
+
+  useEffect(() => {
+    const refresh = () => {
+      void checkUsage();
+    };
+    window.addEventListener('models-usage:refresh', refresh);
+    return () => window.removeEventListener('models-usage:refresh', refresh);
+  }, [checkUsage]);
 
   const signOut = async (scope: 'this' | 'all') => {
     setSigningOut(scope);
@@ -215,6 +244,139 @@ export const SettingsPage: React.FC = () => {
                   <PrimaryButton variant="ghost" size="sm" onClick={() => void checkStatus()} disabled={checking}>
                     <RefreshCw className={`h-3.5 w-3.5 ${checking ? 'animate-spin' : ''}`} />
                     Check again
+                  </PrimaryButton>
+                </div>
+              </div>
+            </Section>
+
+            <Section
+              id="settings-model-usage"
+              title="Model usage & daily quota"
+              description="Shared daily cap scales fairly with enrolled active users and remaining server AI API requests."
+            >
+              <div className="overflow-hidden rounded-lg border border-line bg-panel shadow-xs">
+                {usageLoading && !usageSummary ? (
+                  <div className="space-y-3 p-4">
+                    <span className="block h-3 w-48 animate-pulse rounded bg-subtle" />
+                    <span className="block h-2 w-full animate-pulse rounded bg-subtle" />
+                  </div>
+                ) : usageError || !usageSummary ? (
+                  <div className="flex items-center gap-2.5 px-4 py-3.5 text-[13px] text-ink-soft">
+                    <CircleAlert className="h-4 w-4 shrink-0 text-danger" />
+                    Could not load model usage right now.
+                  </div>
+                ) : (
+                  <div className="divide-y divide-line">
+                    <div className="p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-[13px]">
+                        <span className="font-medium text-ink">
+                          Shared server requests used today
+                        </span>
+                        <span className="font-medium tabular-nums text-ink">
+                          {usageSummary.sharedRequestsUsedToday} / {usageSummary.userDailyRequestCap} requests
+                          {' '}
+                          <span className="text-ink-muted">
+                            ({usageSummary.userRequestsRemainingToday} left for you today)
+                          </span>
+                        </span>
+                      </div>
+                      <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-subtle">
+                        <div
+                          className={`h-full rounded-full transition-all ${
+                            usageSummary.userRequestsRemainingToday <= 0 ? 'bg-danger' : 'bg-accent'
+                          }`}
+                          style={{
+                            width: `${
+                              usageSummary.userDailyRequestCap > 0
+                                ? Math.min(
+                                    100,
+                                    Math.round(
+                                      (usageSummary.sharedRequestsUsedToday /
+                                        usageSummary.userDailyRequestCap) *
+                                        100
+                                    )
+                                  )
+                                : 100
+                            }%`,
+                          }}
+                        />
+                      </div>
+                      <p className="mt-2 text-xs text-ink-muted">
+                        Divided across {formatCount(usageSummary.enrolledUsers)} active enrolled{' '}
+                        {usageSummary.enrolledUsers === 1 ? 'user' : 'users'} · Global server API pool:{' '}
+                        {formatCount(usageSummary.systemPoolRemaining)} of{' '}
+                        {formatCount(usageSummary.systemPoolTotal)} requests remaining today.
+                      </p>
+                    </div>
+
+                    <dl className="divide-y divide-line">
+                      <Row
+                        label="Your total today (all models)"
+                        value={`${formatCount(usageSummary.totalRequestsToday)} requests · ${formatCount(
+                          usageSummary.totalTokensToday
+                        )} tokens`}
+                      />
+                      <Row
+                        label="Own API key (BYOK) & local today"
+                        value={`${formatCount(usageSummary.byokRequestsToday)} BYOK · ${formatCount(
+                          usageSummary.localRequestsToday
+                        )} Local (unlimited, not counted against shared cap)`}
+                      />
+                      <Row
+                        label="Total usage (all time)"
+                        value={`${formatCount(usageSummary.totalRequestsAllTime)} requests · ${formatCount(
+                          usageSummary.totalTokensAllTime
+                        )} tokens`}
+                      />
+                    </dl>
+
+                    {usageSummary.models.length > 0 ? (
+                      <div className="p-4">
+                        <div className="flex items-center justify-between text-xs text-ink-muted">
+                          <h3 className="font-medium">Models used</h3>
+                          <span>today · all-time · tokens</span>
+                        </div>
+                        <ul className="mt-2 divide-y divide-line rounded-md border border-line bg-subtle/30">
+                          {usageSummary.models.map((item) => (
+                            <li
+                              key={`${item.provider}:${item.modelName}`}
+                              className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-[13px]"
+                            >
+                              <div className="min-w-0">
+                                <span className="font-medium text-ink">{item.modelName}</span>
+                                <span className="ml-2 rounded bg-panel px-1.5 py-0.5 text-[11px] uppercase text-ink-muted">
+                                  {item.provider}
+                                </span>
+                              </div>
+                              <span className="text-xs tabular-nums text-ink-soft">
+                                {formatCount(item.requestsToday)} reqs today ·{' '}
+                                {formatCount(item.totalRequests)} total ·{' '}
+                                {formatCount(item.totalTokens)} tokens
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : (
+                      <p className="px-4 py-3 text-xs text-ink-muted">
+                        No model requests recorded on this account yet.
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between gap-3 border-t border-line bg-subtle/50 px-4 py-2.5">
+                  <p className="text-xs text-ink-muted">
+                    Resets daily at 00:00 UTC.
+                  </p>
+                  <PrimaryButton
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => void checkUsage()}
+                    disabled={usageLoading}
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 ${usageLoading ? 'animate-spin' : ''}`} />
+                    Refresh usage
                   </PrimaryButton>
                 </div>
               </div>
