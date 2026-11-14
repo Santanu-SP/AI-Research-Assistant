@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 from datetime import datetime, timezone
 import hashlib
+from threading import RLock
 from uuid import UUID
 
 from cryptography.fernet import Fernet, InvalidToken
@@ -16,8 +17,97 @@ from app.core.errors import AppError
 from app.models.api_key import UserAPIKey
 
 SUPPORTED_BYOK_PROVIDERS = frozenset(
-    {"cerebras", "gemini", "mistral", "openrouter", "groq", "jina", "cloudflare"}
+    {
+        "cerebras",
+        "gemini",
+        "mistral",
+        "openrouter",
+        "groq",
+        "openai",
+        "claude",
+        "grok",
+        "jina",
+        "cloudflare",
+    }
 )
+PROVIDER_ALIASES: dict[str, str] = {
+    "anthropic": "claude",
+    "xai": "grok",
+}
+
+SUGGESTED_PROVIDER_MODELS: dict[str, list[str]] = {
+    "gemini": [
+        "gemini-3.8-flash",
+        "gemini-2.5-flash",
+        "gemini-2.5-pro",
+        "gemini-3.1-flash-lite",
+    ],
+    "groq": [
+        "llama-3.3-70b-versatile",
+        "llama-3.1-8b-instant",
+        "qwen/qwen3-32b",
+    ],
+    "openai": [
+        "gpt-4o-mini",
+        "gpt-4o",
+        "gpt-4.1-mini",
+        "o3-mini",
+    ],
+    "claude": [
+        "claude-3-5-haiku-latest",
+        "claude-sonnet-4-20250514",
+        "claude-3-7-sonnet-latest",
+    ],
+    "grok": [
+        "grok-3-mini-fast",
+        "grok-3-mini",
+        "grok-3",
+    ],
+    "openrouter": [
+        "openrouter/free",
+        "meta-llama/llama-3.3-70b-instruct:free",
+        "google/gemini-2.5-flash",
+    ],
+    "cerebras": [
+        "gpt-oss-120b",
+        "llama-3.3-70b",
+        "llama3.1-8b",
+    ],
+    "mistral": [
+        "mistral-small-4",
+        "mistral-small-latest",
+        "mistral-large-latest",
+    ],
+    "ollama": [
+        "qwen3.5:9b",
+        "llama3.2:3b",
+        "qwen2.5:3b",
+    ],
+}
+
+
+def normalize_provider_name(provider: str) -> str:
+    cleaned = provider.strip().lower()
+    return PROVIDER_ALIASES.get(cleaned, cleaned)
+
+
+def detect_provider_from_key(raw_key: str) -> str | None:
+    cleaned = raw_key.strip()
+    if cleaned.startswith("AIza"):
+        return "gemini"
+    if cleaned.startswith("gsk_"):
+        return "groq"
+    if cleaned.startswith("sk-ant-"):
+        return "claude"
+    if cleaned.startswith("sk-or-"):
+        return "openrouter"
+    if cleaned.startswith("xai-"):
+        return "grok"
+    if cleaned.startswith("csk-"):
+        return "cerebras"
+    if cleaned.startswith("sk-"):
+        return "openai"
+    return None
 
 
 def _fernet_for_settings(settings: Settings) -> Fernet:
@@ -38,19 +128,28 @@ def mask_api_key(raw_key: str) -> str:
 
 
 def validate_provider_and_key(provider: str, raw_key: str) -> tuple[str, str]:
-    normalized_provider = provider.strip().lower()
-    if normalized_provider not in SUPPORTED_BYOK_PROVIDERS:
-        raise AppError(
-            f"Unsupported provider '{provider}'. Supported providers: {', '.join(sorted(SUPPORTED_BYOK_PROVIDERS))}",
-            status_code=422,
-            code="unsupported_byok_provider",
-        )
     cleaned_key = raw_key.strip()
     if len(cleaned_key) < 8 or len(cleaned_key) > 512 or any(ch.isspace() for ch in cleaned_key):
         raise AppError(
             "Invalid API key format",
             status_code=422,
             code="invalid_byok_key",
+        )
+    normalized_provider = normalize_provider_name(provider)
+    if normalized_provider in {"", "auto", "detect"}:
+        detected = detect_provider_from_key(cleaned_key)
+        if not detected:
+            raise AppError(
+                "Could not detect provider from this API key format; please choose a provider explicitly.",
+                status_code=422,
+                code="undetectable_byok_provider",
+            )
+        normalized_provider = detected
+    if normalized_provider not in SUPPORTED_BYOK_PROVIDERS:
+        raise AppError(
+            f"Unsupported provider '{provider}'. Supported providers: {', '.join(sorted(SUPPORTED_BYOK_PROVIDERS))}",
+            status_code=422,
+            code="unsupported_byok_provider",
         )
     return normalized_provider, cleaned_key
 
@@ -61,6 +160,8 @@ def save_user_api_key(
     provider: str,
     raw_key: str,
     settings: Settings,
+    *,
+    model_name: str | None = None,
 ) -> UserAPIKey:
     norm_provider, cleaned_key = validate_provider_and_key(provider, raw_key)
     fernet = _fernet_for_settings(settings)
@@ -81,6 +182,8 @@ def save_user_api_key(
         session.add(existing)
         session.commit()
         session.refresh(existing)
+        if model_name is not None:
+            set_user_provider_model(user_id, norm_provider, model_name)
         return existing
 
     record = UserAPIKey(
@@ -93,6 +196,8 @@ def save_user_api_key(
     session.add(record)
     session.commit()
     session.refresh(record)
+    if model_name is not None:
+        set_user_provider_model(user_id, norm_provider, model_name)
     return record
 
 
@@ -111,7 +216,7 @@ def revoke_user_api_key(
     user_id: UUID,
     provider: str,
 ) -> bool:
-    norm_provider = provider.strip().lower()
+    norm_provider = normalize_provider_name(provider)
     record = session.scalar(
         select(UserAPIKey).where(
             UserAPIKey.user_id == user_id,
@@ -130,6 +235,7 @@ def revoke_user_api_key(
     record.encrypted_key = ""
     session.add(record)
     session.commit()
+    set_user_provider_model(user_id, norm_provider, None)
     return True
 
 
@@ -172,4 +278,62 @@ def record_key_usage(
     record.last_used_at = datetime.now(timezone.utc)
     session.add(record)
     session.commit()
+
+
+_LOCAL_FALLBACK_PREF_LOCK = RLock()
+_USER_LOCAL_FALLBACK_PREF: dict[UUID, bool] = {}
+_USER_PROVIDER_MODELS: dict[tuple[UUID, str], str] = {}
+
+
+def set_user_provider_model(
+    user_id: UUID,
+    provider: str,
+    model_name: str | None,
+) -> str | None:
+    """Persist or clear user's selected/custom model override for a provider."""
+    norm_provider = normalize_provider_name(provider)
+    if norm_provider not in SUPPORTED_BYOK_PROVIDERS and norm_provider != "ollama":
+        raise AppError(
+            f"Unsupported provider '{provider}'",
+            status_code=422,
+            code="unsupported_byok_provider",
+        )
+    cleaned = model_name.strip() if model_name else ""
+    with _LOCAL_FALLBACK_PREF_LOCK:
+        if not cleaned:
+            _USER_PROVIDER_MODELS.pop((user_id, norm_provider), None)
+            return None
+        _USER_PROVIDER_MODELS[(user_id, norm_provider)] = cleaned
+        return cleaned
+
+
+def get_user_provider_models(user_id: UUID) -> dict[str, str]:
+    """Return all user-configured provider -> custom/selected model overrides."""
+    with _LOCAL_FALLBACK_PREF_LOCK:
+        return {
+            prov: model
+            for (uid, prov), model in _USER_PROVIDER_MODELS.items()
+            if uid == user_id
+        }
+
+
+def get_local_fallback_pref(user_id: UUID) -> bool | None:
+    """Return explicit user local fallback preference if set, else None."""
+    with _LOCAL_FALLBACK_PREF_LOCK:
+        return _USER_LOCAL_FALLBACK_PREF.get(user_id)
+
+
+def get_local_fallback_enabled(user_id: UUID, *, default: bool = True) -> bool:
+    """Return user's local Ollama fallback preference (defaults to `default` until toggled)."""
+    with _LOCAL_FALLBACK_PREF_LOCK:
+        if user_id in _USER_LOCAL_FALLBACK_PREF:
+            return _USER_LOCAL_FALLBACK_PREF[user_id]
+        return default
+
+
+def set_local_fallback_enabled(user_id: UUID, enabled: bool) -> bool:
+    """Persist user's local Ollama fallback connect/disconnect state in memory."""
+    with _LOCAL_FALLBACK_PREF_LOCK:
+        _USER_LOCAL_FALLBACK_PREF[user_id] = bool(enabled)
+        return _USER_LOCAL_FALLBACK_PREF[user_id]
 

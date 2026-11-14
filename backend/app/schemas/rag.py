@@ -13,6 +13,9 @@ class ResearchQueryRequest(ApiSchema):
     query: str = Field(min_length=1, max_length=10_000)
     project_id: UUID | None = None
     research_depth: ResearchDepth = ResearchDepth.STANDARD
+    preferred_provider: str | None = Field(default=None, max_length=64)
+    model_override: str | None = Field(default=None, max_length=128)
+    local_fallback_enabled: bool | None = None
 
 
 class EvidenceItem(ApiSchema):
