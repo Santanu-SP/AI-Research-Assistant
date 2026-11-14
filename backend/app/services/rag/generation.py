@@ -6,6 +6,7 @@ from functools import lru_cache
 import logging
 import re
 from time import monotonic, sleep
+from typing import Callable
 
 import httpx
 
@@ -183,6 +184,8 @@ class GenerationService:
         preferred_provider: str | None = None,
         model_override: str | None = None,
         local_fallback_enabled: bool | None = None,
+        allow_shared_providers: bool = True,
+        before_shared_attempt: Callable[[str], bool] | None = None,
         provider_timeout_seconds: float | None = None,
         primary_timeout_seconds: float | None = None,
         allow_sticky_fallback: bool | None = None,
@@ -194,6 +197,8 @@ class GenerationService:
             or user_provider_models
             or preferred_provider
             or local_fallback_enabled is not None
+            or not allow_shared_providers
+            or before_shared_attempt is not None
         ):
             active_router = self.router
             if active_router is None:
@@ -228,6 +233,8 @@ class GenerationService:
                 user_provider_models=user_provider_models,
                 preferred_provider=preferred_provider,
                 local_fallback_enabled=local_fallback_enabled,
+                allow_shared_providers=allow_shared_providers,
+                before_shared_attempt=before_shared_attempt,
             )
             self.last_response = llm_response
             answer = llm_response.content.strip()

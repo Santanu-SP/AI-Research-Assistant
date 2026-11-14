@@ -88,8 +88,25 @@ def test_development_does_not_trust_lan_origins_unless_opted_in() -> None:
     assert not settings.is_allowed_origin("http://192.168.1.50:5173")
 
 
+def test_production_refuses_missing_or_default_byok_encryption_secret(make_client) -> None:
+    with pytest.raises(ValueError, match="API_KEY_ENCRYPTION_SECRET"):
+        Settings(
+            _env_file=None,
+            app_environment="production",
+            auth_cookie_secure=True,
+            api_key_encryption_secret="dev-only-byok-encryption-secret-change-in-production",
+        )
+
+    with pytest.raises(ValueError, match="API_KEY_ENCRYPTION_SECRET"):
+        make_client(app_environment="production", auth_cookie_secure=True)
+
+
 def test_docs_are_hidden_in_production(make_client) -> None:
-    client = make_client(app_environment="production", auth_cookie_secure=True)
+    client = make_client(
+        app_environment="production",
+        auth_cookie_secure=True,
+        api_key_encryption_secret="prod-test-byok-secret-at-least-32b",
+    )
     assert client.get("/docs").status_code == 404
     assert client.get("/openapi.json").status_code == 404
 
@@ -160,7 +177,11 @@ def test_security_headers_and_request_id(client: TestClient) -> None:
 
 
 def test_hsts_is_sent_when_cookies_are_secure(make_client) -> None:
-    client = make_client(app_environment="production", auth_cookie_secure=True)
+    client = make_client(
+        app_environment="production",
+        auth_cookie_secure=True,
+        api_key_encryption_secret="prod-test-byok-secret-at-least-32b",
+    )
     assert "max-age" in client.get("/api/v1/health").headers["strict-transport-security"]
 
 

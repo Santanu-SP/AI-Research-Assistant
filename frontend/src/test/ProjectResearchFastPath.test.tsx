@@ -287,7 +287,7 @@ describe('ProjectResearchPanel & ResearchProgress fast-path UX', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Models' }));
     expect(screen.getByText('3 / 50 requests (47 left)')).toBeInTheDocument();
     expect(screen.getByText('94 of 100 requests')).toBeInTheDocument();
-    expect(screen.getByText('2 enrolled users')).toBeInTheDocument();
+    expect(screen.getByText('2 active users')).toBeInTheDocument();
     expect(screen.getByText('4 requests · 2.4k tokens')).toBeInTheDocument();
     expect(screen.getByText('1 BYOK · 0 Local')).toBeInTheDocument();
     expect(screen.getByText('gemini / gemini-3.8-flash')).toBeInTheDocument();

@@ -162,12 +162,12 @@ def get_models_status(
         timeout_seconds=1.5,
     )
     local_connected = (
-        api_key_service.get_local_fallback_enabled(user.id, default=local_available)
+        api_key_service.get_local_fallback_enabled(session, user.id, default=local_available)
         if local_available
         else False
     )
 
-    user_models = api_key_service.get_user_provider_models(user.id)
+    user_models = api_key_service.get_user_provider_models(session, user.id)
     providers: list[ProviderStatusItem] = []
     for provider_id, label, key_attr, model_attr in _PROVIDER_CATALOG:
         server_configured = bool(getattr(settings, key_attr, None))
@@ -264,6 +264,7 @@ def set_local_fallback(
     payload: LocalFallbackToggleRequest,
     request: Request,
     user: CurrentUser,
+    session: DatabaseSession,
 ) -> LocalModelStatus:
     settings = request.app.state.settings
     local_available, installed_models, active_model = probe_ollama_models(
@@ -271,7 +272,7 @@ def set_local_fallback(
         settings.generation_model_name,
         timeout_seconds=1.5,
     )
-    pref = api_key_service.set_local_fallback_enabled(user.id, payload.connected)
+    pref = api_key_service.set_local_fallback_enabled(session, user.id, payload.connected)
     return LocalModelStatus(
         available=local_available,
         connected=bool(local_available and pref),
@@ -286,9 +287,11 @@ def set_local_fallback(
 def set_provider_model(
     payload: ProviderModelSelectRequest,
     user: CurrentUser,
+    session: DatabaseSession,
 ) -> ProviderModelSelectResponse:
     norm_provider = api_key_service.normalize_provider_name(payload.provider)
     selected = api_key_service.set_user_provider_model(
+        session,
         user.id,
         norm_provider,
         payload.model_name,

@@ -51,7 +51,7 @@ def create_db_engine(
     is_sqlite = url.get_backend_name() == "sqlite"
     options: dict[str, Any] = {"pool_pre_ping": True}
     if is_sqlite:
-        options["connect_args"] = {"check_same_thread": False}
+        options["connect_args"] = {"check_same_thread": False, "timeout": 15.0}
     else:
         if pool_size is not None:
             options["pool_size"] = pool_size
@@ -75,6 +75,7 @@ def create_db_engine(
         def enable_sqlite_foreign_keys(dbapi_connection: object, _: object) -> None:
             cursor = dbapi_connection.cursor()  # type: ignore[attr-defined]
             cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.execute("PRAGMA busy_timeout=5000")
             cursor.close()
 
     return engine

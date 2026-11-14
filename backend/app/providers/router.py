@@ -200,6 +200,8 @@ class CentralizedLLMRouter:
         user_keys: dict[str, str],
         preferred: str | None,
         local_fallback_enabled: bool | None,
+        allow_shared_providers: bool = True,
+        explicit_override_key: str | None = None,
     ) -> list[LLMProviderAdapter]:
         ordered: list[LLMProviderAdapter] = []
         seen: set[str] = set()
@@ -232,6 +234,15 @@ class CentralizedLLMRouter:
         elif local_fallback_enabled is False and preferred != "ollama":
             ordered = [a for a in ordered if a.provider_name != "ollama"]
 
+        if not allow_shared_providers:
+            ordered = [
+                a
+                for a in ordered
+                if a.provider_name in user_keys
+                or a.provider_name == "ollama"
+                or (a.provider_name == preferred and bool(explicit_override_key))
+            ]
+
         return ordered
 
     def generate(
@@ -242,6 +253,8 @@ class CentralizedLLMRouter:
         user_provider_models: dict[str, str] | None = None,
         preferred_provider: str | None = None,
         local_fallback_enabled: bool | None = None,
+        allow_shared_providers: bool = True,
+        before_shared_attempt: Callable[[str], bool] | None = None,
     ) -> LLMResponse:
         keys = {
             _normalize_provider(k): v
@@ -262,15 +275,22 @@ class CentralizedLLMRouter:
             user_keys=keys,
             preferred=preferred,
             local_fallback_enabled=local_fallback_enabled,
+            allow_shared_providers=allow_shared_providers,
+            explicit_override_key=request.api_key_override,
         )
 
         errors: list[ProviderError] = []
         fallback_attempts = 0
+        quota_blocked = False
+        shared_quota_reserved = False
         eligible: list[tuple[LLMProviderAdapter, str | None]] = []
         for adapter in ordered_adapters:
             provider = adapter.provider_name
             apply_override = not preferred or provider == preferred
             byok_key = keys.get(provider) or (request.api_key_override if apply_override else None)
+            if byok_key is None and provider != "ollama" and not allow_shared_providers:
+                quota_blocked = True
+                continue
             if not adapter.is_configured(api_key_override=byok_key):
                 continue
             if not self._is_provider_available(provider, using_byok=bool(byok_key)):
@@ -280,6 +300,15 @@ class CentralizedLLMRouter:
 
         for index, (adapter, byok_key) in enumerate(eligible):
             provider = adapter.provider_name
+            is_shared_provider = byok_key is None and provider != "ollama"
+            if is_shared_provider and not allow_shared_providers:
+                quota_blocked = True
+                continue
+            if is_shared_provider and before_shared_attempt is not None and not shared_quota_reserved:
+                if not before_shared_attempt(provider):
+                    quota_blocked = True
+                    continue
+                shared_quota_reserved = True
             has_backup = index + 1 < len(eligible)
             apply_override = not preferred or provider == preferred
             timeout_cap = (
@@ -372,10 +401,21 @@ class CentralizedLLMRouter:
 
         if errors:
             summary = "; ".join(f"{e.provider}: {e.message}" for e in errors)
+            suffix = (
+                " (shared server fallback disabled because daily quota is reached)"
+                if quota_blocked
+                else ""
+            )
             raise AppError(
-                f"All configured LLM providers failed ({summary})",
+                f"All configured LLM providers failed ({summary}){suffix}",
                 status_code=503,
                 code="generation_unavailable",
+            )
+        if quota_blocked:
+            raise AppError(
+                "Daily shared AI model quota reached. Connect your own API key (BYOK) or Local Ollama to continue.",
+                status_code=429,
+                code="daily_model_quota_exceeded",
             )
         raise AppError(
             "No LLM providers are configured or available",

@@ -1,8 +1,19 @@
-from datetime import datetime
+from datetime import date, datetime
 from enum import StrEnum
 from uuid import UUID, uuid4
 
-from sqlalchemy import CheckConstraint, Enum, ForeignKey, Index, Integer, String, Text, Uuid
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    Date,
+    Enum,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    Uuid,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin
@@ -140,6 +151,22 @@ class Research(TimestampMixin, Base):
     )
     completed_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
     failed_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    preferred_provider: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    model_override: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    local_fallback_enabled: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    allow_shared_providers: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        server_default="1",
+        nullable=False,
+    )
+    shared_quota_reserved: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default="0",
+        nullable=False,
+    )
+    shared_quota_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     project: Mapped["ResearchProject | None"] = relationship(
         back_populates="research_runs"
     )

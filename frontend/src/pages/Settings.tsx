@@ -252,7 +252,7 @@ export const SettingsPage: React.FC = () => {
             <Section
               id="settings-model-usage"
               title="Model usage & daily quota"
-              description="Shared daily cap scales fairly with enrolled active users and remaining server AI API requests."
+              description="Shared daily cap scales fairly with active users and remaining server AI API requests."
             >
               <div className="overflow-hidden rounded-lg border border-line bg-panel shadow-xs">
                 {usageLoading && !usageSummary ? (
@@ -302,7 +302,7 @@ export const SettingsPage: React.FC = () => {
                         />
                       </div>
                       <p className="mt-2 text-xs text-ink-muted">
-                        Divided across {formatCount(usageSummary.enrolledUsers)} active enrolled{' '}
+                        Divided across {formatCount(usageSummary.enrolledUsers)} active{' '}
                         {usageSummary.enrolledUsers === 1 ? 'user' : 'users'} · Global server API pool:{' '}
                         {formatCount(usageSummary.systemPoolRemaining)} of{' '}
                         {formatCount(usageSummary.systemPoolTotal)} requests remaining today.
