@@ -5,8 +5,8 @@ import math
 import re
 from uuid import UUID
 
-from sqlalchemy import func, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy import func, literal, or_, select, union_all
+from sqlalchemy.orm import Session, joinedload
 
 from app.core.config import Settings
 from app.core.errors import AppError
@@ -77,6 +77,7 @@ def semantic_search(
         filters.append(Document.project_id == project_id)
     rows = session.execute(
         select(DocumentChunk, distance.label("distance"))
+        .options(joinedload(DocumentChunk.document))
         .join(Document)
         .outerjoin(ResearchProject, ResearchProject.id == Document.project_id)
         .where(*filters)
@@ -108,6 +109,7 @@ def keyword_search(
         filters.append(Document.project_id == project_id)
     rows = session.execute(
         select(DocumentChunk, rank.label("rank"))
+        .options(joinedload(DocumentChunk.document))
         .join(Document)
         .outerjoin(ResearchProject, ResearchProject.id == Document.project_id)
         .where(*filters)
@@ -150,6 +152,7 @@ def _sqlite_hybrid_search(
     chunks = list(
         session.scalars(
             select(DocumentChunk)
+            .options(joinedload(DocumentChunk.document))
             .join(Document)
             .outerjoin(ResearchProject, ResearchProject.id == Document.project_id)
             .where(*filters)
@@ -223,6 +226,76 @@ def _hybrid_score(
     return score
 
 
+def _postgres_hybrid_search(
+    session: Session,
+    user_id: UUID,
+    query: str,
+    query_vector: list[float],
+    vector_limit: int,
+    keyword_limit: int,
+    project_id: UUID | None = None,
+) -> tuple[list[RankedChunk], list[RankedChunk]]:
+    """Fetch vector and FTS top-k candidates in a single PostgreSQL round-trip."""
+    base_filters = [
+        Document.user_id == user_id,
+        Document.status == DocumentStatus.INDEXED,
+        _active_project_filter(),
+    ]
+    if project_id is not None:
+        base_filters.append(Document.project_id == project_id)
+
+    distance = DocumentChunk.embedding.cosine_distance(query_vector)
+    vec_q = (
+        select(
+            DocumentChunk.id.label("chunk_id"),
+            literal(1).label("kind"),
+            (1.0 - distance).label("score"),
+        )
+        .join(Document)
+        .outerjoin(ResearchProject, ResearchProject.id == Document.project_id)
+        .where(*base_filters, DocumentChunk.embedding.is_not(None))
+        .order_by(distance, DocumentChunk.id)
+        .limit(vector_limit)
+    )
+
+    query_expression = func.websearch_to_tsquery(FTS_CONFIGURATION, query)
+    ts_rank = func.ts_rank_cd(DocumentChunk.search_vector, query_expression)
+    kw_q = (
+        select(
+            DocumentChunk.id.label("chunk_id"),
+            literal(2).label("kind"),
+            ts_rank.label("score"),
+        )
+        .join(Document)
+        .outerjoin(ResearchProject, ResearchProject.id == Document.project_id)
+        .where(*base_filters, DocumentChunk.search_vector.op("@@")(query_expression))
+        .order_by(ts_rank.desc(), DocumentChunk.id)
+        .limit(keyword_limit)
+    )
+
+    combined = union_all(vec_q, kw_q).alias("hybrid_hits")
+    rows = session.execute(
+        select(
+            DocumentChunk,
+            combined.c.kind,
+            combined.c.score,
+        )
+        .options(joinedload(DocumentChunk.document))
+        .join(combined, combined.c.chunk_id == DocumentChunk.id)
+    ).all()
+
+    vector_results: list[RankedChunk] = []
+    keyword_results: list[RankedChunk] = []
+    for chunk, kind, score in rows:
+        if kind == 1:
+            vector_results.append(RankedChunk(chunk=chunk, vector_score=float(score)))
+        else:
+            keyword_results.append(RankedChunk(chunk=chunk, keyword_score=float(score)))
+    vector_results.sort(key=lambda item: (-float(item.vector_score or 0.0), item.chunk.id))
+    keyword_results.sort(key=lambda item: (-float(item.keyword_score or 0.0), item.chunk.id))
+    return vector_results, keyword_results
+
+
 def retrieve(
     session: Session,
     user_id: UUID,
@@ -250,17 +323,12 @@ def retrieve(
     query_vector = service.embed_query(normalized)
 
     if dialect == "postgresql":
-        vector_results = semantic_search(
-            session,
-            user_id,
-            query_vector,
-            settings.vector_top_k,
-            project_id,
-        )
-        keyword_results = keyword_search(
+        vector_results, keyword_results = _postgres_hybrid_search(
             session,
             user_id,
             normalized,
+            query_vector,
+            settings.vector_top_k,
             settings.keyword_top_k,
             project_id,
         )

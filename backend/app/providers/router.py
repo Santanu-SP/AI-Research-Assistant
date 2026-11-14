@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 import logging
@@ -17,7 +18,6 @@ from app.providers.base import (
     LLMRequest,
     LLMResponse,
     ProviderError,
-    RateLimitError,
 )
 from app.providers.cerebras import CerebrasProviderAdapter
 from app.providers.gemini import GeminiProviderAdapter
@@ -55,6 +55,7 @@ class CentralizedLLMRouter:
         max_transient_retries: int = 1,
         retry_backoff_seconds: float = 0.25,
         daily_token_budget: int = 1_000_000,
+        provider_timeout_seconds: float | None = None,
         on_event: Callable[[dict[str, object]], None] | None = None,
     ) -> None:
         self.adapters = list(adapters)
@@ -63,6 +64,7 @@ class CentralizedLLMRouter:
         self.max_transient_retries = max(0, max_transient_retries)
         self.retry_backoff_seconds = max(0.0, retry_backoff_seconds)
         self.daily_token_budget = max(1000, daily_token_budget)
+        self.provider_timeout_seconds = provider_timeout_seconds
         self._on_event = on_event
         self._lock = RLock()
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -97,6 +99,10 @@ class CentralizedLLMRouter:
             return result
 
     def _is_provider_available(self, name: str, *, using_byok: bool) -> bool:
+        if using_byok:
+            # User-supplied keys carry their own quota and must not be blocked
+            # by shared system circuit breakers or shared daily token limits.
+            return True
         now = monotonic()
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         with self._lock:
@@ -106,7 +112,7 @@ class CentralizedLLMRouter:
             if state.budget_day != today:
                 state.budget_day = today
                 state.tokens_used_today = 0
-            if not using_byok and state.tokens_used_today >= state.daily_token_budget:
+            if state.tokens_used_today >= state.daily_token_budget:
                 return False
             if state.circuit_state == "open":
                 if state.cooldown_until is not None and now >= state.cooldown_until:
@@ -116,6 +122,10 @@ class CentralizedLLMRouter:
             return True
 
     def _record_success(self, response: LLMResponse) -> None:
+        if response.used_byok:
+            # A user's BYOK key succeeding must not close/reset a tripped system breaker
+            # or charge tokens against the system pool.
+            return
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         with self._lock:
             state = self._health.setdefault(
@@ -129,14 +139,22 @@ class CentralizedLLMRouter:
             state.consecutive_failures = 0
             state.cooldown_until = None
             state.success_count += 1
-            if not response.used_byok:
-                state.tokens_used_today += max(0, response.usage.total_tokens)
+            state.tokens_used_today += max(0, response.usage.total_tokens)
             if state.avg_latency_ms == 0.0:
                 state.avg_latency_ms = response.latency_ms
             else:
                 state.avg_latency_ms = 0.8 * state.avg_latency_ms + 0.2 * response.latency_ms
 
-    def _record_failure(self, provider: str, exc: ProviderError) -> None:
+    def _record_failure(
+        self,
+        provider: str,
+        exc: ProviderError,
+        *,
+        using_byok: bool = False,
+    ) -> None:
+        if using_byok:
+            # Never poison or trip shared system circuit breakers from a user's BYOK key.
+            return
         now = monotonic()
         with self._lock:
             state = self._health.setdefault(
@@ -147,7 +165,7 @@ class CentralizedLLMRouter:
             state.last_error = exc.message
             if exc.trips_circuit:
                 state.consecutive_failures += 1
-                if isinstance(exc, RateLimitError) or state.consecutive_failures >= self.failure_threshold:
+                if state.consecutive_failures >= self.failure_threshold:
                     state.circuit_state = "open"
                     cooldown = exc.retry_after_seconds or self.cooldown_seconds
                     state.cooldown_until = now + max(1.0, float(cooldown))
@@ -168,7 +186,7 @@ class CentralizedLLMRouter:
 
         errors: list[ProviderError] = []
         fallback_attempts = 0
-
+        eligible: list[tuple[LLMProviderAdapter, str | None]] = []
         for adapter in ordered_adapters:
             provider = adapter.provider_name
             byok_key = keys.get(provider) or request.api_key_override
@@ -177,8 +195,25 @@ class CentralizedLLMRouter:
             if not self._is_provider_available(provider, using_byok=bool(byok_key)):
                 logger.info("Skipping LLM provider %s (circuit open or budget exceeded)", provider)
                 continue
+            eligible.append((adapter, byok_key))
 
-            provider_request = replace(request, api_key_override=byok_key)
+        for index, (adapter, byok_key) in enumerate(eligible):
+            provider = adapter.provider_name
+            has_backup = index + 1 < len(eligible)
+            timeout_cap = (
+                request.provider_timeout_seconds
+                if request.provider_timeout_seconds is not None
+                else self.provider_timeout_seconds
+            )
+            effective_timeout = request.timeout_seconds
+            if provider != "ollama" and timeout_cap is not None:
+                effective_timeout = min(request.timeout_seconds, timeout_cap)
+
+            provider_request = replace(
+                request,
+                api_key_override=byok_key,
+                timeout_seconds=effective_timeout,
+            )
             attempt = 0
             while True:
                 try:
@@ -210,21 +245,22 @@ class CentralizedLLMRouter:
                     return final_response
                 except ProviderError as exc:
                     if isinstance(exc, InvalidRequestError):
-                        self._record_failure(provider, exc)
+                        self._record_failure(provider, exc, using_byok=bool(byok_key))
                         raise AppError(
                             f"Invalid LLM generation request: {exc.message}",
                             status_code=422,
                             code="generation_invalid_request",
                         ) from exc
 
-                    if exc.retryable and attempt < self.max_transient_retries:
+                    # Only sleep and retry the same failing endpoint when no backup provider remains.
+                    if exc.retryable and not has_backup and attempt < self.max_transient_retries:
                         delay = self.retry_backoff_seconds * (2**attempt)
                         if delay > 0:
                             sleep(delay)
                         attempt += 1
                         continue
 
-                    self._record_failure(provider, exc)
+                    self._record_failure(provider, exc, using_byok=bool(byok_key))
                     errors.append(exc)
                     fallback_attempts += 1
                     logger.warning(
@@ -275,14 +311,20 @@ def build_router_for_settings(
         "gemini": GeminiProviderAdapter(
             api_key=settings.gemini_api_key,
             default_model=settings.gemini_model_name,
+            fallback_model=settings.gemini_fallback_model_name,
+            base_url=settings.gemini_base_url,
+            primary_timeout_seconds=settings.gemini_primary_timeout_seconds,
+            fallback_cooldown_seconds=settings.gemini_fallback_cooldown_seconds,
         ),
         "mistral": MistralProviderAdapter(
             api_key=settings.mistral_api_key,
             default_model=settings.mistral_model_name,
+            base_url=settings.mistral_base_url,
         ),
         "openrouter": OpenRouterProviderAdapter(
             api_key=settings.openrouter_api_key,
             default_model=settings.openrouter_model_name,
+            base_url=settings.openrouter_base_url,
         ),
         "ollama": OllamaProviderAdapter(
             base_url=settings.ollama_base_url,
@@ -308,6 +350,62 @@ def build_router_for_settings(
         cooldown_seconds=settings.llm_circuit_breaker_cooldown_seconds,
         retry_backoff_seconds=settings.generation_retry_backoff_seconds,
         daily_token_budget=settings.llm_daily_token_quota_per_provider,
+        provider_timeout_seconds=settings.llm_provider_timeout_seconds,
         on_event=on_event,
     )
+
+
+_ROUTER_CACHE_LOCK = RLock()
+_ROUTER_CACHE_MAXSIZE = 16
+_ROUTER_CACHE: OrderedDict[tuple[object, ...], CentralizedLLMRouter] = OrderedDict()
+
+
+def _router_cache_key(settings: Settings) -> tuple[object, ...]:
+    raw_providers = settings.llm_router_providers
+    order = (
+        tuple(item.strip().lower() for item in raw_providers.split(",") if item.strip())
+        if isinstance(raw_providers, str)
+        else tuple(str(item).strip().lower() for item in raw_providers if str(item).strip())
+    )
+    return (
+        order,
+        settings.cerebras_api_key,
+        settings.cerebras_model_name,
+        settings.cerebras_base_url,
+        settings.gemini_api_key,
+        settings.gemini_model_name,
+        settings.gemini_fallback_model_name,
+        settings.gemini_base_url,
+        settings.gemini_primary_timeout_seconds,
+        settings.gemini_fallback_cooldown_seconds,
+        settings.mistral_api_key,
+        settings.mistral_model_name,
+        settings.mistral_base_url,
+        settings.openrouter_api_key,
+        settings.openrouter_model_name,
+        settings.openrouter_base_url,
+        settings.ollama_base_url,
+        settings.generation_model_name,
+        settings.llm_circuit_breaker_threshold,
+        settings.llm_circuit_breaker_cooldown_seconds,
+        settings.generation_retry_backoff_seconds,
+        settings.llm_daily_token_quota_per_provider,
+        settings.llm_provider_timeout_seconds,
+    )
+
+
+def get_cached_router_for_settings(settings: Settings) -> CentralizedLLMRouter:
+    """Return a bounded LRU-cached router so circuit breakers and latency stats persist."""
+    key = _router_cache_key(settings)
+    with _ROUTER_CACHE_LOCK:
+        router = _ROUTER_CACHE.get(key)
+        if router is not None:
+            _ROUTER_CACHE.move_to_end(key)
+            return router
+        router = build_router_for_settings(settings)
+        _ROUTER_CACHE[key] = router
+        maxsize = max(1, _ROUTER_CACHE_MAXSIZE)
+        while len(_ROUTER_CACHE) > maxsize:
+            _ROUTER_CACHE.popitem(last=False)
+        return router
 

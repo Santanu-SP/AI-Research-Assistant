@@ -40,6 +40,14 @@ export const NewResearch: React.FC = () => {
     setIsSubmitting(true);
     setCreateError(null);
     try {
+      if (payload.depth === 'quick') {
+        const response = await researchService.queryResearch({
+          query: payload.question,
+          researchDepth: payload.depth,
+        });
+        navigate(`/research/${response.researchId}`);
+        return;
+      }
       const research = await researchService.startResearchJob({
         query: payload.question,
         researchDepth: payload.depth,

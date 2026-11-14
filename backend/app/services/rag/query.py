@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+import logging
 import re
+from time import monotonic
 from uuid import UUID, uuid5
 
 from sqlalchemy.orm import Session
@@ -10,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings
 from app.core.errors import AppError
 from app.domain.reports import SourceType
+from app.domain.research import ResearchDepth
 from app.domain.states import ProjectStatus
 from app.schemas.rag import ResearchQueryRequest, ResearchQueryResponse
 from app.schemas.reports import ResearchReportCreate
@@ -27,6 +31,148 @@ from app.models.research import Research
 from app.services.jobs import queue as job_queue
 from app.services.research import reports
 from app.services.research import runs as research
+
+logger = logging.getLogger(__name__)
+
+_COMPLEX_QUERY_RE = re.compile(
+    r"\b(?:"
+    r"compare|contrast|difference|differences|versus|vs\.?|relationship|"
+    r"trade[- ]?off|evaluate|analyze|analyse|synthesize|synthesise|"
+    r"summarize|summarise|summary|explain|explanation|list|overview|"
+    r"detail|details|detailed|finding|findings|mechanism|mechanisms|"
+    r"describe|outline|discuss|elaborate|implication|implications|"
+    r"comprehensive|thorough|critique|limitation|limitations|methodology|"
+    r"methodologies|architecture|why does|why do|why is|how does|how do|"
+    r"step by step|timeline|"
+    r"across (?:the )?(?:papers|documents|sources|studies|chapters)|"
+    r"all (?:papers|documents|sources|studies)"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def is_simple_question(question: str) -> bool:
+    """Return True for short, single-intent factual questions."""
+    normalized = " ".join(question.strip().split())
+    if not normalized:
+        return False
+    if "\n" in question.strip() or ";" in normalized or normalized.count("?") > 1:
+        return False
+    if len(normalized.split()) > 12:
+        return False
+    return _COMPLEX_QUERY_RE.search(normalized) is None
+
+
+@dataclass(frozen=True)
+class ResearchExecutionProfile:
+    """Depth- and complexity-aware runtime budgets derived from Settings."""
+
+    mode: str
+    settings: Settings
+    provider_timeout_seconds: float | None = None
+    primary_timeout_seconds: float | None = None
+    allow_sticky_fallback: bool = True
+
+
+def _depth_timeout_controls(
+    depth: ResearchDepth,
+    settings: Settings,
+) -> tuple[float, float, bool]:
+    if depth == ResearchDepth.QUICK:
+        return (
+            settings.llm_quick_timeout_seconds,
+            min(settings.llm_quick_timeout_seconds, settings.gemini_primary_timeout_seconds),
+            True,
+        )
+    if depth == ResearchDepth.DEEP:
+        return (
+            settings.llm_deep_timeout_seconds,
+            settings.llm_deep_timeout_seconds,
+            False,
+        )
+    return (
+        settings.llm_provider_timeout_seconds,
+        settings.gemini_primary_timeout_seconds,
+        True,
+    )
+
+
+def resolve_execution_profile(
+    question: str,
+    depth: ResearchDepth | str,
+    settings: Settings,
+) -> ResearchExecutionProfile:
+    """Tune retrieval top-k, reranker backend, timeouts, and generation tokens to query difficulty."""
+    try:
+        resolved_depth = ResearchDepth(depth)
+    except ValueError:
+        resolved_depth = ResearchDepth.STANDARD
+
+    provider_timeout, primary_timeout, allow_sticky = _depth_timeout_controls(
+        resolved_depth, settings
+    )
+
+    if not settings.adaptive_fast_path_enabled:
+        return ResearchExecutionProfile(
+            mode=resolved_depth.value,
+            settings=settings,
+            provider_timeout_seconds=provider_timeout,
+            primary_timeout_seconds=primary_timeout,
+            allow_sticky_fallback=allow_sticky,
+        )
+
+    if resolved_depth == ResearchDepth.QUICK:
+        return ResearchExecutionProfile(
+            mode="quick",
+            settings=settings.model_copy(
+                update={
+                    "vector_top_k": min(settings.vector_top_k, 10),
+                    "keyword_top_k": min(settings.keyword_top_k, 10),
+                    "hybrid_candidate_k": min(settings.hybrid_candidate_k, 10),
+                    "reranker_provider": "lexical",
+                    "final_context_k": min(settings.final_context_k, 4),
+                    "generation_max_new_tokens": min(settings.generation_max_new_tokens, 384),
+                }
+            ),
+            provider_timeout_seconds=provider_timeout,
+            primary_timeout_seconds=primary_timeout,
+            allow_sticky_fallback=allow_sticky,
+        )
+
+    if resolved_depth == ResearchDepth.STANDARD and is_simple_question(question):
+        return ResearchExecutionProfile(
+            mode="fast_standard",
+            settings=settings.model_copy(
+                update={
+                    "vector_top_k": min(settings.vector_top_k, 12),
+                    "keyword_top_k": min(settings.keyword_top_k, 12),
+                    "hybrid_candidate_k": min(settings.hybrid_candidate_k, 12),
+                    "reranker_provider": "lexical",
+                    "final_context_k": min(settings.final_context_k, 5),
+                    "generation_max_new_tokens": min(settings.generation_max_new_tokens, 448),
+                }
+            ),
+            provider_timeout_seconds=provider_timeout,
+            primary_timeout_seconds=primary_timeout,
+            allow_sticky_fallback=allow_sticky,
+        )
+
+    if resolved_depth == ResearchDepth.STANDARD:
+        return ResearchExecutionProfile(
+            mode="standard",
+            settings=settings,
+            provider_timeout_seconds=provider_timeout,
+            primary_timeout_seconds=primary_timeout,
+            allow_sticky_fallback=allow_sticky,
+        )
+
+    return ResearchExecutionProfile(
+        mode="deep",
+        settings=settings,
+        provider_timeout_seconds=provider_timeout,
+        primary_timeout_seconds=primary_timeout,
+        allow_sticky_fallback=allow_sticky,
+    )
 
 
 def _plain_answer(answer: str) -> str:
@@ -109,6 +255,7 @@ def run_query(
         settings,
         reranker=reranker,
         generator=generator,
+        commit_intermediate=False,
     )
 
 
@@ -156,65 +303,78 @@ def execute_research(
     *,
     reranker: RerankerService | None = None,
     generator: GenerationService | None = None,
+    commit_intermediate: bool = True,
 ) -> ResearchQueryResponse:
     """Run retrieval, reranking, and grounded generation for one research run."""
+    started_at = monotonic()
     record = research.get_research(session, research_id, user_id)
     normalized_query = record.question.strip()
+    profile = resolve_execution_profile(
+        normalized_query,
+        record.research_depth,
+        settings,
+    )
+    runtime_settings = profile.settings
     try:
-        research.update_research_lifecycle(
-            session, record.id, ProjectStatus.PAPERS_SELECTED
-        )
         candidates = retrieval.retrieve(
             session,
             user_id,
             normalized_query,
-            settings,
+            runtime_settings,
             project_id=record.project_id,
         )
-        research.update_progress_counts(
-            session,
-            record.id,
-            sources_discovered=len(candidates),
-            sources_reviewed=0,
-            documents_found=len({item.document_id for item in candidates}),
+        if candidates:
+            ranked = (reranker or reranker_service_for(runtime_settings)).rerank(
+                normalized_query, candidates
+            )
+        else:
+            ranked = []
+        evidence = EvidenceBuilder().build(
+            ranked, limit=runtime_settings.final_context_k
         )
-
-        ranked = (reranker or reranker_service_for(settings)).rerank(
-            normalized_query, candidates
-        )
-        evidence = EvidenceBuilder().build(ranked, limit=settings.final_context_k)
-        research.update_progress_counts(
-            session,
-            record.id,
-            sources_reviewed=len(evidence),
-        )
-        research.update_research_lifecycle(
-            session, record.id, ProjectStatus.RESEARCH_READY
-        )
-
         insufficient = not evidence_is_sufficient(
             evidence,
-            minimum_count=settings.minimum_evidence_count,
-            minimum_relevance=settings.reranker_min_score,
+            minimum_count=runtime_settings.minimum_evidence_count,
+            minimum_relevance=runtime_settings.reranker_min_score,
+        )
+        research.advance_research_progress(
+            session,
+            record.id,
+            project_status=(
+                ProjectStatus.RESEARCH_READY
+                if insufficient
+                else ProjectStatus.REVIEW_READY
+            ),
+            sources_discovered=len(candidates),
+            sources_reviewed=len(evidence),
+            documents_found=len({item.document_id for item in candidates}),
+            commit=commit_intermediate,
         )
         if not insufficient:
-            research.update_research_lifecycle(
-                session, record.id, ProjectStatus.REVIEW_READY
-            )
-            active_generator = generator or generation_service_for(settings)
+            active_generator = generator or generation_service_for(runtime_settings)
             from app.services.auth import api_keys as api_key_service
 
             user_keys = api_key_service.get_decrypted_user_api_keys(
-                session, user_id, settings
+                session, user_id, runtime_settings
             )
             try:
                 generated = active_generator.generate(
                     normalized_query,
                     evidence,
                     user_api_keys=user_keys or None,
+                    provider_timeout_seconds=profile.provider_timeout_seconds,
+                    primary_timeout_seconds=profile.primary_timeout_seconds,
+                    allow_sticky_fallback=profile.allow_sticky_fallback,
                 )
             except TypeError:
-                generated = active_generator.generate(normalized_query, evidence)
+                try:
+                    generated = active_generator.generate(
+                        normalized_query,
+                        evidence,
+                        user_api_keys=user_keys or None,
+                    )
+                except TypeError:
+                    generated = active_generator.generate(normalized_query, evidence)
 
             last_resp = getattr(active_generator, "last_response", None)
             if last_resp is not None and getattr(last_resp, "used_byok", False):
@@ -245,8 +405,25 @@ def execute_research(
                 citations=validated.citations,
                 evidence=evidence,
             ),
+            commit=False,
         )
-        research.mark_research_completed(session, record.id)
+        research.advance_research_progress(
+            session,
+            record.id,
+            project_status=ProjectStatus.REPORT_READY,
+            commit=True,
+        )
+        logger.info(
+            "Completed research execution",
+            extra={
+                "research_id": str(record.id),
+                "mode": profile.mode,
+                "depth": str(record.research_depth),
+                "candidates": len(candidates),
+                "evidence": len(evidence),
+                "duration_ms": round((monotonic() - started_at) * 1000, 1),
+            },
+        )
         return ResearchQueryResponse(
             research_id=record.id,
             project_id=record.project_id,

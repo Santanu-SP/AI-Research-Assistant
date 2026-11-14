@@ -12,7 +12,7 @@ import httpx
 from app.core.config import Settings
 from app.core.errors import AppError
 from app.providers.base import LLMRequest, LLMResponse
-from app.providers.router import CentralizedLLMRouter, build_router_for_settings
+from app.providers.router import CentralizedLLMRouter, get_cached_router_for_settings
 from app.schemas.rag import EvidenceItem
 
 logger = logging.getLogger(__name__)
@@ -94,6 +94,9 @@ class GenerationService:
         model_check_ttl_seconds: float = 300.0,
         retry_backoff_seconds: float = 0.5,
         router: CentralizedLLMRouter | None = None,
+        provider_timeout_seconds: float | None = None,
+        primary_timeout_seconds: float | None = None,
+        allow_sticky_fallback: bool = True,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.model_name = model_name
@@ -110,6 +113,9 @@ class GenerationService:
         self.retry_backoff_seconds = retry_backoff_seconds
         self._model_verified_at: float | None = None
         self.router = router
+        self.provider_timeout_seconds = provider_timeout_seconds
+        self.primary_timeout_seconds = primary_timeout_seconds
+        self.allow_sticky_fallback = allow_sticky_fallback
         self.last_response: LLMResponse | None = None
 
     def close(self) -> None:
@@ -174,6 +180,9 @@ class GenerationService:
         *,
         user_api_keys: dict[str, str] | None = None,
         preferred_provider: str | None = None,
+        provider_timeout_seconds: float | None = None,
+        primary_timeout_seconds: float | None = None,
+        allow_sticky_fallback: bool | None = None,
     ) -> str:
         prompt = build_grounding_prompt(question, evidence)
         if self.router is not None or user_api_keys:
@@ -181,7 +190,7 @@ class GenerationService:
             if active_router is None:
                 from app.core.config import get_settings
 
-                active_router = build_router_for_settings(get_settings())
+                active_router = get_cached_router_for_settings(get_settings())
             llm_response = active_router.generate(
                 LLMRequest(
                     system_prompt=GROUNDING_RULES,
@@ -189,6 +198,21 @@ class GenerationService:
                     max_tokens=self.max_new_tokens,
                     temperature=self.temperature,
                     timeout_seconds=self.timeout_seconds,
+                    provider_timeout_seconds=(
+                        provider_timeout_seconds
+                        if provider_timeout_seconds is not None
+                        else self.provider_timeout_seconds
+                    ),
+                    primary_timeout_seconds=(
+                        primary_timeout_seconds
+                        if primary_timeout_seconds is not None
+                        else self.primary_timeout_seconds
+                    ),
+                    allow_sticky_fallback=(
+                        allow_sticky_fallback
+                        if allow_sticky_fallback is not None
+                        else self.allow_sticky_fallback
+                    ),
                 ),
                 user_api_keys=user_api_keys,
                 preferred_provider=preferred_provider,
@@ -283,7 +307,7 @@ def generation_service_for(settings: Settings) -> GenerationService:
             connect_timeout_seconds=settings.generation_connect_timeout_seconds,
             max_retries=settings.generation_max_retries,
             model_check_ttl_seconds=settings.generation_model_check_ttl_seconds,
-            router=build_router_for_settings(settings),
+            router=get_cached_router_for_settings(settings),
         )
     return _cached_generation_service(
         settings.ollama_base_url,

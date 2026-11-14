@@ -4,9 +4,44 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from threading import Lock
 from typing import Any
 
 import httpx
+
+
+_HTTP_CLIENT_LOCK = Lock()
+_SHARED_HTTP_CLIENT: httpx.Client | None = None
+
+
+def get_shared_http_client() -> httpx.Client:
+    """Return a process-wide pooled httpx.Client to reuse TLS keep-alive connections."""
+    global _SHARED_HTTP_CLIENT
+    with _HTTP_CLIENT_LOCK:
+        if _SHARED_HTTP_CLIENT is None or _SHARED_HTTP_CLIENT.is_closed:
+            _SHARED_HTTP_CLIENT = httpx.Client(
+                timeout=httpx.Timeout(30.0, connect=5.0),
+                limits=httpx.Limits(max_keepalive_connections=16, max_connections=32),
+            )
+        return _SHARED_HTTP_CLIENT
+
+
+def post_json_with_client(
+    client: httpx.Client | None,
+    url: str,
+    *,
+    headers: dict[str, str] | None = None,
+    json: dict[str, Any],
+    timeout_seconds: float,
+) -> httpx.Response:
+    """POST JSON via the injected test client or the pooled shared client."""
+    active_client = client if client is not None else get_shared_http_client()
+    return active_client.post(
+        url,
+        headers=headers,
+        json=json,
+        timeout=timeout_seconds,
+    )
 
 
 @dataclass(frozen=True)
@@ -25,6 +60,9 @@ class LLMRequest:
     timeout_seconds: float = 45.0
     model_override: str | None = None
     api_key_override: str | None = None
+    provider_timeout_seconds: float | None = None
+    primary_timeout_seconds: float | None = None
+    allow_sticky_fallback: bool = True
     metadata: dict[str, Any] = field(default_factory=dict)
 
 

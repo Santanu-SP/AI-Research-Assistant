@@ -271,15 +271,22 @@ class JobWorker:
         return count
 
     def _warm_up(self) -> None:
+        from app.providers.router import get_cached_router_for_settings
         from app.services.rag.embeddings import embedding_service_for
         from app.services.rag.reranking import reranker_service_for
 
+        started = monotonic()
         try:
             if self.settings.embedding_enabled:
                 embedding_service_for(self.settings)
+            if self.settings.generation_runtime == "router":
+                get_cached_router_for_settings(self.settings)
             reranker = reranker_service_for(self.settings)
             if hasattr(reranker, "_load_model"):
                 reranker._load_model()
-            logger.info("Model warm-up finished")
+            logger.info(
+                "Model warm-up finished",
+                extra={"duration_ms": round((monotonic() - started) * 1000, 1)},
+            )
         except Exception:
             logger.exception("Model warm-up failed; models will load on first use")

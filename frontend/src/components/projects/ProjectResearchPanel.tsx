@@ -5,7 +5,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Send, RotateCcw, AlertTriangle, Info } from 'lucide-react';
 import { ResearchProject } from '../../types/project';
-import { ResearchQueryResponse, Citation } from '../../types/research';
+import {
+  Citation,
+  ResearchDepth,
+  ResearchQueryResponse,
+} from '../../types/research';
 import { queryResearch, getResearchErrorMessage } from '../../services/research.service';
 import { SafeMarkdown } from '../common/SafeMarkdown';
 import { CitationPanel } from '../research/CitationPanel';
@@ -31,21 +35,47 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
   preparingCount = 0,
 }) => {
   const [question, setQuestion] = useState('');
+  const [researchDepth, setResearchDepth] = useState<ResearchDepth>('standard');
   const [researchState, setResearchState] = useState<ResearchState>('idle');
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [result, setResult] = useState<ResearchQueryResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedCitationId, setSelectedCitationId] = useState<string | null>(null);
 
-  // Track the project ID at submission time to guard against stale results
+  // Track active project id and request epoch so stale responses after a project switch are ignored
+  const activeProjectIdRef = useRef(project.id);
   const submittedProjectIdRef = useRef<string | null>(null);
+  const requestEpochRef = useRef(0);
 
-  // When project changes, clear previous results
+  // When project changes, invalidate in-flight work and clear previous results
   useEffect(() => {
+    activeProjectIdRef.current = project.id;
+    requestEpochRef.current += 1;
+    submittedProjectIdRef.current = null;
     setResult(null);
     setError(null);
     setResearchState('idle');
     setSelectedCitationId(null);
   }, [project.id]);
+
+  useEffect(() => {
+    return () => {
+      requestEpochRef.current += 1;
+      submittedProjectIdRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (researchState !== 'submitting') {
+      setElapsedSeconds(0);
+      return;
+    }
+    const started = Date.now();
+    const timer = window.setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - started) / 1000));
+    }, 500);
+    return () => window.clearInterval(timer);
+  }, [researchState]);
 
   const noReadyDocuments = readyCount === 0;
   const isDisabled =
@@ -60,7 +90,14 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
     if (isDisabled) return;
 
     const currentProjectId = project.id;
+    const submitEpoch = requestEpochRef.current + 1;
+    requestEpochRef.current = submitEpoch;
     submittedProjectIdRef.current = currentProjectId;
+
+    const isStaleSubmission = () =>
+      activeProjectIdRef.current !== currentProjectId ||
+      submittedProjectIdRef.current !== currentProjectId ||
+      requestEpochRef.current !== submitEpoch;
 
     setResearchState('submitting');
     setError(null);
@@ -71,15 +108,16 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
       const response = await queryResearch({
         query: question.trim(),
         projectId: currentProjectId,
+        researchDepth,
       });
 
-      // Guard: if project changed while request was in flight, discard result
-      if (submittedProjectIdRef.current !== currentProjectId) return;
+      // Guard: if project changed or reset while request was in flight, discard result
+      if (isStaleSubmission()) return;
 
       setResult(response);
       setResearchState('complete');
     } catch (err) {
-      if (submittedProjectIdRef.current !== currentProjectId) return;
+      if (isStaleSubmission()) return;
       setError(getResearchErrorMessage(err, 'Research failed. Please try again.'));
       setResearchState('failed');
     }
@@ -93,6 +131,8 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
   };
 
   const handleReset = () => {
+    requestEpochRef.current += 1;
+    submittedProjectIdRef.current = null;
     setResearchState('idle');
     setResult(null);
     setError(null);
@@ -150,17 +190,40 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
               </div>
             </div>
 
-            <div className="flex items-center justify-between">
-              {(researchState === 'complete' || researchState === 'failed') && (
-                <button
-                  type="button"
-                  onClick={handleReset}
-                  className="inline-flex items-center gap-1.5 text-xs text-ink-soft hover:text-ink transition-colors"
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                {(researchState === 'complete' || researchState === 'failed') && (
+                  <button
+                    type="button"
+                    onClick={handleReset}
+                    className="inline-flex items-center gap-1.5 text-xs text-ink-soft hover:text-ink transition-colors"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    New question
+                  </button>
+                )}
+                <div
+                  role="group"
+                  aria-label="Research speed and depth"
+                  className="inline-flex rounded-md border border-line bg-subtle p-0.5 text-[11px]"
                 >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  New question
-                </button>
-              )}
+                  {(['quick', 'standard', 'deep'] as const).map((option) => (
+                    <button
+                      key={option}
+                      type="button"
+                      disabled={researchState === 'submitting'}
+                      onClick={() => setResearchDepth(option)}
+                      className={`cursor-pointer rounded px-2 py-1 font-medium capitalize transition-colors ${
+                        researchDepth === option
+                          ? 'bg-panel text-ink shadow-xs'
+                          : 'text-ink-muted hover:text-ink'
+                      } disabled:opacity-50`}
+                    >
+                      {option}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="ml-auto">
                 <PrimaryButton
                   type="submit"
@@ -180,11 +243,12 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
         <div className="flex flex-col items-center gap-3 rounded-lg border border-line bg-panel p-8 text-center">
           <LoadingOrb size={28} />
           <p className="text-sm font-medium text-ink">
-            Researching your question…
+            Researching your question…{elapsedSeconds > 0 ? ` (${elapsedSeconds}s)` : ''}
           </p>
           <p className="text-xs text-ink-muted max-w-xs">
-            Reading through your documents and writing an answer with
-            citations.
+            {researchDepth === 'quick'
+              ? 'Fast retrieval and synthesis from top passages.'
+              : 'Reading through your documents and writing an answer with citations.'}
           </p>
         </div>
       )}

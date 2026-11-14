@@ -10,6 +10,8 @@ import { CenteredLoadingState } from '../components/common/LoadingState';
 import { ErrorState } from '../components/common/ErrorState';
 import { ApiError } from '../services/api';
 
+const PROGRESS_POLL_DELAYS_MS = [400, 600, 900, 1400, 2000] as const;
+
 export const ResearchProgressPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -19,6 +21,7 @@ export const ResearchProgressPage: React.FC = () => {
   useEffect(() => {
     let mounted = true;
     let timer: number | undefined;
+    let pollAttempt = 0;
 
     const fetchProgress = async () => {
       if (!id) return;
@@ -27,9 +30,19 @@ export const ResearchProgressPage: React.FC = () => {
         if (mounted) {
           setProgress(res);
           setError(null);
-          
+
+          if (res.status === 'completed') {
+            navigate(`/research/${res.id}`, { replace: true });
+            return;
+          }
+
           if (res.status === 'researching') {
-            timer = window.setTimeout(fetchProgress, 3000);
+            const delay =
+              PROGRESS_POLL_DELAYS_MS[
+                Math.min(pollAttempt, PROGRESS_POLL_DELAYS_MS.length - 1)
+              ];
+            pollAttempt += 1;
+            timer = window.setTimeout(fetchProgress, delay);
           }
         }
       } catch (err) {
@@ -47,7 +60,7 @@ export const ResearchProgressPage: React.FC = () => {
         window.clearTimeout(timer);
       }
     };
-  }, [id]);
+  }, [id, navigate]);
 
   if (error) {
     if (error instanceof ApiError && error.status === 404) {

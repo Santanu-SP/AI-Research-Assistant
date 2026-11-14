@@ -53,7 +53,7 @@ export const ResearchComposer: React.FC<ResearchComposerProps> = ({
       setLoadingMessageIndex((index) =>
         Math.min(index + 1, LOADING_MESSAGES.length - 1)
       );
-    }, 2500);
+    }, 1100);
     return () => window.clearInterval(timer);
   }, [isLoading]);
 
@@ -130,7 +130,7 @@ export const ResearchComposer: React.FC<ResearchComposerProps> = ({
                 >
                   <div>
                     <span className="font-medium text-ink block">Quick</span>
-                    <span className="text-[11px] text-ink-muted">A short answer from the strongest passages</span>
+                    <span className="text-[11px] text-ink-muted">Direct answer in seconds from top passages</span>
                   </div>
                   {depth === 'quick' && <Check className="w-3.5 h-3.5 text-accent" />}
                 </button>
@@ -164,7 +164,7 @@ export const ResearchComposer: React.FC<ResearchComposerProps> = ({
                 >
                   <div>
                     <span className="font-medium text-ink block">Deep</span>
-                    <span className="text-[11px] text-ink-muted">More passages, longer synthesis</span>
+                    <span className="text-[11px] text-ink-muted">Full reranking, more passages & synthesis</span>
                   </div>
                   {depth === 'deep' && <Check className="w-3.5 h-3.5 text-accent" />}
                 </button>
