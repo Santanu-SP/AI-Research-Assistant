@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
   Combine,
@@ -9,6 +9,7 @@ import {
   ListOrdered,
   RefreshCw,
 } from 'lucide-react';
+import { useOptionalAuth } from '../../app/AuthContext';
 import { BrandMark } from '../common/BrandMark';
 import { EvidencePreview, ProductPreview, ProjectsPreview } from './ProductPreview';
 import { Reveal, loadDelay, scrollToHash, usePrefersReducedMotion } from './Motion';
@@ -96,20 +97,8 @@ export const Hero: React.FC = () => {
           Upload PDF and DOCX files, ask in plain language, and get a written answer where each
           sentence cites the document, page and passage it came from.
         </p>
-        <div style={loadDelay(375)} className="landing-load mt-8 flex flex-wrap items-center gap-3">
-          <Link
-            to="/register"
-            className="landing-btn group inline-flex h-11 items-center gap-2 rounded-md bg-solid px-5 text-sm font-medium text-on-solid shadow-sm transition-colors hover:bg-solid-hover"
-          >
-            Create an account
-            <ArrowRight className="h-4 w-4" />
-          </Link>
-          <Link
-            to="/login"
-            className="landing-btn inline-flex h-11 items-center rounded-md border border-line-strong bg-panel px-5 text-sm font-medium text-ink shadow-xs transition-colors hover:bg-subtle"
-          >
-            Sign in
-          </Link>
+        <div style={loadDelay(375)} className="landing-load mt-8">
+          <HeroActions />
         </div>
       </div>
 
@@ -356,42 +345,144 @@ export const FinalCta: React.FC = () => (
             Create a project, upload a few PDFs and ask your first question.
           </p>
         </div>
-        <div className="flex flex-wrap gap-3">
-          <Link
-            to="/register"
-            className="landing-btn group inline-flex h-11 items-center gap-2 rounded-md bg-solid px-5 text-sm font-medium text-on-solid shadow-sm transition-colors hover:bg-solid-hover"
-          >
-            Create an account
-            <ArrowRight className="h-4 w-4" />
-          </Link>
-          <Link
-            to="/login"
-            className="landing-btn inline-flex h-11 items-center rounded-md border border-line-strong bg-panel px-5 text-sm font-medium text-ink transition-colors hover:bg-subtle"
-          >
-            Sign in
-          </Link>
-        </div>
+        <FinalCtaActions />
       </Reveal>
     </Container>
   </section>
 );
 
-export const LandingFooter: React.FC = () => (
-  <footer className="border-t border-line">
-    <Container className="flex flex-col gap-6 py-10 sm:flex-row sm:items-center sm:justify-between">
-      <Reveal>
-        <BrandMark nameClassName="text-[14px]" />
-        <p className="mt-2 text-[13px] text-ink-muted">Answers from your own papers, with the sources attached.</p>
-      </Reveal>
-      <Reveal delay={80}>
-      <nav aria-label="Footer" className="flex flex-wrap gap-x-6 gap-y-2 text-[13px] text-ink-soft">
-        <a href="#how-it-works" onClick={scrollToHash} className="hover:text-ink">How it works</a>
-        <a href="#features" onClick={scrollToHash} className="hover:text-ink">Features</a>
-        <a href="#faq" onClick={scrollToHash} className="hover:text-ink">FAQ</a>
-        <Link to="/login" className="hover:text-ink">Sign in</Link>
-        <Link to="/register" className="hover:text-ink">Create account</Link>
-      </nav>
-      </Reveal>
-    </Container>
-  </footer>
-);
+const HeroActions: React.FC = () => {
+  const auth = useOptionalAuth();
+  const navigate = useNavigate();
+  const user = auth?.user ?? null;
+
+  const handleSwitchAccount = async () => {
+    await auth?.logout();
+    navigate('/login');
+  };
+
+  if (user) {
+    return (
+      <div className="flex flex-col items-start gap-3">
+        <div className="inline-flex items-center gap-2 rounded-full border border-line bg-panel px-3 py-1 text-xs text-ink-soft shadow-xs">
+          <span className="h-2 w-2 rounded-full bg-accent" aria-hidden="true" />
+          <span>
+            Signed in as <strong className="font-medium text-ink">{user.name}</strong> ({user.email})
+          </span>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <Link
+            to="/research/new"
+            className="landing-btn group inline-flex h-11 items-center gap-2 rounded-md bg-solid px-5 text-sm font-medium text-on-solid shadow-sm transition-colors hover:bg-solid-hover"
+          >
+            Open workspace
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+          <button
+            type="button"
+            onClick={() => { void handleSwitchAccount(); }}
+            className="landing-btn inline-flex h-11 items-center rounded-md border border-line-strong bg-panel px-5 text-sm font-medium text-ink shadow-xs transition-colors hover:bg-subtle"
+          >
+            Switch account
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <Link
+        to="/register"
+        className="landing-btn group inline-flex h-11 items-center gap-2 rounded-md bg-solid px-5 text-sm font-medium text-on-solid shadow-sm transition-colors hover:bg-solid-hover"
+      >
+        Create an account
+        <ArrowRight className="h-4 w-4" />
+      </Link>
+      <Link
+        to="/login"
+        className="landing-btn inline-flex h-11 items-center rounded-md border border-line-strong bg-panel px-5 text-sm font-medium text-ink shadow-xs transition-colors hover:bg-subtle"
+      >
+        Sign in
+      </Link>
+    </div>
+  );
+};
+
+const FinalCtaActions: React.FC = () => {
+  const auth = useOptionalAuth();
+  const user = auth?.user ?? null;
+
+  if (user) {
+    return (
+      <div className="flex flex-wrap gap-3">
+        <Link
+          to="/research/new"
+          className="landing-btn group inline-flex h-11 items-center gap-2 rounded-md bg-solid px-5 text-sm font-medium text-on-solid shadow-sm transition-colors hover:bg-solid-hover"
+        >
+          Open workspace
+          <ArrowRight className="h-4 w-4" />
+        </Link>
+        <button
+          type="button"
+          onClick={() => { void auth?.logout(); }}
+          className="landing-btn inline-flex h-11 items-center rounded-md border border-line-strong bg-panel px-5 text-sm font-medium text-ink transition-colors hover:bg-subtle"
+        >
+          Sign out
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap gap-3">
+      <Link
+        to="/register"
+        className="landing-btn group inline-flex h-11 items-center gap-2 rounded-md bg-solid px-5 text-sm font-medium text-on-solid shadow-sm transition-colors hover:bg-solid-hover"
+      >
+        Create an account
+        <ArrowRight className="h-4 w-4" />
+      </Link>
+      <Link
+        to="/login"
+        className="landing-btn inline-flex h-11 items-center rounded-md border border-line-strong bg-panel px-5 text-sm font-medium text-ink transition-colors hover:bg-subtle"
+      >
+        Sign in
+      </Link>
+    </div>
+  );
+};
+
+export const LandingFooter: React.FC = () => {
+  const auth = useOptionalAuth();
+  const user = auth?.user ?? null;
+
+  return (
+    <footer className="border-t border-line">
+      <Container className="flex flex-col gap-6 py-10 sm:flex-row sm:items-center sm:justify-between">
+        <Reveal>
+          <BrandMark nameClassName="text-[14px]" />
+          <p className="mt-2 text-[13px] text-ink-muted">Answers from your own papers, with the sources attached.</p>
+        </Reveal>
+        <Reveal delay={80}>
+        <nav aria-label="Footer" className="flex flex-wrap gap-x-6 gap-y-2 text-[13px] text-ink-soft">
+          <a href="#how-it-works" onClick={scrollToHash} className="hover:text-ink">How it works</a>
+          <a href="#features" onClick={scrollToHash} className="hover:text-ink">Features</a>
+          <a href="#faq" onClick={scrollToHash} className="hover:text-ink">FAQ</a>
+          {user ? (
+            <>
+              <Link to="/research/new" className="hover:text-ink">Open workspace</Link>
+              <button type="button" onClick={() => { void auth?.logout(); }} className="hover:text-ink">Sign out</button>
+            </>
+          ) : (
+            <>
+              <Link to="/login" className="hover:text-ink">Sign in</Link>
+              <Link to="/register" className="hover:text-ink">Create account</Link>
+            </>
+          )}
+        </nav>
+        </Reveal>
+      </Container>
+    </footer>
+  );
+};

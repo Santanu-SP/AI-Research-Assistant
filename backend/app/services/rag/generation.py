@@ -6,12 +6,13 @@ from functools import lru_cache
 import logging
 import re
 from time import monotonic, sleep
+from typing import Callable
 
 import httpx
 
 from app.core.config import Settings
 from app.core.errors import AppError
-from app.providers.base import LLMRequest, LLMResponse
+from app.providers.base import LLMRequest, LLMResponse, TokenUsage
 from app.providers.router import CentralizedLLMRouter, get_cached_router_for_settings
 from app.schemas.rag import EvidenceItem
 
@@ -179,13 +180,26 @@ class GenerationService:
         evidence: list[EvidenceItem],
         *,
         user_api_keys: dict[str, str] | None = None,
+        user_provider_models: dict[str, str] | None = None,
         preferred_provider: str | None = None,
+        model_override: str | None = None,
+        local_fallback_enabled: bool | None = None,
+        allow_shared_providers: bool = True,
+        before_shared_attempt: Callable[[str], bool] | None = None,
         provider_timeout_seconds: float | None = None,
         primary_timeout_seconds: float | None = None,
         allow_sticky_fallback: bool | None = None,
     ) -> str:
         prompt = build_grounding_prompt(question, evidence)
-        if self.router is not None or user_api_keys:
+        if (
+            self.router is not None
+            or user_api_keys
+            or user_provider_models
+            or preferred_provider
+            or local_fallback_enabled is not None
+            or not allow_shared_providers
+            or before_shared_attempt is not None
+        ):
             active_router = self.router
             if active_router is None:
                 from app.core.config import get_settings
@@ -198,6 +212,7 @@ class GenerationService:
                     max_tokens=self.max_new_tokens,
                     temperature=self.temperature,
                     timeout_seconds=self.timeout_seconds,
+                    model_override=model_override,
                     provider_timeout_seconds=(
                         provider_timeout_seconds
                         if provider_timeout_seconds is not None
@@ -215,7 +230,11 @@ class GenerationService:
                     ),
                 ),
                 user_api_keys=user_api_keys,
+                user_provider_models=user_provider_models,
                 preferred_provider=preferred_provider,
+                local_fallback_enabled=local_fallback_enabled,
+                allow_shared_providers=allow_shared_providers,
+                before_shared_attempt=before_shared_attempt,
             )
             self.last_response = llm_response
             answer = llm_response.content.strip()
@@ -244,7 +263,8 @@ class GenerationService:
                 lambda: self._client.post("/api/generate", json=payload)
             )
             response.raise_for_status()
-            answer = response.json().get("response", "").strip()
+            data = response.json()
+            answer = str(data.get("response", "")).strip()
         except httpx.TimeoutException as exc:
             raise AppError(
                 "The local generation model timed out",
@@ -265,6 +285,19 @@ class GenerationService:
                 status_code=503,
                 code="generation_empty_response",
             )
+        prompt_tokens = int(data.get("prompt_eval_count") or 0)
+        completion_tokens = int(data.get("eval_count") or 0)
+        self.last_response = LLMResponse(
+            provider="ollama",
+            model=self.model_name,
+            content=answer,
+            usage=TokenUsage(
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                total_tokens=prompt_tokens + completion_tokens,
+            ),
+            used_byok=False,
+        )
         return answer
 
 

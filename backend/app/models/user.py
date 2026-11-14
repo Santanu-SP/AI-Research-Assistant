@@ -20,6 +20,7 @@ class User(TimestampMixin, Base):
     # sign-ups stay unverified until a verification flow confirms them.
     email_verified_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1", nullable=False)
+    local_fallback_enabled: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     sessions: Mapped[list["AuthSession"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     projects: Mapped[list["ResearchProject"]] = relationship(
         back_populates="user",

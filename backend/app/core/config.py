@@ -13,6 +13,17 @@ from app.db.session import normalize_database_url
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_DATABASE_URL = "sqlite:///./backend/data/research_assistant.db"
+DEV_BYOK_ENCRYPTION_SECRET = "dev-only-byok-encryption-secret-change-in-production"
+_WEAK_BYOK_SECRETS = frozenset(
+    {
+        DEV_BYOK_ENCRYPTION_SECRET,
+        "change-me",
+        "changeme",
+        "secret",
+        "dev-secret",
+        "development",
+    }
+)
 
 
 def _legacy_supabase_defaults() -> dict[str, str | None]:
@@ -98,6 +109,7 @@ class Settings(BaseSettings):
 
     # Authentication & security.
     auth_session_days: int = Field(default=7, ge=1, le=30)
+    auth_inactivity_days: int = Field(default=3, ge=1, le=30)
     auth_cookie_secure: bool | None = None
     auth_max_sessions_per_user: int = Field(default=10, ge=1, le=100)
     frontend_url: str = "http://localhost:3000"
@@ -105,7 +117,7 @@ class Settings(BaseSettings):
     google_client_secret: str | None = None
     google_redirect_uri: str = "http://localhost:8000/api/v1/auth/google/callback"
     google_oauth_state_minutes: int = Field(default=10, ge=1, le=30)
-    api_key_encryption_secret: str = "dev-only-byok-encryption-secret-change-in-production"
+    api_key_encryption_secret: str | None = None
 
     # Embeddings configuration (local Qwen3-Embedding-0.6B or Cloudflare Workers AI).
     embedding_provider: Literal["local", "cloudflare"] = "local"
@@ -172,9 +184,21 @@ class Settings(BaseSettings):
     openrouter_api_key: str | None = None
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     openrouter_model_name: str = "openrouter/free"
+    groq_llm_model_name: str = "llama-3.3-70b-versatile"
+    openai_api_key: str | None = None
+    openai_base_url: str = "https://api.openai.com/v1"
+    openai_model_name: str = "gpt-4o-mini"
+    claude_api_key: str | None = None
+    claude_base_url: str = "https://api.anthropic.com/v1"
+    claude_model_name: str = "claude-3-5-haiku-latest"
+    grok_api_key: str | None = None
+    grok_base_url: str = "https://api.x.ai/v1"
+    grok_model_name: str = "grok-3-mini-fast"
     llm_circuit_breaker_threshold: int = Field(default=3, ge=1, le=20)
     llm_circuit_breaker_cooldown_seconds: float = Field(default=60.0, ge=1.0, le=3600.0)
     llm_daily_token_quota_per_provider: int = Field(default=250_000, ge=1000)
+    llm_daily_requests_per_provider: int = Field(default=100, ge=1, le=100_000)
+    llm_daily_system_request_pool: int | None = Field(default=None, ge=1)
 
     generation_max_new_tokens: int = Field(default=768, ge=64, le=4096)
     generation_temperature: float = Field(default=0.1, ge=0.0, le=1.0)
@@ -247,6 +271,7 @@ class Settings(BaseSettings):
     model_warmup_on_startup: bool = False
 
     @field_validator(
+        "api_key_encryption_secret",
         "google_client_id",
         "google_client_secret",
         "neon_database_url",
@@ -265,6 +290,9 @@ class Settings(BaseSettings):
         "gemini_api_key",
         "mistral_api_key",
         "openrouter_api_key",
+        "openai_api_key",
+        "claude_api_key",
+        "grok_api_key",
         "langfuse_public_key",
         "langfuse_secret_key",
         "celery_broker_url",
@@ -332,7 +360,35 @@ class Settings(BaseSettings):
             raise ValueError("AUTH_COOKIE_SECURE must be true in production")
         if (self.google_client_id is None) != (self.google_client_secret is None):
             raise ValueError("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set together")
+        if (
+            self.app_environment == "production"
+            and self.api_key_encryption_secret is not None
+            and self._is_weak_encryption_secret(self.api_key_encryption_secret)
+        ):
+            raise ValueError(
+                "API_KEY_ENCRYPTION_SECRET must not use a default or weak value (min 16 characters) in production"
+            )
         return self
+
+    @staticmethod
+    def _is_weak_encryption_secret(secret: str | None) -> bool:
+        cleaned = (secret or "").strip()
+        return not cleaned or len(cleaned) < 16 or cleaned.lower() in _WEAK_BYOK_SECRETS
+
+    def validate_production_startup(self) -> None:
+        """Fail fast when production runs without an explicit strong BYOK encryption key."""
+        if self.app_environment == "production" and self._is_weak_encryption_secret(
+            self.api_key_encryption_secret
+        ):
+            raise ValueError(
+                "API_KEY_ENCRYPTION_SECRET must be set to a strong non-default secret "
+                "(at least 16 characters) before starting in production"
+            )
+
+    def effective_byok_encryption_secret(self) -> str:
+        """Return the active BYOK encryption passphrase, refusing insecure defaults in production."""
+        self.validate_production_startup()
+        return (self.api_key_encryption_secret or "").strip() or DEV_BYOK_ENCRYPTION_SECRET
 
     @property
     def migration_database_url(self) -> str:

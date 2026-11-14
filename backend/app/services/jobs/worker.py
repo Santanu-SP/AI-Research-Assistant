@@ -63,10 +63,12 @@ def _fail_target(session: Session, kind: str, target_id: UUID) -> None:
     if kind in job_queue.ALL_INGEST_KINDS:
         document_records.mark_interrupted(session, target_id, INTERRUPTED_MESSAGE)
     elif kind == job_queue.RUN_RESEARCH:
+        from app.services.observability.usage import release_research_shared_quota
         from app.services.research import runs as research_runs
 
         record = session.get(Research, target_id)
         if record is not None and record.project_status != ProjectStatus.REPORT_READY:
+            release_research_shared_quota(session, target_id, commit=False)
             research_runs.mark_research_failed(session, target_id)
 
 
@@ -102,6 +104,7 @@ class JobWorker:
     def start(self) -> None:
         if self._threads:
             return
+        self.settings.validate_production_startup()
         self._stop.clear()
         for index in range(self.settings.worker_threads):
             thread = threading.Thread(

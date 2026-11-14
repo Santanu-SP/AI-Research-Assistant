@@ -36,28 +36,44 @@ export const createResearch = (payload: CreateResearchInput): Promise<ResearchRe
 /** Local generation can take a while, so the answer gets a longer timeout. */
 export const QUERY_REQUEST_TIMEOUT_MS = 5 * 60_000;
 
-export const queryResearch = (
+const notifyUsageUpdated = (): void => {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('models-usage:refresh'));
+  }
+};
+
+export const queryResearch = async (
   payload: ResearchQueryRequest
-): Promise<ResearchQueryResponse> =>
-  apiRequest<ResearchQueryResponse>('/research/query', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-    timeoutMs: QUERY_REQUEST_TIMEOUT_MS,
-  });
+): Promise<ResearchQueryResponse> => {
+  try {
+    return await apiRequest<ResearchQueryResponse>('/research/query', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      timeoutMs: QUERY_REQUEST_TIMEOUT_MS,
+    });
+  } finally {
+    notifyUsageUpdated();
+  }
+};
 
 /**
  * Starts a research run on the server's background worker and returns the
  * research record straight away. Follow it at /research/:id/progress.
  */
-export const startResearchJob = (
+export const startResearchJob = async (
   payload: ResearchQueryRequest
-): Promise<ResearchResponse> =>
-  apiRequest<ResearchResponse>('/research/jobs', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
+): Promise<ResearchResponse> => {
+  try {
+    return await apiRequest<ResearchResponse>('/research/jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  } finally {
+    notifyUsageUpdated();
+  }
+};
 
 export const listResearch = (
   params: ResearchListParams = {}

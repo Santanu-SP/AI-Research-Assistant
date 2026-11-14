@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+import re
 from threading import Lock
 from typing import Any
 
@@ -226,4 +227,36 @@ class LLMProviderAdapter(ABC):
     @abstractmethod
     def generate(self, request: LLMRequest) -> LLMResponse:
         """Execute a chat completion and return a unified LLMResponse."""
+
+
+MAX_MODEL_NAME_LENGTH = 160
+_GEMINI_MODEL_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$")
+_GENERAL_MODEL_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}$")
+
+
+def validate_model_name(model_name: str, *, provider: str | None = None) -> str:
+    """Validate and normalize a user-supplied or configured model ID.
+
+    Prevents URL path injection, query/fragment delimiters (``?``, ``#``, ``%``),
+    whitespace, and path traversal (``..``) before hitting provider endpoints.
+    """
+    cleaned = (model_name or "").strip()
+    if not cleaned:
+        raise ValueError("Model name must not be empty.")
+    if len(cleaned) > MAX_MODEL_NAME_LENGTH:
+        raise ValueError(f"Model name must be at most {MAX_MODEL_NAME_LENGTH} characters.")
+    if ".." in cleaned or "//" in cleaned or cleaned.endswith(("/", ".", ":")):
+        raise ValueError("Model name contains unsafe path or delimiter sequences.")
+
+    norm_provider = (provider or "").strip().lower() or None
+    pattern = _GEMINI_MODEL_NAME_RE if norm_provider == "gemini" else _GENERAL_MODEL_NAME_RE
+    if not pattern.fullmatch(cleaned):
+        if norm_provider == "gemini":
+            raise ValueError(
+                "Gemini model names may contain only letters, digits, '.', '_', and '-'."
+            )
+        raise ValueError(
+            "Model names may contain only letters, digits, '.', '_', '-', ':', and '/'."
+        )
+    return cleaned
 

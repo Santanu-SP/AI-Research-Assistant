@@ -1512,3 +1512,259 @@ def test_shared_router_circuit_breaker_threshold_and_byok_isolation() -> None:
         )
     )
     assert observed_timeouts == [60.0]
+
+
+def test_models_catalog_byok_providers_and_local_ollama_fallback(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify multi-provider adapters, BYOK auto-detection, models-status, and last-resort local Ollama fallback."""
+    from app.providers.compatible import (
+        ClaudeProviderAdapter,
+        GrokProviderAdapter,
+        GroqProviderAdapter,
+        OpenAIProviderAdapter,
+    )
+    from app.providers.ollama import OllamaProviderAdapter, probe_ollama_models
+    from app.services.auth import api_keys as api_key_service
+
+    # 1. Auto-detect provider key prefixes + alias normalization
+    assert api_key_service.validate_provider_and_key("auto", "AIzaSyTestKey123456")[0] == "gemini"
+    assert api_key_service.validate_provider_and_key("auto", "gsk_testkey_123456")[0] == "groq"
+    assert api_key_service.validate_provider_and_key("auto", "sk-ant-api03-123456")[0] == "claude"
+    assert api_key_service.validate_provider_and_key("auto", "sk-proj-testkey123456")[0] == "openai"
+    assert api_key_service.validate_provider_and_key("auto", "xai-testkey123456")[0] == "grok"
+    assert api_key_service.validate_provider_and_key("anthropic", "sk-ant-api03-123456")[0] == "claude"
+
+    # 2. Adapter transport tests for OpenAI / Groq / Grok / Claude + Ollama 3B fallback
+    seen_auth_headers: list[str | None] = []
+
+    def openai_compat_handler(request: httpx.Request) -> httpx.Response:
+        seen_auth_headers.append(request.headers.get("Authorization"))
+        return httpx.Response(
+            200,
+            json={
+                "model": "mock-model",
+                "choices": [{"message": {"content": "Grounded answer [S1]."}}],
+                "usage": {"prompt_tokens": 12, "completion_tokens": 6, "total_tokens": 18},
+            },
+        )
+
+    for adapter_cls, key in (
+        (GroqProviderAdapter, "gsk_test_123"),
+        (OpenAIProviderAdapter, "sk-proj-test_123"),
+        (GrokProviderAdapter, "xai-test_123"),
+    ):
+        adapter = adapter_cls(
+            api_key=key,
+            client=httpx.Client(transport=httpx.MockTransport(openai_compat_handler)),
+        )
+        res = adapter.generate(LLMRequest(system_prompt="s", user_prompt="u"))
+        assert res.content == "Grounded answer [S1]."
+        assert res.usage.total_tokens == 18
+    assert seen_auth_headers == ["Bearer gsk_test_123", "Bearer sk-proj-test_123", "Bearer xai-test_123"]
+
+    def claude_handler(request: httpx.Request) -> httpx.Response:
+        assert request.headers.get("x-api-key") == "sk-ant-test"
+        return httpx.Response(
+            200,
+            json={
+                "model": "claude-3-5-haiku-latest",
+                "content": [{"type": "text", "text": "Claude answer [S1]."}],
+                "usage": {"input_tokens": 10, "output_tokens": 5},
+            },
+        )
+
+    claude = ClaudeProviderAdapter(
+        api_key="sk-ant-test",
+        client=httpx.Client(transport=httpx.MockTransport(claude_handler)),
+    )
+    claude_res = claude.generate(LLMRequest(system_prompt="s", user_prompt="u"))
+    assert claude_res.provider == "claude"
+    assert claude_res.usage.total_tokens == 15
+
+    ollama_requests: list[tuple[str, dict[str, object] | None]] = []
+
+    def ollama_handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/tags":
+            ollama_requests.append(("/api/tags", None))
+            return httpx.Response(200, json={"models": [{"name": "llama3.2:3b"}]})
+        payload = request.read().decode("utf-8")
+        import json as json_lib
+
+        parsed = json_lib.loads(payload)
+        ollama_requests.append(("/api/generate", parsed))
+        if parsed.get("model") == "qwen3.5:9b":
+            return httpx.Response(404, json={"error": "model not found"})
+        if "think" in parsed:
+            return httpx.Response(400, json={"error": "unknown field think"})
+        return httpx.Response(
+            200,
+            json={
+                "response": "Local 3B fallback answer [S1].",
+                "prompt_eval_count": 20,
+                "eval_count": 8,
+            },
+        )
+
+    ollama_client = httpx.Client(transport=httpx.MockTransport(ollama_handler))
+    avail, installed, active = probe_ollama_models(
+        "http://127.0.0.1:11434", "qwen3.5:9b", client=ollama_client
+    )
+    assert avail is True
+    assert installed == ["llama3.2:3b"]
+    assert active == "llama3.2:3b"
+
+    ollama_adapter = OllamaProviderAdapter(
+        base_url="http://127.0.0.1:11434",
+        default_model="qwen3.5:9b",
+        client=ollama_client,
+    )
+    ollama_res = ollama_adapter.generate(LLMRequest(system_prompt="s", user_prompt="u"))
+    assert ollama_res.model == "llama3.2:3b"
+    assert ollama_res.content == "Local 3B fallback answer [S1]."
+
+    # 3. Router cascades BYOK preferred -> cloud -> Local Ollama LAST on rate limit
+    call_trace: list[str] = []
+
+    class RateLimitedOpenAI(LLMProviderAdapter):
+        provider_name = "openai"
+        default_model = "gpt-4o-mini"
+
+        def is_configured(self, api_key_override: str | None = None) -> bool:
+            return bool(api_key_override)
+
+        def generate(self, request: LLMRequest) -> LLMResponse:
+            call_trace.append("openai")
+            raise RateLimitError("openai", "429 quota exceeded")
+
+    class RateLimitedGemini(LLMProviderAdapter):
+        provider_name = "gemini"
+        default_model = "gemini-3.8-flash"
+
+        def is_configured(self, api_key_override: str | None = None) -> bool:
+            return True
+
+        def generate(self, request: LLMRequest) -> LLMResponse:
+            call_trace.append("gemini")
+            raise RateLimitError("gemini", "429 limit exceeded")
+
+    class WorkingLocalOllama(LLMProviderAdapter):
+        provider_name = "ollama"
+        default_model = "llama3.2:3b"
+
+        def is_configured(self, api_key_override: str | None = None) -> bool:
+            return True
+
+        def generate(self, request: LLMRequest) -> LLMResponse:
+            call_trace.append("ollama")
+            return LLMResponse(
+                provider="ollama",
+                model="llama3.2:3b",
+                content="Local answer after cloud limits [S1].",
+            )
+
+    local_router = CentralizedLLMRouter(
+        [RateLimitedGemini()],
+        catalog={
+            "gemini": RateLimitedGemini(),
+            "openai": RateLimitedOpenAI(),
+            "ollama": WorkingLocalOllama(),
+        },
+        max_transient_retries=0,
+    )
+    fallback_res = local_router.generate(
+        LLMRequest(system_prompt="s", user_prompt="u"),
+        user_api_keys={"openai": "sk-proj-user123"},
+        preferred_provider="openai",
+        local_fallback_enabled=True,
+    )
+    assert call_trace == ["openai", "gemini", "ollama"]
+    assert fallback_res.provider == "ollama"
+
+    # Disconnecting local fallback skips ollama when cloud fails
+    call_trace.clear()
+    with pytest.raises(AppError) as no_local_exc:
+        local_router.generate(
+            LLMRequest(system_prompt="s", user_prompt="u"),
+            user_api_keys={"openai": "sk-proj-user123"},
+            preferred_provider="openai",
+            local_fallback_enabled=False,
+        )
+    assert no_local_exc.value.status_code == 503
+    assert call_trace == ["openai", "gemini"]
+
+    # 4. API endpoints: auto-detect PUT /auth/api-keys/auto, models-status, local-fallback toggle
+    monkeypatch.setattr(
+        "app.api.routes.api_keys.probe_ollama_models",
+        lambda base_url, configured_model, timeout_seconds=1.5: (
+            True,
+            ["llama3.2:3b"],
+            "llama3.2:3b",
+        ),
+    )
+    save_auto = client.put(
+        "/api/v1/auth/api-keys/auto",
+        json={"apiKey": "sk-proj-user-key-87654321", "modelName": "gpt-4.1-mini"},
+    )
+    assert save_auto.status_code == 200, save_auto.text
+    assert save_auto.json()["provider"] == "openai"
+
+    status_res = client.get("/api/v1/auth/api-keys/models-status")
+    assert status_res.status_code == 200, status_res.text
+    status_body = status_res.json()
+    assert status_body["local"]["available"] is True
+    assert status_body["local"]["connected"] is True
+    assert status_body["local"]["activeModel"] == "llama3.2:3b"
+    providers_by_id = {p["id"]: p for p in status_body["providers"]}
+    assert providers_by_id["openai"]["configuredByok"] is True
+    assert providers_by_id["openai"]["selectedModel"] == "gpt-4.1-mini"
+    assert "gpt-4o" in providers_by_id["openai"]["suggestedModels"]
+    assert "groq" in providers_by_id
+    assert "claude" in providers_by_id
+    assert "grok" in providers_by_id
+    assert providers_by_id["ollama"]["available"] is True
+
+    # Test per-provider custom model endpoint and router forwarding of user_provider_models
+    set_model_res = client.post(
+        "/api/v1/auth/api-keys/provider-model",
+        json={"provider": "openai", "modelName": "gpt-4o"},
+    )
+    assert set_model_res.status_code == 200
+    assert set_model_res.json()["selectedModel"] == "gpt-4o"
+
+    captured_models: list[str] = []
+
+    class InspectModelOpenAI(LLMProviderAdapter):
+        provider_name = "openai"
+        default_model = "gpt-4o-mini"
+
+        def is_configured(self, api_key_override: str | None = None) -> bool:
+            return bool(api_key_override)
+
+        def generate(self, request: LLMRequest) -> LLMResponse:
+            used_model = request.model_override or self.default_model
+            captured_models.append(used_model)
+            return LLMResponse(provider="openai", model=used_model, content="Custom model answer [S1].")
+
+    custom_router = CentralizedLLMRouter(
+        [],
+        catalog={"openai": InspectModelOpenAI()},
+        max_transient_retries=0,
+    )
+    custom_res = custom_router.generate(
+        LLMRequest(system_prompt="s", user_prompt="u"),
+        user_api_keys={"openai": "sk-proj-user-key-87654321"},
+        user_provider_models={"openai": "gpt-4o"},
+        preferred_provider="openai",
+    )
+    assert captured_models == ["gpt-4o"]
+    assert custom_res.model == "gpt-4o"
+
+    disc_res = client.post("/api/v1/auth/api-keys/local-fallback", json={"connected": False})
+    assert disc_res.status_code == 200
+    assert disc_res.json()["connected"] is False
+
+    conn_res = client.post("/api/v1/auth/api-keys/local-fallback", json={"connected": True})
+    assert conn_res.status_code == 200
+    assert conn_res.json()["connected"] is True

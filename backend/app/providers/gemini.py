@@ -7,6 +7,8 @@ from time import monotonic
 import httpx
 
 from app.providers.base import (
+    InvalidRequestError,
+    validate_model_name,
     AuthenticationError,
     LLMProviderAdapter,
     LLMRequest,
@@ -68,11 +70,15 @@ class GeminiProviderAdapter(LLMProviderAdapter):
                 "maxOutputTokens": request.max_tokens,
             },
         }
+        try:
+            safe_model = validate_model_name(model, provider=self.provider_name)
+        except ValueError as exc:
+            raise InvalidRequestError(self.provider_name, str(exc), status_code=400) from exc
         headers = {
             "x-goog-api-key": effective_key,
             "Content-Type": "application/json",
         }
-        url = f"{self.base_url}/models/{model}:generateContent"
+        url = f"{self.base_url}/models/{safe_model}:generateContent"
         started = monotonic()
         try:
             response = post_json_with_client(

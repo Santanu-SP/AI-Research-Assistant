@@ -19,13 +19,14 @@ DatabaseSession = Annotated[Session, Depends(get_db)]
 
 def _set_session_cookie(response: Response, token: str, request: Request) -> None:
     settings = request.app.state.settings
+    cookie_days = min(settings.auth_session_days, settings.auth_inactivity_days)
     response.set_cookie(
         auth_service.SESSION_COOKIE,
         token,
         httponly=True,
         secure=settings.auth_cookie_secure,
         samesite="lax",
-        max_age=settings.auth_session_days * 86400,
+        max_age=cookie_days * 86400,
         path="/api/v1",
     )
 
@@ -76,6 +77,7 @@ def login(payload: LoginRequest, session: DatabaseSession, request: Request, res
         payload.password,
         settings.auth_session_days,
         max_sessions=settings.auth_max_sessions_per_user,
+        inactivity_days=settings.auth_inactivity_days,
     )
     _set_session_cookie(response, token, request)
     return user
@@ -118,6 +120,7 @@ def google_callback(
             user,
             request.app.state.settings.auth_session_days,
             max_sessions=request.app.state.settings.auth_max_sessions_per_user,
+            inactivity_days=request.app.state.settings.auth_inactivity_days,
         )
     except AppError as exc:
         return _google_error_redirect(request, exc.code)
@@ -130,7 +133,10 @@ def google_callback(
 
 
 @router.get("/me", response_model=UserResponse)
-def me(user: CurrentUser) -> UserResponse:
+def me(user: CurrentUser, request: Request, response: Response) -> UserResponse:
+    token = request.cookies.get(auth_service.SESSION_COOKIE)
+    if token:
+        _set_session_cookie(response, token, request)
     return user
 
 

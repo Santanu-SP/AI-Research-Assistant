@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from app.domain.documents import ContentLevel, SourceType
 from app.domain.research import ResearchDepth
+from app.providers.base import validate_model_name
 from app.schemas.base import ApiSchema
 
 
@@ -13,6 +14,23 @@ class ResearchQueryRequest(ApiSchema):
     query: str = Field(min_length=1, max_length=10_000)
     project_id: UUID | None = None
     research_depth: ResearchDepth = ResearchDepth.STANDARD
+    preferred_provider: str | None = Field(default=None, max_length=64)
+    model_override: str | None = Field(default=None, max_length=160)
+    local_fallback_enabled: bool | None = None
+
+    @model_validator(mode="after")
+    def validate_model_options(self) -> "ResearchQueryRequest":
+        if self.preferred_provider is not None:
+            cleaned_provider = self.preferred_provider.strip().lower()
+            self.preferred_provider = cleaned_provider or None
+        if self.model_override is not None:
+            cleaned_override = self.model_override.strip()
+            self.model_override = (
+                validate_model_name(cleaned_override, provider=self.preferred_provider)
+                if cleaned_override
+                else None
+            )
+        return self
 
 
 class EvidenceItem(ApiSchema):

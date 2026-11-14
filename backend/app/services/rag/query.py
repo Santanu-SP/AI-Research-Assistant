@@ -10,7 +10,7 @@ from uuid import UUID, uuid5
 
 from sqlalchemy.orm import Session
 
-from app.core.config import Settings
+from app.core.config import Settings, get_settings
 from app.core.errors import AppError
 from app.domain.reports import SourceType
 from app.domain.research import ResearchDepth
@@ -29,6 +29,13 @@ from app.services.rag.generation import GenerationService, generation_service_fo
 from app.services.rag.reranking import RerankerService, reranker_service_for
 from app.models.research import Research
 from app.services.jobs import queue as job_queue
+from app.services.observability.telemetry import estimate_cost_usd, record_telemetry_event
+from app.services.observability.usage import (
+    acquire_run_quota_policy,
+    record_model_usage,
+    release_research_shared_quota,
+    reserve_shared_quota_slot,
+)
 from app.services.research import reports
 from app.services.research import runs as research
 
@@ -247,7 +254,7 @@ def run_query(
     generator: GenerationService | None = None,
 ) -> ResearchQueryResponse:
     """Create a research run and answer it within the current request."""
-    record = _create_started_record(session, user_id, payload)
+    record = _create_started_record(session, user_id, payload, settings)
     return execute_research(
         session,
         record.id,
@@ -263,9 +270,10 @@ def queue_query(
     session: Session,
     user_id: UUID,
     payload: ResearchQueryRequest,
+    settings: Settings | None = None,
 ) -> Research:
     """Create a research run and leave the work to the background worker."""
-    record = _create_started_record(session, user_id, payload)
+    record = _create_started_record(session, user_id, payload, settings)
     job_queue.enqueue(session, job_queue.RUN_RESEARCH, record.id)
     return research.get_research(session, record.id, user_id)
 
@@ -274,6 +282,7 @@ def _create_started_record(
     session: Session,
     user_id: UUID,
     payload: ResearchQueryRequest,
+    settings: Settings | None = None,
 ) -> Research:
     normalized_query = payload.query.strip()
     if not normalized_query:
@@ -282,16 +291,52 @@ def _create_started_record(
             status_code=422,
             code="research_query_required",
         )
-    record = research.create_research(
-        session,
-        ResearchCreate(
-            question=normalized_query,
-            project_id=payload.project_id,
-            research_depth=payload.research_depth,
-        ),
-        user_id,
+    runtime_settings = settings or get_settings()
+    from app.services.auth import api_keys as api_key_service
+
+    pref_provider = payload.preferred_provider.strip().lower() if payload.preferred_provider else None
+    model_override = payload.model_override.strip() if payload.model_override else None
+    local_fallback = (
+        payload.local_fallback_enabled
+        if payload.local_fallback_enabled is not None
+        else api_key_service.get_local_fallback_pref(session, user_id)
     )
-    research.start_research(session, record.id)
+    user_byok_keys = api_key_service.get_decrypted_user_api_keys(
+        session, user_id, runtime_settings
+    )
+    allow_shared, quota_reserved, quota_date, _ = acquire_run_quota_policy(
+        session,
+        user_id=user_id,
+        preferred_provider=pref_provider,
+        user_byok_providers=set(user_byok_keys.keys()),
+        local_enabled=bool(local_fallback),
+        settings=runtime_settings,
+    )
+    try:
+        record = research.create_research(
+            session,
+            ResearchCreate(
+                question=normalized_query,
+                project_id=payload.project_id,
+                research_depth=payload.research_depth,
+            ),
+            user_id,
+        )
+        record.preferred_provider = pref_provider or None
+        record.model_override = model_override or None
+        record.local_fallback_enabled = local_fallback
+        record.allow_shared_providers = allow_shared
+        record.shared_quota_reserved = quota_reserved
+        record.shared_quota_date = quota_date
+        session.add(record)
+        research.start_research(session, record.id)
+    except Exception:
+        if quota_reserved and quota_date is not None:
+            session.rollback()
+            from app.services.observability.usage import release_shared_quota_slot
+
+            release_shared_quota_slot(session, user_id=user_id, usage_date=quota_date, commit=True)
+        raise
     return record
 
 
@@ -354,17 +399,56 @@ def execute_research(
             active_generator = generator or generation_service_for(runtime_settings)
             from app.services.auth import api_keys as api_key_service
 
+            pref_provider = record.preferred_provider
+            model_override = record.model_override
+            local_fallback = record.local_fallback_enabled
+            if local_fallback is None:
+                local_fallback = api_key_service.get_local_fallback_pref(session, user_id)
+
             user_keys = api_key_service.get_decrypted_user_api_keys(
                 session, user_id, runtime_settings
             )
+            user_models = api_key_service.get_user_provider_models(session, user_id)
+
+            def _before_shared_attempt(_provider: str) -> bool:
+                fresh = session.get(Research, record.id)
+                if fresh is not None and fresh.shared_quota_reserved:
+                    return True
+                reserved_ok, reserved_day, _ = reserve_shared_quota_slot(
+                    session,
+                    user_id=user_id,
+                    settings=runtime_settings,
+                    commit=True,
+                )
+                if not reserved_ok:
+                    return False
+                if fresh is not None:
+                    fresh.shared_quota_reserved = True
+                    fresh.shared_quota_date = reserved_day
+                    session.add(fresh)
+                    session.commit()
+                return True
+
+            gen_kwargs: dict[str, object] = {
+                "user_api_keys": user_keys or None,
+                "preferred_provider": (str(pref_provider) if pref_provider else None),
+                "model_override": (str(model_override) if model_override else None),
+                "local_fallback_enabled": (
+                    bool(local_fallback) if local_fallback is not None else None
+                ),
+                "allow_shared_providers": bool(record.allow_shared_providers),
+                "before_shared_attempt": _before_shared_attempt,
+                "provider_timeout_seconds": profile.provider_timeout_seconds,
+                "primary_timeout_seconds": profile.primary_timeout_seconds,
+                "allow_sticky_fallback": profile.allow_sticky_fallback,
+            }
+            if user_models:
+                gen_kwargs["user_provider_models"] = user_models
             try:
                 generated = active_generator.generate(
                     normalized_query,
                     evidence,
-                    user_api_keys=user_keys or None,
-                    provider_timeout_seconds=profile.provider_timeout_seconds,
-                    primary_timeout_seconds=profile.primary_timeout_seconds,
-                    allow_sticky_fallback=profile.allow_sticky_fallback,
+                    **gen_kwargs,
                 )
             except TypeError:
                 try:
@@ -377,19 +461,78 @@ def execute_research(
                     generated = active_generator.generate(normalized_query, evidence)
 
             last_resp = getattr(active_generator, "last_response", None)
-            if last_resp is not None and getattr(last_resp, "used_byok", False):
-                api_key_service.record_key_usage(
-                    session,
-                    user_id,
-                    last_resp.provider,
-                    tokens=last_resp.usage.total_tokens,
+            if last_resp is not None:
+                used_byok = bool(getattr(last_resp, "used_byok", False))
+                usage_obj = getattr(last_resp, "usage", None)
+                prompt_tokens = int(getattr(usage_obj, "prompt_tokens", 0) or 0)
+                completion_tokens = int(getattr(usage_obj, "completion_tokens", 0) or 0)
+                total_tokens = int(getattr(usage_obj, "total_tokens", 0) or (prompt_tokens + completion_tokens))
+                if used_byok:
+                    api_key_service.record_key_usage(
+                        session,
+                        user_id,
+                        last_resp.provider,
+                        tokens=total_tokens,
+                    )
+                usage_source = (
+                    "byok"
+                    if used_byok
+                    else ("local" if last_resp.provider == "ollama" else "shared")
                 )
+                was_reserved = bool(record.shared_quota_reserved)
+                if usage_source in ("byok", "local") and was_reserved:
+                    release_research_shared_quota(session, record.id, commit=False)
+                elif usage_source == "shared" and was_reserved:
+                    record.shared_quota_reserved = False
+                    record.shared_quota_date = None
+                    session.add(record)
+
+                cost_usd = estimate_cost_usd(
+                    last_resp.provider,
+                    prompt_tokens,
+                    completion_tokens,
+                )
+                record_model_usage(
+                    session,
+                    user_id=user_id,
+                    provider=last_resp.provider,
+                    model_name=last_resp.model,
+                    usage_source=usage_source,
+                    input_tokens=prompt_tokens,
+                    output_tokens=completion_tokens,
+                    estimated_cost_usd=cost_usd,
+                    increment_shared_quota=(usage_source == "shared" and not was_reserved),
+                    commit=False,
+                )
+                if runtime_settings.telemetry_enabled:
+                    record_telemetry_event(
+                        session,
+                        event_type="llm_generation",
+                        operation="research_answer",
+                        provider=last_resp.provider,
+                        model=last_resp.model,
+                        status="success",
+                        latency_ms=getattr(last_resp, "latency_ms", None),
+                        prompt_tokens=prompt_tokens,
+                        completion_tokens=completion_tokens,
+                        total_tokens=total_tokens,
+                        user_id=user_id,
+                        metadata={
+                            "used_byok": used_byok,
+                            "is_local": last_resp.provider == "ollama",
+                            "depth": str(record.research_depth),
+                            "research_id": str(record.id),
+                        },
+                        settings=runtime_settings,
+                        commit=False,
+                    )
             validated = CitationValidator().validate(generated, evidence)
             if not validated.citations:
                 # An answer that cites none of the evidence is not grounded;
                 # report insufficient evidence instead of an unsupported reply.
                 insufficient = True
         if insufficient:
+            release_research_shared_quota(session, record.id, commit=False)
             answer = INSUFFICIENT_EVIDENCE_ANSWER
             validated = CitationValidator().validate(answer, evidence)
         else:
@@ -435,10 +578,12 @@ def execute_research(
         )
     except AppError:
         session.rollback()
+        release_research_shared_quota(session, record.id, commit=False)
         research.mark_research_failed(session, record.id)
         raise
     except Exception as exc:
         session.rollback()
+        release_research_shared_quota(session, record.id, commit=False)
         research.mark_research_failed(session, record.id)
         raise AppError(
             "The grounded research request could not be completed",
