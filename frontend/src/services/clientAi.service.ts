@@ -82,21 +82,125 @@ export async function generateWithPuter(
   return response?.toString?.() ?? "";
 }
 
+export interface ProviderStatusItem {
+  id: string;
+  label: string;
+  configuredServer: boolean;
+  configuredByok: boolean;
+  configured: boolean;
+  keyHint?: string | null;
+  defaultModel: string;
+  selectedModel?: string | null;
+  suggestedModels?: string[];
+  isLocal: boolean;
+  available: boolean;
+}
+
+export interface LocalModelStatus {
+  provider: string;
+  available: boolean;
+  connected: boolean;
+  baseUrl: string;
+  configuredModel: string;
+  activeModel?: string | null;
+  installedModels: string[];
+}
+
+export interface ModelUsageBreakdownItem {
+  provider: string;
+  modelName: string;
+  requestsToday: number;
+  tokensToday: number;
+  totalRequests: number;
+  totalTokens: number;
+  estimatedCostUsd: number;
+  lastUsedAt?: string | null;
+}
+
+export interface ModelUsageQuotaSummary {
+  enrolledUsers: number;
+  sharedRequestsUsedToday: number;
+  userDailyRequestCap: number;
+  userRequestsRemainingToday: number;
+  systemPoolTotal: number;
+  systemPoolUsedToday: number;
+  systemPoolRemaining: number;
+  byokRequestsToday: number;
+  localRequestsToday: number;
+  totalRequestsToday: number;
+  totalTokensToday: number;
+  totalRequestsAllTime: number;
+  totalTokensAllTime: number;
+  resetsAt: string;
+  models: ModelUsageBreakdownItem[];
+}
+
+export interface ModelsStatusResponse {
+  local: LocalModelStatus;
+  providers: ProviderStatusItem[];
+  routerOrder: string[];
+  usage?: ModelUsageQuotaSummary | null;
+}
+
 export const byokService = {
   async listKeys(): Promise<{ items: UserApiKeyMetadata[] }> {
     return apiRequest<{ items: UserApiKeyMetadata[] }>("/auth/api-keys");
   },
 
-  async saveKey(provider: string, apiKey: string): Promise<UserApiKeyMetadata> {
+  async saveKey(provider: string, apiKey: string, modelName?: string): Promise<UserApiKeyMetadata> {
+    const cleanedModel = modelName?.trim();
     return apiRequest<UserApiKeyMetadata>(`/auth/api-keys/${encodeURIComponent(provider)}`, {
       method: "PUT",
-      body: JSON.stringify({ apiKey }),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        apiKey,
+        ...(cleanedModel ? { modelName: cleanedModel } : {}),
+      }),
     });
+  },
+
+  async setProviderModel(
+    provider: string,
+    modelName: string | null
+  ): Promise<{ provider: string; selectedModel: string | null }> {
+    return apiRequest<{ provider: string; selectedModel: string | null }>(
+      "/auth/api-keys/provider-model",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          provider,
+          modelName: modelName?.trim() || null,
+        }),
+      }
+    );
   },
 
   async revokeKey(provider: string): Promise<void> {
     await apiRequest<void>(`/auth/api-keys/${encodeURIComponent(provider)}`, {
       method: "DELETE",
+    });
+  },
+
+  async getModelsStatus(): Promise<ModelsStatusResponse> {
+    return apiRequest<ModelsStatusResponse>("/auth/api-keys/models-status");
+  },
+
+  async getUsage(): Promise<ModelUsageQuotaSummary> {
+    return apiRequest<ModelUsageQuotaSummary>("/auth/api-keys/usage");
+  },
+
+  async setLocalFallback(connected: boolean): Promise<LocalModelStatus> {
+    return apiRequest<LocalModelStatus>("/auth/api-keys/local-fallback", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ connected }),
     });
   },
 };

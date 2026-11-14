@@ -112,6 +112,9 @@ export interface ResearchQueryRequest {
   query: string;
   projectId?: string;
   researchDepth?: ResearchDepth;
+  preferredProvider?: string;
+  modelOverride?: string;
+  localFallbackEnabled?: boolean;
 }
 
 export interface Citation {

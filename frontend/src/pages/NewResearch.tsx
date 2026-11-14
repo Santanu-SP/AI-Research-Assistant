@@ -36,14 +36,25 @@ export const NewResearch: React.FC = () => {
   const handleStartResearch = async (payload: {
     question: string;
     depth: ResearchDepth;
+    preferredProvider?: string | null;
+    modelOverride?: string | null;
+    localFallbackEnabled?: boolean;
   }) => {
     setIsSubmitting(true);
     setCreateError(null);
+    const requestExtras = {
+      ...(payload.preferredProvider ? { preferredProvider: payload.preferredProvider } : {}),
+      ...(payload.modelOverride ? { modelOverride: payload.modelOverride } : {}),
+      ...(payload.localFallbackEnabled !== undefined
+        ? { localFallbackEnabled: payload.localFallbackEnabled }
+        : {}),
+    };
     try {
       if (payload.depth === 'quick') {
         const response = await researchService.queryResearch({
           query: payload.question,
           researchDepth: payload.depth,
+          ...requestExtras,
         });
         navigate(`/research/${response.researchId}`);
         return;
@@ -51,6 +62,7 @@ export const NewResearch: React.FC = () => {
       const research = await researchService.startResearchJob({
         query: payload.question,
         researchDepth: payload.depth,
+        ...requestExtras,
       });
       navigate(`/research/${research.id}/progress`);
     } catch (error) {

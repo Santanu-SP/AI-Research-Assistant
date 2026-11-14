@@ -13,6 +13,7 @@ import {
 import { queryResearch, getResearchErrorMessage } from '../../services/research.service';
 import { SafeMarkdown } from '../common/SafeMarkdown';
 import { CitationPanel } from '../research/CitationPanel';
+import { ModelControlBar } from '../research/ModelControlBar';
 import { PrimaryButton } from '../common/PrimaryButton';
 import { LoadingOrb } from '../common/LoadingOrb';
 
@@ -36,6 +37,9 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
 }) => {
   const [question, setQuestion] = useState('');
   const [researchDepth, setResearchDepth] = useState<ResearchDepth>('standard');
+  const [preferredProvider, setPreferredProvider] = useState<string | null>(null);
+  const [modelOverride, setModelOverride] = useState<string | null>(null);
+  const [localFallbackEnabled, setLocalFallbackEnabled] = useState<boolean | undefined>(undefined);
   const [researchState, setResearchState] = useState<ResearchState>('idle');
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [result, setResult] = useState<ResearchQueryResponse | null>(null);
@@ -109,6 +113,9 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
         query: question.trim(),
         projectId: currentProjectId,
         researchDepth,
+        ...(preferredProvider ? { preferredProvider } : {}),
+        ...(modelOverride ? { modelOverride } : {}),
+        ...(localFallbackEnabled !== undefined ? { localFallbackEnabled } : {}),
       });
 
       // Guard: if project changed or reset while request was in flight, discard result
@@ -191,7 +198,7 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 {(researchState === 'complete' || researchState === 'failed') && (
                   <button
                     type="button"
@@ -202,27 +209,18 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
                     New question
                   </button>
                 )}
-                <div
-                  role="group"
-                  aria-label="Research speed and depth"
-                  className="inline-flex rounded-md border border-line bg-subtle p-0.5 text-[11px]"
-                >
-                  {(['quick', 'standard', 'deep'] as const).map((option) => (
-                    <button
-                      key={option}
-                      type="button"
-                      disabled={researchState === 'submitting'}
-                      onClick={() => setResearchDepth(option)}
-                      className={`cursor-pointer rounded px-2 py-1 font-medium capitalize transition-colors ${
-                        researchDepth === option
-                          ? 'bg-panel text-ink shadow-xs'
-                          : 'text-ink-muted hover:text-ink'
-                      } disabled:opacity-50`}
-                    >
-                      {option}
-                    </button>
-                  ))}
-                </div>
+                <ModelControlBar
+                  depth={researchDepth}
+                  onDepthChange={setResearchDepth}
+                  preferredProvider={preferredProvider}
+                  onPreferredProviderChange={setPreferredProvider}
+                  modelOverride={modelOverride}
+                  onModelOverrideChange={setModelOverride}
+                  localFallbackEnabled={localFallbackEnabled}
+                  onLocalFallbackChange={setLocalFallbackEnabled}
+                  disabled={researchState === 'submitting'}
+                  menuPlacement="down"
+                />
               </div>
               <div className="ml-auto">
                 <PrimaryButton
