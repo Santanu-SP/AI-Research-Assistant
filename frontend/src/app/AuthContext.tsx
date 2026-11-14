@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AuthUser, authService } from '../services/auth.service';
 
 interface AuthState {
@@ -12,16 +12,38 @@ interface AuthState {
 
 const AuthContext = createContext<AuthState | null>(null);
 
+const INACTIVITY_RECHECK_INTERVAL_MS = 60_000;
+
 export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) => {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const lastCheckedRef = useRef(0);
+
+  const refreshUser = useCallback(async () => {
+    try {
+      const current = await authService.me();
+      lastCheckedRef.current = Date.now();
+      setUser(current);
+      return current;
+    } catch {
+      lastCheckedRef.current = Date.now();
+      setUser(null);
+      return null;
+    }
+  }, []);
 
   useEffect(() => {
     let active = true;
     authService.me().then((current) => {
-      if (active) setUser(current);
+      if (active) {
+        lastCheckedRef.current = Date.now();
+        setUser(current);
+      }
     }).catch(() => {
-      if (active) setUser(null);
+      if (active) {
+        lastCheckedRef.current = Date.now();
+        setUser(null);
+      }
     }).finally(() => {
       if (active) setLoading(false);
     });
@@ -30,24 +52,26 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
 
   useEffect(() => {
     const expire = () => setUser(null);
+    const onVisibilityChange = () => {
+      if (
+        document.visibilityState === 'visible'
+        && Date.now() - lastCheckedRef.current > INACTIVITY_RECHECK_INTERVAL_MS
+      ) {
+        void refreshUser();
+      }
+    };
     window.addEventListener('auth:expired', expire);
-    return () => window.removeEventListener('auth:expired', expire);
-  }, []);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      window.removeEventListener('auth:expired', expire);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [refreshUser]);
 
   const login = useCallback(async (email: string, password: string) => {
     const current = await authService.login(email, password);
+    lastCheckedRef.current = Date.now();
     setUser(current);
-  }, []);
-
-  const refreshUser = useCallback(async () => {
-    try {
-      const current = await authService.me();
-      setUser(current);
-      return current;
-    } catch {
-      setUser(null);
-      return null;
-    }
   }, []);
 
   const logout = useCallback(async () => {
@@ -62,6 +86,8 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
 
   return <AuthContext.Provider value={{ user, loading, login, logout, logoutAll, refreshUser }}>{children}</AuthContext.Provider>;
 };
+
+export const useOptionalAuth = (): AuthState | null => useContext(AuthContext);
 
 export const useAuth = (): AuthState => {
   const state = useContext(AuthContext);

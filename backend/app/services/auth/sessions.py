@@ -68,6 +68,7 @@ def login(
     session_days: int,
     *,
     max_sessions: int | None = None,
+    inactivity_days: int | None = None,
 ) -> tuple[User, str]:
     user = session.scalar(select(User).where(User.email == email.strip().lower()))
     if not _password_matches(user, password) or user is None:
@@ -76,7 +77,13 @@ def login(
             status_code=401,
             code="invalid_credentials",
         )
-    token = create_session(session, user, session_days, max_sessions=max_sessions)
+    token = create_session(
+        session,
+        user,
+        session_days,
+        max_sessions=max_sessions,
+        inactivity_days=inactivity_days,
+    )
     return user, token
 
 
@@ -86,6 +93,7 @@ def create_session(
     session_days: int,
     *,
     max_sessions: int | None = None,
+    inactivity_days: int | None = None,
 ) -> str:
     """Create one opaque, revocable application session for any verified identity.
 
@@ -94,6 +102,7 @@ def create_session(
     """
     token = secrets.token_urlsafe(48)
     now = utc_now()
+    effective_days = min(session_days, inactivity_days) if inactivity_days is not None else session_days
     session.execute(
         delete(AuthSession).where(
             AuthSession.user_id == user.id,
@@ -104,7 +113,7 @@ def create_session(
         AuthSession(
             token_hash=sha256(token.encode()).hexdigest(),
             user_id=user.id,
-            expires_at=now + timedelta(days=session_days),
+            expires_at=now + timedelta(days=effective_days),
             created_at=now,
         )
     )
@@ -123,7 +132,13 @@ def create_session(
     return token
 
 
-def current_user(session: Session, token: str | None) -> User:
+def current_user(
+    session: Session,
+    token: str | None,
+    *,
+    session_days: int | None = None,
+    inactivity_days: int | None = None,
+) -> User:
     if not token:
         raise AppError(
             "Authentication required",
@@ -131,7 +146,16 @@ def current_user(session: Session, token: str | None) -> User:
             code="authentication_required",
         )
     auth_session = session.get(AuthSession, sha256(token.encode()).hexdigest())
-    if auth_session is None or auth_session.expires_at <= utc_now():
+    now = utc_now()
+    hard_expired = (
+        session_days is not None
+        and auth_session is not None
+        and auth_session.created_at + timedelta(days=session_days) <= now
+    )
+    if auth_session is None or auth_session.expires_at <= now or hard_expired:
+        if auth_session is not None:
+            session.delete(auth_session)
+            session.commit()
         raise AppError(
             "Session expired or invalid",
             status_code=401,
@@ -144,6 +168,13 @@ def current_user(session: Session, token: str | None) -> User:
             status_code=401,
             code="session_invalid",
         )
+    if inactivity_days is not None:
+        idle_target = now + timedelta(days=inactivity_days)
+        if session_days is not None:
+            idle_target = min(idle_target, auth_session.created_at + timedelta(days=session_days))
+        if idle_target - auth_session.expires_at >= timedelta(hours=1):
+            auth_session.expires_at = idle_target
+            session.commit()
     return user
 
 

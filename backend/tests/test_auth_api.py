@@ -99,3 +99,65 @@ def test_documents_and_research_are_isolated_by_owner(anonymous_client: TestClie
     assert client.delete(f"/api/v1/documents/{document_id}").status_code == 404
     assert client.get(f"/api/v1/research/{research_id}").status_code == 404
     assert client.delete(f"/api/v1/research/{research_id}").status_code == 404
+
+
+def test_inactivity_session_slides_on_visit_and_expires_after_idle_days(
+    anonymous_client: TestClient, db_session_factory: sessionmaker[Session]
+) -> None:
+    client = anonymous_client
+    settings = client.app.state.settings
+    assert client.post("/api/v1/auth/register", json={
+        "name": "Idle User", "email": "idle@example.com", "password": "long-password-123",
+    }).status_code == 201
+    assert client.post("/api/v1/auth/login", json={
+        "email": "idle@example.com", "password": "long-password-123",
+    }).status_code == 200
+
+    with db_session_factory() as session:
+        auth_session = session.query(AuthSession).one()
+        initial_delta = auth_session.expires_at - auth_session.created_at
+        expected_days = min(settings.auth_session_days, settings.auth_inactivity_days)
+        assert timedelta(days=expected_days, seconds=-5) <= initial_delta <= timedelta(days=expected_days, seconds=5)
+
+        # Simulate a returning visit 1 day later: sliding window should extend expires_at.
+        stale_expires = auth_session.expires_at - timedelta(days=1)
+        auth_session.expires_at = stale_expires
+        session.commit()
+
+    me_response = client.get("/api/v1/auth/me")
+    assert me_response.status_code == 200
+    assert me_response.json()["email"] == "idle@example.com"
+    with db_session_factory() as session:
+        refreshed = session.query(AuthSession).one()
+        assert refreshed.expires_at > stale_expires
+
+        # Simulate user staying away longer than auth_inactivity_days (created_at still < 7 days).
+        refreshed.expires_at = utc_now() - timedelta(minutes=1)
+        session.commit()
+
+    assert client.get("/api/v1/auth/me").status_code == 401
+    with db_session_factory() as session:
+        assert session.query(AuthSession).count() == 0
+
+
+def test_hard_session_ceiling_expires_even_if_recently_active(
+    anonymous_client: TestClient, db_session_factory: sessionmaker[Session]
+) -> None:
+    client = anonymous_client
+    settings = client.app.state.settings
+    assert client.post("/api/v1/auth/register", json={
+        "name": "Aged User", "email": "aged@example.com", "password": "long-password-123",
+    }).status_code == 201
+    assert client.post("/api/v1/auth/login", json={
+        "email": "aged@example.com", "password": "long-password-123",
+    }).status_code == 200
+
+    with db_session_factory() as session:
+        auth_session = session.query(AuthSession).one()
+        auth_session.created_at = utc_now() - timedelta(days=settings.auth_session_days, seconds=10)
+        auth_session.expires_at = utc_now() + timedelta(days=1)
+        session.commit()
+
+    assert client.get("/api/v1/auth/me").status_code == 401
+    with db_session_factory() as session:
+        assert session.query(AuthSession).count() == 0

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Menu, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { useOptionalAuth } from '../../app/AuthContext';
 import { BrandMark } from '../common/BrandMark';
 import { scrollToHash } from './Motion';
 
@@ -12,8 +13,16 @@ const NAV_ITEMS = [
 ] as const;
 
 export const LandingNav: React.FC = () => {
+  const auth = useOptionalAuth();
+  const user = auth?.user ?? null;
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+
+  const handleSignOut = async () => {
+    if (!auth) return;
+    await auth.logout();
+    setOpen(false);
+  };
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 40);
@@ -42,18 +51,45 @@ export const LandingNav: React.FC = () => {
         </div>
 
         <div className="hidden items-center gap-2 md:flex">
-          <Link
-            to="/login"
-            className="inline-flex h-9 items-center rounded-md px-3 text-[13px] font-medium text-ink-soft transition-colors hover:bg-subtle hover:text-ink"
-          >
-            Sign in
-          </Link>
-          <Link
-            to="/register"
-            className="landing-btn inline-flex h-9 items-center rounded-md bg-solid px-3.5 text-[13px] font-medium text-on-solid shadow-xs transition-colors hover:bg-solid-hover"
-          >
-            Get started
-          </Link>
+          {user ? (
+            <>
+              <span
+                className="inline-flex h-8 max-w-[220px] items-center gap-1.5 rounded-full border border-line bg-panel px-2.5 text-[12px] text-ink-soft"
+                title={`Signed in as ${user.email}`}
+              >
+                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" aria-hidden="true" />
+                <span className="truncate font-medium text-ink">{user.email}</span>
+              </span>
+              <Link
+                to="/research/new"
+                className="landing-btn inline-flex h-9 items-center rounded-md bg-solid px-3.5 text-[13px] font-medium text-on-solid shadow-xs transition-colors hover:bg-solid-hover"
+              >
+                Open workspace
+              </Link>
+              <button
+                type="button"
+                onClick={() => { void handleSignOut(); }}
+                className="inline-flex h-9 items-center rounded-md px-3 text-[13px] font-medium text-ink-soft transition-colors hover:bg-subtle hover:text-ink"
+              >
+                Sign out
+              </button>
+            </>
+          ) : (
+            <>
+              <Link
+                to="/login"
+                className="inline-flex h-9 items-center rounded-md px-3 text-[13px] font-medium text-ink-soft transition-colors hover:bg-subtle hover:text-ink"
+              >
+                Sign in
+              </Link>
+              <Link
+                to="/register"
+                className="landing-btn inline-flex h-9 items-center rounded-md bg-solid px-3.5 text-[13px] font-medium text-on-solid shadow-xs transition-colors hover:bg-solid-hover"
+              >
+                Get started
+              </Link>
+            </>
+          )}
         </div>
 
         <button
@@ -85,14 +121,34 @@ export const LandingNav: React.FC = () => {
               </a>
             ))}
           </div>
-          <div className="mt-4 grid grid-cols-2 gap-2">
-            <Link to="/login" className="inline-flex h-10 items-center justify-center rounded-md border border-line-strong bg-panel text-sm font-medium text-ink">
-              Sign in
-            </Link>
-            <Link to="/register" className="inline-flex h-10 items-center justify-center rounded-md bg-solid text-sm font-medium text-on-solid">
-              Get started
-            </Link>
-          </div>
+          {user ? (
+            <div className="mt-4 space-y-2.5">
+              <p className="truncate text-xs text-ink-soft">
+                Signed in as <span className="font-medium text-ink">{user.email}</span>
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <Link to="/research/new" className="inline-flex h-10 items-center justify-center rounded-md bg-solid text-sm font-medium text-on-solid">
+                  Open workspace
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => { void handleSignOut(); }}
+                  className="inline-flex h-10 items-center justify-center rounded-md border border-line-strong bg-panel text-sm font-medium text-ink"
+                >
+                  Sign out
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <Link to="/login" className="inline-flex h-10 items-center justify-center rounded-md border border-line-strong bg-panel text-sm font-medium text-ink">
+                Sign in
+              </Link>
+              <Link to="/register" className="inline-flex h-10 items-center justify-center rounded-md bg-solid text-sm font-medium text-on-solid">
+                Get started
+              </Link>
+            </div>
+          )}
         </div>
       )}
     </header>

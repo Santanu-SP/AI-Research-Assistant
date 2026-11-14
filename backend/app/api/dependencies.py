@@ -48,7 +48,13 @@ def validate_origin(request: Request) -> None:
 
 def get_current_user(request: Request, session: Annotated[Session, Depends(get_db)]) -> User:
     validate_origin(request)
-    return current_user(session, request.cookies.get(SESSION_COOKIE))
+    settings = getattr(request.app.state, "settings", None)
+    return current_user(
+        session,
+        request.cookies.get(SESSION_COOKIE),
+        session_days=settings.auth_session_days if settings is not None else None,
+        inactivity_days=settings.auth_inactivity_days if settings is not None else None,
+    )
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
