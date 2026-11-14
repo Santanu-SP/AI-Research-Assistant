@@ -151,9 +151,6 @@ export const ResearchReportPage: React.FC = () => {
             <span className="shrink-0 text-ink-soft">Research</span>
             <ChevronRight className="h-3.5 w-3.5 shrink-0 text-ink-muted" />
             <span className="truncate font-medium text-ink" title={report.title}>{report.title}</span>
-            <span className="hidden font-mono text-[11px] text-ink-muted sm:inline">
-              {report.dossierRef}
-            </span>
           </div>
         }
         rightActions={
@@ -197,7 +194,7 @@ export const ResearchReportPage: React.FC = () => {
             <header className="mb-10 border-b border-line pb-8">
               <div className="mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-muted">
                 <StatusBadge status={report.status} size="sm" />
-                <span className="tabular-nums">{report.sourceCount} sources</span>
+                <span className="tabular-nums">{report.sourceCount} {report.sourceCount === 1 ? 'source' : 'sources'}</span>
                 <span aria-hidden="true">·</span>
                 <span className="tabular-nums">{report.readingTimeMinutes} min read</span>
                 <span aria-hidden="true">·</span>
