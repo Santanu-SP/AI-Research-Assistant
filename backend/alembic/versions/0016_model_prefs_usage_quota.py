@@ -1,6 +1,6 @@
 """Persist model/local preferences, research runtime options, and atomic usage/quota tables.
 
-Revision ID: 0016_model_preferences_and_usage_quota
+Revision ID: 0016_model_prefs_usage_quota
 Revises: 0015_multimodal_document_enums
 """
 
@@ -10,7 +10,7 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision: str = "0016_model_preferences_and_usage_quota"
+revision: str = "0016_model_prefs_usage_quota"
 down_revision: str | None = "0015_multimodal_document_enums"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None

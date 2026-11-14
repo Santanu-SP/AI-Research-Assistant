@@ -6,3 +6,13 @@ useDefault = true
 [[allowlists]]
 description = "Placeholder keys in architecture upgrade tests"
 paths = ["backend/tests/test_architecture_upgrade.py"]
+
+[[allowlists]]
+description = "Placeholder test keys in merged PR 43 commit bda1a06c"
+condition = "AND"
+commits = ["bda1a06c4c6553637d8c0cfc005961ce16457846"]
+paths = [
+  "backend/app/core/config.py",
+  "backend/tests/test_hardening.py",
+  "backend/tests/test_model_usage_quota.py",
+]
