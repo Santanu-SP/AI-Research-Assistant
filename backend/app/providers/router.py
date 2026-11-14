@@ -20,12 +20,28 @@ from app.providers.base import (
     ProviderError,
 )
 from app.providers.cerebras import CerebrasProviderAdapter
+from app.providers.compatible import (
+    ClaudeProviderAdapter,
+    GrokProviderAdapter,
+    GroqProviderAdapter,
+    OpenAIProviderAdapter,
+)
 from app.providers.gemini import GeminiProviderAdapter
 from app.providers.mistral import MistralProviderAdapter
 from app.providers.ollama import OllamaProviderAdapter
 from app.providers.openrouter import OpenRouterProviderAdapter
 
 logger = logging.getLogger(__name__)
+
+_PROVIDER_ALIASES: dict[str, str] = {
+    "anthropic": "claude",
+    "xai": "grok",
+}
+
+
+def _normalize_provider(name: str) -> str:
+    cleaned = name.strip().lower()
+    return _PROVIDER_ALIASES.get(cleaned, cleaned)
 
 
 @dataclass
@@ -50,6 +66,7 @@ class CentralizedLLMRouter:
         self,
         adapters: list[LLMProviderAdapter],
         *,
+        catalog: dict[str, LLMProviderAdapter] | None = None,
         failure_threshold: int = 3,
         cooldown_seconds: float = 60.0,
         max_transient_retries: int = 1,
@@ -59,6 +76,13 @@ class CentralizedLLMRouter:
         on_event: Callable[[dict[str, object]], None] | None = None,
     ) -> None:
         self.adapters = list(adapters)
+        self.catalog: dict[str, LLMProviderAdapter] = (
+            dict(catalog)
+            if catalog is not None
+            else {adapter.provider_name: adapter for adapter in self.adapters}
+        )
+        for adapter in self.adapters:
+            self.catalog.setdefault(adapter.provider_name, adapter)
         self.failure_threshold = max(1, failure_threshold)
         self.cooldown_seconds = max(1.0, cooldown_seconds)
         self.max_transient_retries = max(0, max_transient_retries)
@@ -74,7 +98,7 @@ class CentralizedLLMRouter:
                 daily_token_budget=self.daily_token_budget,
                 budget_day=today,
             )
-            for adapter in self.adapters
+            for adapter in self.catalog.values()
         }
 
     def get_health_snapshot(self) -> dict[str, dict[str, object]]:
@@ -170,26 +194,83 @@ class CentralizedLLMRouter:
                     cooldown = exc.retry_after_seconds or self.cooldown_seconds
                     state.cooldown_until = now + max(1.0, float(cooldown))
 
+    def _build_ordered_adapters(
+        self,
+        *,
+        user_keys: dict[str, str],
+        preferred: str | None,
+        local_fallback_enabled: bool | None,
+    ) -> list[LLMProviderAdapter]:
+        ordered: list[LLMProviderAdapter] = []
+        seen: set[str] = set()
+
+        def _append(adapter: LLMProviderAdapter | None) -> None:
+            if adapter is None or adapter.provider_name in seen:
+                return
+            seen.add(adapter.provider_name)
+            ordered.append(adapter)
+
+        if preferred:
+            _append(
+                self.catalog.get(preferred)
+                or next((a for a in self.adapters if a.provider_name == preferred), None)
+            )
+
+        for adapter in self.adapters:
+            if adapter.provider_name == "ollama" and local_fallback_enabled is not None:
+                continue
+            _append(adapter)
+
+        for name, adapter in self.catalog.items():
+            if name == "ollama":
+                continue
+            if name in user_keys:
+                _append(adapter)
+
+        if local_fallback_enabled is True:
+            _append(self.catalog.get("ollama"))
+        elif local_fallback_enabled is False and preferred != "ollama":
+            ordered = [a for a in ordered if a.provider_name != "ollama"]
+
+        return ordered
+
     def generate(
         self,
         request: LLMRequest,
         *,
         user_api_keys: dict[str, str] | None = None,
+        user_provider_models: dict[str, str] | None = None,
         preferred_provider: str | None = None,
+        local_fallback_enabled: bool | None = None,
     ) -> LLMResponse:
-        keys = user_api_keys or {}
-        ordered_adapters = list(self.adapters)
-        if preferred_provider:
-            preferred = [a for a in ordered_adapters if a.provider_name == preferred_provider]
-            others = [a for a in ordered_adapters if a.provider_name != preferred_provider]
-            ordered_adapters = preferred + others
+        keys = {
+            _normalize_provider(k): v
+            for k, v in (user_api_keys or {}).items()
+            if k and v
+        }
+        provider_models = {
+            _normalize_provider(k): v.strip()
+            for k, v in (user_provider_models or {}).items()
+            if k and v and v.strip()
+        }
+        preferred = (
+            _normalize_provider(preferred_provider)
+            if preferred_provider and preferred_provider.strip()
+            else None
+        )
+        ordered_adapters = self._build_ordered_adapters(
+            user_keys=keys,
+            preferred=preferred,
+            local_fallback_enabled=local_fallback_enabled,
+        )
 
         errors: list[ProviderError] = []
         fallback_attempts = 0
         eligible: list[tuple[LLMProviderAdapter, str | None]] = []
         for adapter in ordered_adapters:
             provider = adapter.provider_name
-            byok_key = keys.get(provider) or request.api_key_override
+            apply_override = not preferred or provider == preferred
+            byok_key = keys.get(provider) or (request.api_key_override if apply_override else None)
             if not adapter.is_configured(api_key_override=byok_key):
                 continue
             if not self._is_provider_available(provider, using_byok=bool(byok_key)):
@@ -200,6 +281,7 @@ class CentralizedLLMRouter:
         for index, (adapter, byok_key) in enumerate(eligible):
             provider = adapter.provider_name
             has_backup = index + 1 < len(eligible)
+            apply_override = not preferred or provider == preferred
             timeout_cap = (
                 request.provider_timeout_seconds
                 if request.provider_timeout_seconds is not None
@@ -209,9 +291,13 @@ class CentralizedLLMRouter:
             if provider != "ollama" and timeout_cap is not None:
                 effective_timeout = min(request.timeout_seconds, timeout_cap)
 
+            effective_model_override = (
+                request.model_override if (apply_override and request.model_override) else None
+            ) or provider_models.get(provider)
             provider_request = replace(
                 request,
                 api_key_override=byok_key,
+                model_override=effective_model_override,
                 timeout_seconds=effective_timeout,
             )
             attempt = 0
@@ -244,7 +330,7 @@ class CentralizedLLMRouter:
                             pass
                     return final_response
                 except ProviderError as exc:
-                    if isinstance(exc, InvalidRequestError):
+                    if isinstance(exc, InvalidRequestError) and not has_backup:
                         self._record_failure(provider, exc, using_byok=bool(byok_key))
                         raise AppError(
                             f"Invalid LLM generation request: {exc.message}",
@@ -326,6 +412,26 @@ def build_router_for_settings(
             default_model=settings.openrouter_model_name,
             base_url=settings.openrouter_base_url,
         ),
+        "groq": GroqProviderAdapter(
+            api_key=settings.groq_api_key,
+            default_model=settings.groq_llm_model_name,
+            base_url=settings.groq_base_url,
+        ),
+        "openai": OpenAIProviderAdapter(
+            api_key=settings.openai_api_key,
+            default_model=settings.openai_model_name,
+            base_url=settings.openai_base_url,
+        ),
+        "claude": ClaudeProviderAdapter(
+            api_key=settings.claude_api_key,
+            default_model=settings.claude_model_name,
+            base_url=settings.claude_base_url,
+        ),
+        "grok": GrokProviderAdapter(
+            api_key=settings.grok_api_key,
+            default_model=settings.grok_model_name,
+            base_url=settings.grok_base_url,
+        ),
         "ollama": OllamaProviderAdapter(
             base_url=settings.ollama_base_url,
             default_model=settings.generation_model_name,
@@ -346,6 +452,7 @@ def build_router_for_settings(
         ]
     return CentralizedLLMRouter(
         adapters,
+        catalog=catalog,
         failure_threshold=settings.llm_circuit_breaker_threshold,
         cooldown_seconds=settings.llm_circuit_breaker_cooldown_seconds,
         retry_backoff_seconds=settings.generation_retry_backoff_seconds,
@@ -384,6 +491,18 @@ def _router_cache_key(settings: Settings) -> tuple[object, ...]:
         settings.openrouter_api_key,
         settings.openrouter_model_name,
         settings.openrouter_base_url,
+        settings.groq_api_key,
+        settings.groq_llm_model_name,
+        settings.groq_base_url,
+        settings.openai_api_key,
+        settings.openai_model_name,
+        settings.openai_base_url,
+        settings.claude_api_key,
+        settings.claude_model_name,
+        settings.claude_base_url,
+        settings.grok_api_key,
+        settings.grok_model_name,
+        settings.grok_base_url,
         settings.ollama_base_url,
         settings.generation_model_name,
         settings.llm_circuit_breaker_threshold,

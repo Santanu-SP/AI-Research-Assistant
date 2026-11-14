@@ -18,6 +18,63 @@ from app.providers.base import (
 )
 
 
+def _pick_installed_ollama_model(models: list[str], configured_model: str | None) -> str | None:
+    if not models:
+        return None
+    if configured_model:
+        if configured_model in models:
+            return configured_model
+        configured_base = configured_model.split(":", 1)[0]
+        for candidate in models:
+            if candidate.split(":", 1)[0] == configured_base:
+                return candidate
+    non_embed = [name for name in models if "embed" not in name.lower()]
+    if non_embed:
+        return non_embed[0]
+    return models[0]
+
+
+def probe_ollama_models(
+    base_url: str,
+    configured_model: str | None = None,
+    *,
+    client: httpx.Client | None = None,
+    timeout_seconds: float = 1.5,
+) -> tuple[bool, list[str], str | None]:
+    """Check whether local Ollama is reachable and list installed models."""
+    cleaned_base = (base_url or "").strip().rstrip("/")
+    if not cleaned_base:
+        return False, [], None
+    url = f"{cleaned_base}/api/tags"
+    try:
+        if client is not None:
+            response = client.get(url, timeout=timeout_seconds)
+        else:
+            with httpx.Client(timeout=timeout_seconds) as temp_client:
+                response = temp_client.get(url)
+    except httpx.HTTPError:
+        return False, [], None
+    if response.status_code >= 400:
+        return False, [], None
+    try:
+        data = response.json()
+    except ValueError:
+        return False, [], None
+    raw_models = data.get("models") or []
+    models: list[str] = []
+    for item in raw_models:
+        if isinstance(item, dict):
+            name = str(item.get("name") or item.get("model") or "").strip()
+            if name:
+                models.append(name)
+    resolved = _pick_installed_ollama_model(models, configured_model)
+    # Require at least one non-embedding model to report usable generation availability,
+    # or fall back to any reported model if none are clearly tagged as embeddings.
+    generative = [name for name in models if "embed" not in name.lower()]
+    available = bool(generative)
+    return available, models, resolved if available else None
+
+
 class OllamaProviderAdapter(LLMProviderAdapter):
     provider_name = "ollama"
 
@@ -35,9 +92,18 @@ class OllamaProviderAdapter(LLMProviderAdapter):
     def is_configured(self, api_key_override: str | None = None) -> bool:
         return bool(self.base_url)
 
+    def _post_generate(self, payload: dict[str, object], timeout_seconds: float) -> httpx.Response:
+        url = f"{self.base_url}/api/generate"
+        return post_json_with_client(
+            self._client,
+            url,
+            json=payload,
+            timeout_seconds=timeout_seconds,
+        )
+
     def generate(self, request: LLMRequest) -> LLMResponse:
         model = request.model_override or self.default_model
-        payload = {
+        payload: dict[str, object] = {
             "model": model,
             "system": request.system_prompt,
             "prompt": request.user_prompt,
@@ -48,15 +114,31 @@ class OllamaProviderAdapter(LLMProviderAdapter):
                 "num_predict": request.max_tokens,
             },
         }
-        url = f"{self.base_url}/api/generate"
         started = monotonic()
         try:
-            response = post_json_with_client(
-                self._client,
-                url,
-                json=payload,
-                timeout_seconds=request.timeout_seconds,
-            )
+            response = self._post_generate(payload, request.timeout_seconds)
+            if response.status_code == 400 and "think" in payload:
+                payload_without_think = {k: v for k, v in payload.items() if k != "think"}
+                response = self._post_generate(payload_without_think, request.timeout_seconds)
+            if response.status_code == 404 and not request.model_override:
+                available, _, fallback_model = probe_ollama_models(
+                    self.base_url,
+                    model,
+                    client=self._client,
+                    timeout_seconds=min(request.timeout_seconds, 2.0),
+                )
+                if available and fallback_model and fallback_model != model:
+                    model = fallback_model
+                    fallback_payload = dict(payload)
+                    fallback_payload["model"] = model
+                    response = self._post_generate(fallback_payload, request.timeout_seconds)
+                    if response.status_code == 400 and "think" in fallback_payload:
+                        fallback_without_think = {
+                            k: v for k, v in fallback_payload.items() if k != "think"
+                        }
+                        response = self._post_generate(
+                            fallback_without_think, request.timeout_seconds
+                        )
         except httpx.TimeoutException as exc:
             raise ProviderTimeoutError(self.provider_name, f"Ollama timed out: {exc}") from exc
         except httpx.HTTPError as exc:
