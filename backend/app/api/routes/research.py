@@ -86,7 +86,12 @@ def queue_research_query(
     ``GET /research/{id}/report`` once it has completed.
     """
     _enforce_query_rate_limit(request, user.id)
-    record = rag_service.queue_query(session, user.id, payload)
+    record = rag_service.queue_query(
+        session,
+        user.id,
+        payload,
+        request.app.state.settings,
+    )
     request.app.state.job_worker.wake()
     return research_service.attach_source_counts(session, [record])[0]
 

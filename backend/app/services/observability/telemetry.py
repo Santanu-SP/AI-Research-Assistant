@@ -85,6 +85,7 @@ def record_telemetry_event(
     user_id: UUID | None = None,
     metadata: dict[str, Any] | None = None,
     settings: Settings | None = None,
+    commit: bool = True,
 ) -> TelemetryEvent:
     cost = (
         estimated_cost_usd
@@ -108,8 +109,11 @@ def record_telemetry_event(
         details=safe_meta,
     )
     session.add(event)
-    session.commit()
-    session.refresh(event)
+    if commit:
+        session.commit()
+        session.refresh(event)
+    else:
+        session.flush()
 
     if settings and settings.langfuse_enabled and settings.langfuse_public_key and settings.langfuse_secret_key:
         _export_to_langfuse(event, settings)

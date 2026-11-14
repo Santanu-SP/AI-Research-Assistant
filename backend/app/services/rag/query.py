@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from dataclasses import dataclass
 import logging
 import re
+from threading import RLock
 from time import monotonic
 from uuid import UUID, uuid5
 
@@ -29,6 +31,8 @@ from app.services.rag.generation import GenerationService, generation_service_fo
 from app.services.rag.reranking import RerankerService, reranker_service_for
 from app.models.research import Research
 from app.services.jobs import queue as job_queue
+from app.services.observability.telemetry import record_telemetry_event
+from app.services.observability.usage import enforce_user_daily_model_quota
 from app.services.research import reports
 from app.services.research import runs as research
 
@@ -247,7 +251,7 @@ def run_query(
     generator: GenerationService | None = None,
 ) -> ResearchQueryResponse:
     """Create a research run and answer it within the current request."""
-    record = _create_started_record(session, user_id, payload)
+    record = _create_started_record(session, user_id, payload, settings)
     return execute_research(
         session,
         record.id,
@@ -263,17 +267,49 @@ def queue_query(
     session: Session,
     user_id: UUID,
     payload: ResearchQueryRequest,
+    settings: Settings | None = None,
 ) -> Research:
     """Create a research run and leave the work to the background worker."""
-    record = _create_started_record(session, user_id, payload)
+    record = _create_started_record(session, user_id, payload, settings)
     job_queue.enqueue(session, job_queue.RUN_RESEARCH, record.id)
     return research.get_research(session, record.id, user_id)
+
+
+_RUNTIME_OPTIONS_LOCK = RLock()
+_RUNTIME_OPTIONS_MAXSIZE = 1024
+_RESEARCH_RUNTIME_OPTIONS: OrderedDict[UUID, dict[str, object]] = OrderedDict()
+
+
+def _store_runtime_options(
+    research_id: UUID,
+    *,
+    preferred_provider: str | None,
+    model_override: str | None,
+    local_fallback_enabled: bool | None,
+) -> None:
+    if preferred_provider is None and model_override is None and local_fallback_enabled is None:
+        return
+    with _RUNTIME_OPTIONS_LOCK:
+        _RESEARCH_RUNTIME_OPTIONS[research_id] = {
+            "preferred_provider": preferred_provider,
+            "model_override": model_override,
+            "local_fallback_enabled": local_fallback_enabled,
+        }
+        _RESEARCH_RUNTIME_OPTIONS.move_to_end(research_id)
+        while len(_RESEARCH_RUNTIME_OPTIONS) > _RUNTIME_OPTIONS_MAXSIZE:
+            _RESEARCH_RUNTIME_OPTIONS.popitem(last=False)
+
+
+def _pop_runtime_options(research_id: UUID) -> dict[str, object]:
+    with _RUNTIME_OPTIONS_LOCK:
+        return _RESEARCH_RUNTIME_OPTIONS.pop(research_id, {})
 
 
 def _create_started_record(
     session: Session,
     user_id: UUID,
     payload: ResearchQueryRequest,
+    settings: Settings | None = None,
 ) -> Research:
     normalized_query = payload.query.strip()
     if not normalized_query:
@@ -281,6 +317,13 @@ def _create_started_record(
             "A research question is required",
             status_code=422,
             code="research_query_required",
+        )
+    if settings is not None:
+        enforce_user_daily_model_quota(
+            session,
+            user_id,
+            settings,
+            preferred_provider=payload.preferred_provider,
         )
     record = research.create_research(
         session,
@@ -292,6 +335,21 @@ def _create_started_record(
         user_id,
     )
     research.start_research(session, record.id)
+    from app.services.auth import api_keys as api_key_service
+
+    pref_provider = payload.preferred_provider.strip().lower() if payload.preferred_provider else None
+    model_override = payload.model_override.strip() if payload.model_override else None
+    local_fallback = (
+        payload.local_fallback_enabled
+        if payload.local_fallback_enabled is not None
+        else api_key_service.get_local_fallback_pref(user_id)
+    )
+    _store_runtime_options(
+        record.id,
+        preferred_provider=pref_provider or None,
+        model_override=model_override or None,
+        local_fallback_enabled=local_fallback,
+    )
     return record
 
 
@@ -354,17 +412,35 @@ def execute_research(
             active_generator = generator or generation_service_for(runtime_settings)
             from app.services.auth import api_keys as api_key_service
 
+            runtime_options = _pop_runtime_options(record.id)
+            pref_provider = runtime_options.get("preferred_provider")
+            model_override = runtime_options.get("model_override")
+            local_fallback = runtime_options.get("local_fallback_enabled")
+            if local_fallback is None:
+                local_fallback = api_key_service.get_local_fallback_pref(user_id)
+
             user_keys = api_key_service.get_decrypted_user_api_keys(
                 session, user_id, runtime_settings
             )
+            user_models = api_key_service.get_user_provider_models(user_id)
+            gen_kwargs: dict[str, object] = {
+                "user_api_keys": user_keys or None,
+                "preferred_provider": (str(pref_provider) if pref_provider else None),
+                "model_override": (str(model_override) if model_override else None),
+                "local_fallback_enabled": (
+                    bool(local_fallback) if local_fallback is not None else None
+                ),
+                "provider_timeout_seconds": profile.provider_timeout_seconds,
+                "primary_timeout_seconds": profile.primary_timeout_seconds,
+                "allow_sticky_fallback": profile.allow_sticky_fallback,
+            }
+            if user_models:
+                gen_kwargs["user_provider_models"] = user_models
             try:
                 generated = active_generator.generate(
                     normalized_query,
                     evidence,
-                    user_api_keys=user_keys or None,
-                    provider_timeout_seconds=profile.provider_timeout_seconds,
-                    primary_timeout_seconds=profile.primary_timeout_seconds,
-                    allow_sticky_fallback=profile.allow_sticky_fallback,
+                    **gen_kwargs,
                 )
             except TypeError:
                 try:
@@ -377,13 +453,41 @@ def execute_research(
                     generated = active_generator.generate(normalized_query, evidence)
 
             last_resp = getattr(active_generator, "last_response", None)
-            if last_resp is not None and getattr(last_resp, "used_byok", False):
-                api_key_service.record_key_usage(
-                    session,
-                    user_id,
-                    last_resp.provider,
-                    tokens=last_resp.usage.total_tokens,
-                )
+            if last_resp is not None:
+                used_byok = bool(getattr(last_resp, "used_byok", False))
+                usage_obj = getattr(last_resp, "usage", None)
+                prompt_tokens = int(getattr(usage_obj, "prompt_tokens", 0) or 0)
+                completion_tokens = int(getattr(usage_obj, "completion_tokens", 0) or 0)
+                total_tokens = int(getattr(usage_obj, "total_tokens", 0) or (prompt_tokens + completion_tokens))
+                if used_byok:
+                    api_key_service.record_key_usage(
+                        session,
+                        user_id,
+                        last_resp.provider,
+                        tokens=total_tokens,
+                    )
+                if runtime_settings.telemetry_enabled:
+                    record_telemetry_event(
+                        session,
+                        event_type="llm_generation",
+                        operation="research_answer",
+                        provider=last_resp.provider,
+                        model=last_resp.model,
+                        status="success",
+                        latency_ms=getattr(last_resp, "latency_ms", None),
+                        prompt_tokens=prompt_tokens,
+                        completion_tokens=completion_tokens,
+                        total_tokens=total_tokens,
+                        user_id=user_id,
+                        metadata={
+                            "used_byok": used_byok,
+                            "is_local": last_resp.provider == "ollama",
+                            "depth": str(record.research_depth),
+                            "research_id": str(record.id),
+                        },
+                        settings=runtime_settings,
+                        commit=False,
+                    )
             validated = CitationValidator().validate(generated, evidence)
             if not validated.citations:
                 # An answer that cites none of the evidence is not grounded;
