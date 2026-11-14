@@ -33,6 +33,34 @@ class ResearchQueryRequest(ApiSchema):
         return self
 
 
+class ResearchRetryRequest(ApiSchema):
+    """Run a failed research item again, optionally with an edited question.
+
+    Every field is optional; anything left out keeps the value from the
+    previous attempt.
+    """
+
+    query: str | None = Field(default=None, min_length=1, max_length=10_000)
+    research_depth: ResearchDepth | None = None
+    preferred_provider: str | None = Field(default=None, max_length=64)
+    model_override: str | None = Field(default=None, max_length=160)
+    local_fallback_enabled: bool | None = None
+
+    @model_validator(mode="after")
+    def validate_model_options(self) -> "ResearchRetryRequest":
+        if self.preferred_provider is not None:
+            cleaned_provider = self.preferred_provider.strip().lower()
+            self.preferred_provider = cleaned_provider or None
+        if self.model_override is not None:
+            cleaned_override = self.model_override.strip()
+            self.model_override = (
+                validate_model_name(cleaned_override, provider=self.preferred_provider)
+                if cleaned_override
+                else None
+            )
+        return self
+
+
 class EvidenceItem(ApiSchema):
     source_id: str
     node_id: str | None = None

@@ -1,10 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { TopBar } from '../components/layout/TopBar';
 import { ResearchComposer } from '../components/research/ResearchComposer';
 import { ErrorState } from '../components/common/ErrorState';
 import {
   getResearchErrorMessage,
+  researchIdFromError,
   researchService,
 } from '../services/research.service';
 import { FolderOpen, History } from 'lucide-react';
@@ -28,6 +29,9 @@ export const NewResearch: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const library = useDocumentLibrary(ALL_DOCUMENTS);
+  // Set synchronously so a double click or Ctrl+Enter pressed twice can't
+  // send the same question before React re-renders the disabled button.
+  const submitting = useRef(false);
 
   useEffect(() => {
     setCreateError(null);
@@ -40,6 +44,8 @@ export const NewResearch: React.FC = () => {
     modelOverride?: string | null;
     localFallbackEnabled?: boolean;
   }) => {
+    if (submitting.current) return;
+    submitting.current = true;
     setIsSubmitting(true);
     setCreateError(null);
     const requestExtras = {
@@ -66,10 +72,19 @@ export const NewResearch: React.FC = () => {
       });
       navigate(`/research/${research.id}/progress`);
     } catch (error) {
+      // The server tells us which run the failed (or already running)
+      // question belongs to. Open it, where "Try again" reuses the same
+      // item instead of adding another copy to the history.
+      const researchId = researchIdFromError(error);
+      if (researchId) {
+        navigate(`/research/${researchId}/progress`);
+        return;
+      }
       setCreateError(
         getResearchErrorMessage(error, 'Research could not be started. Please try again.')
       );
     } finally {
+      submitting.current = false;
       setIsSubmitting(false);
     }
   };
@@ -82,7 +97,9 @@ export const NewResearch: React.FC = () => {
 
       <main className="flex-1 px-4 pb-16 pt-14 sm:px-6 lg:px-10">
         <div className="mx-auto grid max-w-5xl items-start gap-8 py-10 sm:pb-14 sm:pt-[9vh] lg:grid-cols-[minmax(0,1fr)_300px]">
-          <div className="min-w-0">
+          {/* On small screens the documents panel sits right under the composer, before the tips. */}
+          <div className="contents lg:block lg:min-w-0">
+            <div className="order-1 min-w-0 lg:order-none">
             <div className="mb-6">
               <h1 className="font-serif text-[28px] leading-tight tracking-[-0.01em] text-ink sm:text-[34px]">
                 What do you want to find out?
@@ -104,7 +121,8 @@ export const NewResearch: React.FC = () => {
               </div>
             ) : null}
 
-            <ul className="mt-8 grid gap-3 sm:grid-cols-2">
+            </div>
+            <ul className="order-3 grid min-w-0 gap-3 sm:grid-cols-2 lg:order-none lg:mt-8">
               <li>
                 <Link to="/projects" className={TIP_CLASS}>
                   <FolderOpen className="h-4 w-4 text-accent" strokeWidth={1.75} />
@@ -130,7 +148,7 @@ export const NewResearch: React.FC = () => {
           <DocumentsPanel
             library={library}
             title="Your documents"
-            className="lg:sticky lg:top-20 lg:mt-[7.5rem] lg:max-h-[calc(100vh-7rem)]"
+            className="order-2 min-w-0 lg:order-none lg:sticky lg:top-20 lg:mt-[7.5rem] lg:max-h-[calc(100vh-7rem)]"
           />
         </div>
       </main>

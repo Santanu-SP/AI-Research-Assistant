@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from pydantic import ConfigDict, Field, StringConstraints, model_validator
@@ -105,3 +105,10 @@ class ResearchProgressResponse(ApiSchema):
     updated_at: datetime
     completed_at: datetime | None
     failed_at: datetime | None
+    # Only set for failed runs: a short, safe reason the UI can explain.
+    failure_reason: Literal[
+        "model_unavailable", "quota_reached", "no_ready_documents", "unexpected"
+    ] | None = None
+    # Documents in this run's scope (its project, or all of the user's).
+    documents_ready: int = Field(default=0, ge=0)
+    documents_preparing: int = Field(default=0, ge=0)

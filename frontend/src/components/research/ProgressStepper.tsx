@@ -1,5 +1,5 @@
 import React from 'react';
-import { Check } from 'lucide-react';
+import { Check, X } from 'lucide-react';
 import { ResearchProgressResponse, ResearchProgressStage } from '../../types/progress';
 
 interface ProgressStepperProps {
@@ -7,11 +7,11 @@ interface ProgressStepperProps {
 }
 
 const STAGE_DETAIL: Record<ResearchProgressStage, string> = {
-  PLANNING: 'Reading the question and deciding what to look for.',
-  SEARCHING: 'Looking through your documents for relevant passages.',
-  EXTRACTING: 'Keeping the passages that best answer the question.',
-  SYNTHESIZING: 'Writing the answer from the selected passages.',
-  FINALIZING: 'Checking that every sentence is backed by a citation.',
+  planning: 'Reading the question and deciding what to look for.',
+  searching_sources: 'Looking through your documents for relevant passages.',
+  finding_documents: 'Finding the documents that mention it.',
+  reviewing_evidence: 'Keeping the passages that best answer the question.',
+  building_synthesis: 'Writing the answer and linking each claim to its passage.',
 };
 
 export const ProgressStepper: React.FC<ProgressStepperProps> = ({ progress }) => {
@@ -43,6 +43,7 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({ progress }) =>
           {progress.steps.map((step, index) => {
             const isCompleted = step.status === 'completed';
             const isActive = step.status === 'active';
+            const isFailed = step.status === 'failed';
             const isLast = index === progress.steps.length - 1;
 
             return (
@@ -57,20 +58,29 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({ progress }) =>
                   className={`relative z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-[11px] font-medium tabular-nums ${
                     isCompleted
                       ? 'border-solid bg-solid text-on-solid'
-                      : isActive
+                      : isFailed
+                        ? 'border-danger-line bg-danger-soft text-danger'
+                        : isActive
                         ? 'border-accent bg-panel text-accent ring-4 ring-accent-soft'
                         : 'border-line-strong bg-panel text-ink-muted'
                   }`}
                 >
-                  {isCompleted ? <Check className="h-3.5 w-3.5" strokeWidth={2.5} /> : index + 1}
+                  {isCompleted ? (
+                    <Check className="h-3.5 w-3.5" strokeWidth={2.5} />
+                  ) : isFailed ? (
+                    <X className="h-3.5 w-3.5" strokeWidth={2.5} />
+                  ) : (
+                    index + 1
+                  )}
                 </span>
                 <div className="min-w-0 pt-0.5">
                   <p
                     className={`text-sm leading-tight ${
-                      isActive ? 'font-medium text-ink' : isCompleted ? 'text-ink' : 'text-ink-muted'
+                      isActive || isFailed ? 'font-medium text-ink' : isCompleted ? 'text-ink' : 'text-ink-muted'
                     }`}
                   >
                     {step.title}
+                    {isFailed && <span className="ml-2 text-xs font-normal text-danger">Stopped here</span>}
                     {isActive && (
                       <span className="ml-2 inline-flex items-center gap-1.5 text-xs font-normal text-accent">
                         <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />

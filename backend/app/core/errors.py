@@ -39,12 +39,16 @@ class AppError(Exception):
         status_code: int = 400,
         code: str = "application_error",
         headers: dict[str, str] | None = None,
+        details: dict[str, object] | None = None,
     ) -> None:
         super().__init__(message)
         self.message = message
         self.status_code = status_code
         self.code = code
         self.headers = headers
+        # Small, safe extras for the client, e.g. the id of the research run
+        # a failed request belongs to.
+        self.details = details
 
 
 def error_response(
@@ -52,7 +56,7 @@ def error_response(
     code: str,
     message: str,
     *,
-    details: list[dict[str, object]] | None = None,
+    details: list[dict[str, object]] | dict[str, object] | None = None,
     headers: dict[str, str] | None = None,
 ) -> JSONResponse:
     body: dict[str, object] = {"code": code, "message": message}
@@ -66,7 +70,13 @@ def error_response(
 
 
 async def app_error_handler(_: Request, exc: AppError) -> JSONResponse:
-    return error_response(exc.status_code, exc.code, exc.message, headers=exc.headers)
+    return error_response(
+        exc.status_code,
+        exc.code,
+        exc.message,
+        details=exc.details,
+        headers=exc.headers,
+    )
 
 
 async def http_error_handler(_: Request, exc: StarletteHTTPException) -> JSONResponse:

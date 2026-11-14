@@ -3,6 +3,7 @@ import { ArrowRight } from 'lucide-react';
 import { ResearchDepth } from '../../types/research';
 import { LoadingOrb } from '../common/LoadingOrb';
 import { ModelControlBar } from './ModelControlBar';
+import { shortcutLabel } from '../../lib/shortcuts';
 
 interface ResearchComposerProps {
   initialPrompt?: string;
@@ -34,6 +35,7 @@ export const ResearchComposer: React.FC<ResearchComposerProps> = ({
   const [localFallbackEnabled, setLocalFallbackEnabled] = useState<boolean | undefined>(undefined);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
+  const lastSubmitAt = useRef(0);
 
   useEffect(() => {
     setPrompt(initialPrompt);
@@ -61,6 +63,10 @@ export const ResearchComposer: React.FC<ResearchComposerProps> = ({
 
   const handleSubmit = () => {
     if (!prompt.trim() || isLoading) return;
+    // isLoading only updates on the next render; block a second press now.
+    const now = Date.now();
+    if (now - lastSubmitAt.current < 1500) return;
+    lastSubmitAt.current = now;
     onStartResearch({
       question: prompt.trim(),
       depth,
@@ -105,13 +111,16 @@ export const ResearchComposer: React.FC<ResearchComposerProps> = ({
           />
         </div>
 
-        <div className="flex items-center gap-3 ml-auto">
-          <span className="hidden text-xs text-ink-muted md:inline">
-            {isLoading ? LOADING_MESSAGES[loadingMessageIndex] : 'Answers use your documents only'}
-          </span>
-          <kbd className="hidden select-none rounded border border-line bg-panel px-1.5 py-0.5 font-mono text-[10.5px] text-ink-muted sm:inline">
-            ⌘ Enter
-          </kbd>
+        <div className="ml-auto flex items-center gap-3">
+          {isLoading ? (
+            <span className="hidden text-xs text-ink-muted md:inline" aria-live="polite">
+              {LOADING_MESSAGES[loadingMessageIndex]}
+            </span>
+          ) : (
+            <kbd className="hidden select-none rounded border border-line bg-panel px-1.5 py-0.5 font-sans text-[10.5px] text-ink-muted xl:inline">
+              {shortcutLabel('Enter')}
+            </kbd>
+          )}
           <button
             type="button"
             onClick={handleSubmit}

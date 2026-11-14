@@ -1020,10 +1020,12 @@ export const ModelControlBar: React.FC<ModelControlBarProps> = ({
             style={{ maxHeight: `${keyLayout.maxHeight}px` }}
             className={`absolute z-40 w-80 max-w-[calc(100vw-2rem)] overflow-y-auto overscroll-contain rounded-lg border border-line bg-panel p-3 text-xs shadow-xl ${keyPositionClass}`}
           >
-            <div className="flex items-center justify-between gap-2">
-              <span className="font-medium text-ink">Connect your provider API key</span>
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10.5px] text-ink-muted">Encrypted per user</span>
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="font-medium text-ink">Use your own API key</p>
+                <p className="mt-0.5 text-[11px] text-ink-muted">Stored encrypted, only for your account.</p>
+              </div>
+              <div className="flex shrink-0 items-center">
                 <button
                   type="button"
                   aria-label="Close API key dialog"

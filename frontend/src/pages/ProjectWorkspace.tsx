@@ -158,6 +158,7 @@ export const ProjectWorkspacePage: React.FC = () => {
                     isArchived={isArchived}
                     readyCount={askLibrary.isLoading || askLibrary.error ? undefined : askLibrary.readyCount}
                     preparingCount={askLibrary.preparingCount}
+                    onOpenRun={(researchId) => navigate(`/research/${researchId}/progress`)}
                   />
                   <DocumentsPanel
                     library={askLibrary}

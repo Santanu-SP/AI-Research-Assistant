@@ -15,7 +15,7 @@ from app.schemas.research import (
     ResearchResponse,
     ResearchUpdate,
 )
-from app.schemas.rag import ResearchQueryRequest, ResearchQueryResponse
+from app.schemas.rag import ResearchQueryRequest, ResearchQueryResponse, ResearchRetryRequest
 from app.schemas.reports import ComposedReportResponse
 from app.schemas.retrieval import RetrievalRequest, RetrievalResponse
 from app.services.research import runs as research_service
@@ -90,6 +90,35 @@ def queue_research_query(
         session,
         user.id,
         payload,
+        request.app.state.settings,
+    )
+    request.app.state.job_worker.wake()
+    return research_service.attach_source_counts(session, [record])[0]
+
+
+@router.post(
+    "/{research_id}/retry",
+    response_model=ResearchResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def retry_research(
+    research_id: UUID,
+    session: DatabaseSession,
+    user: CurrentUser,
+    request: Request,
+    payload: ResearchRetryRequest | None = None,
+) -> ResearchResponse:
+    """Run a failed research item again on the same record.
+
+    The history keeps a single entry for the question. Send ``query`` to
+    run an edited question in its place.
+    """
+    _enforce_query_rate_limit(request, user.id)
+    record = rag_service.retry_research(
+        session,
+        user.id,
+        research_id,
+        payload or ResearchRetryRequest(),
         request.app.state.settings,
     )
     request.app.state.job_worker.wake()

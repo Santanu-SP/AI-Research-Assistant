@@ -2,12 +2,14 @@ import React, { Suspense, useCallback, useEffect, useMemo, useState } from 'reac
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { CenteredLoadingState } from '../common/LoadingState';
 import { AppSidebar } from './AppSidebar';
+import { SidebarRail } from './SidebarRail';
 import { AnimatedResearchBackground } from './AnimatedResearchBackground';
 import { MobileNavContext } from './MobileNavContext';
 import { ResearchHistoryProvider } from '../../app/ResearchHistoryContext';
 import { isModShortcut } from '../../lib/shortcuts';
 
 const SIDEBAR_WIDTH = 260;
+const RAIL_WIDTH = 56;
 const COLLAPSED_KEY = 'research-assistant-sidebar-collapsed';
 
 const readCollapsed = () => {
@@ -41,6 +43,10 @@ export const AppLayout: React.FC = () => {
   }, [collapsed]);
 
   const toggleCollapsed = useCallback(() => setCollapsed((value) => !value), []);
+  const expandAndSearch = useCallback(() => {
+    setCollapsed(false);
+    setSearchFocusSignal((value) => value + 1);
+  }, []);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -85,7 +91,7 @@ export const AppLayout: React.FC = () => {
         : 'workspace';
 
   const layoutStyle = {
-    '--sidebar-w': collapsed ? '0px' : `${SIDEBAR_WIDTH}px`,
+    '--sidebar-w': collapsed ? `${RAIL_WIDTH}px` : `${SIDEBAR_WIDTH}px`,
   } as React.CSSProperties;
 
   return (
@@ -110,6 +116,18 @@ export const AppLayout: React.FC = () => {
             inert={collapsed ? true : undefined}
           >
             <AppSidebar variant="desktop" searchFocusSignal={searchFocusSignal} />
+          </div>
+
+          {/* With the sidebar hidden, a slim rail keeps the main actions in reach. */}
+          <div
+            className={`fixed inset-y-0 left-0 z-50 hidden transition-opacity duration-200 lg:block ${
+              collapsed ? 'opacity-100 delay-150' : 'pointer-events-none opacity-0'
+            }`}
+            style={{ width: RAIL_WIDTH }}
+            aria-hidden={!collapsed}
+            inert={!collapsed ? true : undefined}
+          >
+            <SidebarRail onExpand={toggleCollapsed} onSearch={expandAndSearch} />
           </div>
 
           {mobileMenuOpen && (
