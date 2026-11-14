@@ -9,6 +9,8 @@ import { ResearchProgressResponse } from '../types/progress';
 import { CenteredLoadingState } from '../components/common/LoadingState';
 import { ErrorState } from '../components/common/ErrorState';
 import { ApiError } from '../services/api';
+import { RunRecovery } from '../components/research/RunRecovery';
+import { useResearchHistory } from '../app/ResearchHistoryContext';
 
 const PROGRESS_POLL_DELAYS_MS = [400, 600, 900, 1400, 2000] as const;
 
@@ -17,6 +19,10 @@ export const ResearchProgressPage: React.FC = () => {
   const navigate = useNavigate();
   const [progress, setProgress] = useState<ResearchProgressResponse | null>(null);
   const [error, setError] = useState<Error | null>(null);
+  // Bumped after "Try again" so polling starts over for the same run.
+  const [runKey, setRunKey] = useState(0);
+  const history = useResearchHistory();
+  const reloadHistory = history?.reload;
 
   useEffect(() => {
     let mounted = true;
@@ -32,11 +38,16 @@ export const ResearchProgressPage: React.FC = () => {
           setError(null);
 
           if (res.status === 'completed') {
+            reloadHistory?.();
             navigate(`/research/${res.id}`, { replace: true });
             return;
           }
 
-          if (res.status === 'researching') {
+          if (res.status === 'failed') {
+            reloadHistory?.();
+          }
+
+          if (res.status === 'researching' || res.status === 'draft') {
             const delay =
               PROGRESS_POLL_DELAYS_MS[
                 Math.min(pollAttempt, PROGRESS_POLL_DELAYS_MS.length - 1)
@@ -60,7 +71,8 @@ export const ResearchProgressPage: React.FC = () => {
         window.clearTimeout(timer);
       }
     };
-  }, [id, navigate]);
+    // runKey restarts polling after "Try again".
+  }, [id, navigate, runKey, reloadHistory]);
 
   if (error) {
     if (error instanceof ApiError && error.status === 404) {
@@ -137,9 +149,15 @@ export const ResearchProgressPage: React.FC = () => {
               {progress.question}
             </h1>
             {isFailed && (
-              <p role="alert" className="mt-4 max-w-3xl rounded-lg border border-danger-line bg-danger-soft px-4 py-3 text-[13px] text-danger">
-                This run stopped before an answer was written. Make sure your documents are ready, then ask again.
-              </p>
+              <RunRecovery
+                key={progress.updatedAt}
+                progress={progress}
+                onRestarted={() => {
+                  setProgress((current) => (current ? { ...current, status: 'researching', failureReason: null } : current));
+                  reloadHistory?.();
+                  setRunKey((value) => value + 1);
+                }}
+              />
             )}
           </div>
 

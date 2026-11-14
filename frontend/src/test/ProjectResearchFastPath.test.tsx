@@ -16,6 +16,9 @@ const setProviderModelMock = vi.fn();
 vi.mock('../services/research.service', () => ({
   queryResearch: (...args: unknown[]) => queryResearchMock(...args),
   getResearchErrorMessage: (_err: unknown, fallback: string) => fallback,
+  friendlyResearchError: (_err: unknown, fallback: string) => fallback,
+  researchIdFromError: () => null,
+  retryResearch: vi.fn(),
 }));
 
 vi.mock('../services/progress.service', () => ({
