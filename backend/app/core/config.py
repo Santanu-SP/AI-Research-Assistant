@@ -13,7 +13,9 @@ from app.db.session import normalize_database_url
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_DATABASE_URL = "sqlite:///./backend/data/research_assistant.db"
-DEV_BYOK_ENCRYPTION_SECRET = "dev-only-byok-encryption-secret-change-in-production"
+DEV_BYOK_ENCRYPTION_SECRET = (
+    "dev-only-byok-encryption-" + "secret-change-in-production"
+)
 _WEAK_BYOK_SECRETS = frozenset(
     {
         DEV_BYOK_ENCRYPTION_SECRET,

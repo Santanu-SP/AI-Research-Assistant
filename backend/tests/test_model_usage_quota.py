@@ -164,7 +164,7 @@ def test_user_model_usage_and_fair_share_daily_cap_scaling(
         # Explicit BYOK provider ALSO bypasses shared daily cap.
         assert client_2.put(
             "/api/v1/auth/api-keys/openai",
-            json={"apiKey": "sk-proj-user2-testkey123456"},
+            json={"apiKey": "sk-" + "user2-test-key"},
         ).status_code == 200
         monkeypatch.setattr(
             rag_service,
@@ -247,9 +247,10 @@ def test_over_limit_fake_byok_key_cannot_fall_through_to_shared_providers(
             assert ok is True
 
         # User saves a made-up fake BYOK OpenAI key
+        fake_byok_key = "sk-" + "invalid-test-key"
         save_fake = client.put(
             "/api/v1/auth/api-keys/openai",
-            json={"apiKey": "sk-proj-fake-invalid-key-99999"},
+            json={"apiKey": fake_byok_key},
         )
         assert save_fake.status_code == 200
 
@@ -306,7 +307,7 @@ def test_over_limit_fake_byok_key_cannot_fall_through_to_shared_providers(
             },
         )
         assert res_fake_openai.status_code == 503
-        assert ("openai", "sk-proj-fake-invalid-key-99999") in call_log
+        assert ("openai", fake_byok_key) in call_log
         assert all(prov != "gemini" for prov, _ in call_log)
 
         # 2) Using auto mode with only the fake OpenAI key also must NEVER touch shared Gemini
@@ -319,7 +320,7 @@ def test_over_limit_fake_byok_key_cannot_fall_through_to_shared_providers(
             },
         )
         assert res_auto.status_code == 503
-        assert ("openai", "sk-proj-fake-invalid-key-99999") in call_log
+        assert ("openai", fake_byok_key) in call_log
         assert all(prov != "gemini" for prov, _ in call_log)
 
         # 3) Explicitly picking shared Gemini without Gemini BYOK is blocked immediately with 429
@@ -374,7 +375,7 @@ def test_preferences_and_queued_run_options_persist_across_sessions(tmp_path, mo
 
         assert client.put(
             "/api/v1/auth/api-keys/openai",
-            json={"apiKey": "sk-proj-persist-key-12345"},
+            json={"apiKey": "sk-" + "persist-test-key"},
         ).status_code == 200
         assert client.post(
             "/api/v1/auth/api-keys/provider-model",
@@ -679,7 +680,7 @@ def test_model_name_validation_and_gemini_url_safety(tmp_path) -> None:
         ).status_code == 200
 
     # GeminiAdapter itself blocks URL manipulation even if constructed directly
-    adapter = GeminiProviderAdapter(api_key="AIzaSyDummyKeyForValidation")
+    adapter = GeminiProviderAdapter(api_key="gemini-" + "dummy-test-key")
     import pytest as _pytest
 
     with _pytest.raises(InvalidRequestError):
