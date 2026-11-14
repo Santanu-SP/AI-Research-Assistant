@@ -47,3 +47,22 @@ class UserAPIKey(TimestampMixin, Base):
         nullable=False,
     )
 
+
+class UserModelPreference(TimestampMixin, Base):
+    """Persisted per-user preferred model choice for each LLM provider."""
+
+    __tablename__ = "user_model_preferences"
+    __table_args__ = (
+        UniqueConstraint("user_id", "provider", name="uq_user_model_prefs_user_provider"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    provider: Mapped[str] = mapped_column(String(50), nullable=False)
+    model_name: Mapped[str] = mapped_column(String(160), nullable=False)
+

@@ -2,17 +2,15 @@
 
 from __future__ import annotations
 
-from collections import OrderedDict
 from dataclasses import dataclass
 import logging
 import re
-from threading import RLock
 from time import monotonic
 from uuid import UUID, uuid5
 
 from sqlalchemy.orm import Session
 
-from app.core.config import Settings
+from app.core.config import Settings, get_settings
 from app.core.errors import AppError
 from app.domain.reports import SourceType
 from app.domain.research import ResearchDepth
@@ -31,8 +29,13 @@ from app.services.rag.generation import GenerationService, generation_service_fo
 from app.services.rag.reranking import RerankerService, reranker_service_for
 from app.models.research import Research
 from app.services.jobs import queue as job_queue
-from app.services.observability.telemetry import record_telemetry_event
-from app.services.observability.usage import enforce_user_daily_model_quota
+from app.services.observability.telemetry import estimate_cost_usd, record_telemetry_event
+from app.services.observability.usage import (
+    acquire_run_quota_policy,
+    record_model_usage,
+    release_research_shared_quota,
+    reserve_shared_quota_slot,
+)
 from app.services.research import reports
 from app.services.research import runs as research
 
@@ -275,36 +278,6 @@ def queue_query(
     return research.get_research(session, record.id, user_id)
 
 
-_RUNTIME_OPTIONS_LOCK = RLock()
-_RUNTIME_OPTIONS_MAXSIZE = 1024
-_RESEARCH_RUNTIME_OPTIONS: OrderedDict[UUID, dict[str, object]] = OrderedDict()
-
-
-def _store_runtime_options(
-    research_id: UUID,
-    *,
-    preferred_provider: str | None,
-    model_override: str | None,
-    local_fallback_enabled: bool | None,
-) -> None:
-    if preferred_provider is None and model_override is None and local_fallback_enabled is None:
-        return
-    with _RUNTIME_OPTIONS_LOCK:
-        _RESEARCH_RUNTIME_OPTIONS[research_id] = {
-            "preferred_provider": preferred_provider,
-            "model_override": model_override,
-            "local_fallback_enabled": local_fallback_enabled,
-        }
-        _RESEARCH_RUNTIME_OPTIONS.move_to_end(research_id)
-        while len(_RESEARCH_RUNTIME_OPTIONS) > _RUNTIME_OPTIONS_MAXSIZE:
-            _RESEARCH_RUNTIME_OPTIONS.popitem(last=False)
-
-
-def _pop_runtime_options(research_id: UUID) -> dict[str, object]:
-    with _RUNTIME_OPTIONS_LOCK:
-        return _RESEARCH_RUNTIME_OPTIONS.pop(research_id, {})
-
-
 def _create_started_record(
     session: Session,
     user_id: UUID,
@@ -318,23 +291,7 @@ def _create_started_record(
             status_code=422,
             code="research_query_required",
         )
-    if settings is not None:
-        enforce_user_daily_model_quota(
-            session,
-            user_id,
-            settings,
-            preferred_provider=payload.preferred_provider,
-        )
-    record = research.create_research(
-        session,
-        ResearchCreate(
-            question=normalized_query,
-            project_id=payload.project_id,
-            research_depth=payload.research_depth,
-        ),
-        user_id,
-    )
-    research.start_research(session, record.id)
+    runtime_settings = settings or get_settings()
     from app.services.auth import api_keys as api_key_service
 
     pref_provider = payload.preferred_provider.strip().lower() if payload.preferred_provider else None
@@ -342,14 +299,44 @@ def _create_started_record(
     local_fallback = (
         payload.local_fallback_enabled
         if payload.local_fallback_enabled is not None
-        else api_key_service.get_local_fallback_pref(user_id)
+        else api_key_service.get_local_fallback_pref(session, user_id)
     )
-    _store_runtime_options(
-        record.id,
-        preferred_provider=pref_provider or None,
-        model_override=model_override or None,
-        local_fallback_enabled=local_fallback,
+    user_byok_keys = api_key_service.get_decrypted_user_api_keys(
+        session, user_id, runtime_settings
     )
+    allow_shared, quota_reserved, quota_date, _ = acquire_run_quota_policy(
+        session,
+        user_id=user_id,
+        preferred_provider=pref_provider,
+        user_byok_providers=set(user_byok_keys.keys()),
+        local_enabled=bool(local_fallback),
+        settings=runtime_settings,
+    )
+    try:
+        record = research.create_research(
+            session,
+            ResearchCreate(
+                question=normalized_query,
+                project_id=payload.project_id,
+                research_depth=payload.research_depth,
+            ),
+            user_id,
+        )
+        record.preferred_provider = pref_provider or None
+        record.model_override = model_override or None
+        record.local_fallback_enabled = local_fallback
+        record.allow_shared_providers = allow_shared
+        record.shared_quota_reserved = quota_reserved
+        record.shared_quota_date = quota_date
+        session.add(record)
+        research.start_research(session, record.id)
+    except Exception:
+        if quota_reserved and quota_date is not None:
+            session.rollback()
+            from app.services.observability.usage import release_shared_quota_slot
+
+            release_shared_quota_slot(session, user_id=user_id, usage_date=quota_date, commit=True)
+        raise
     return record
 
 
@@ -412,17 +399,36 @@ def execute_research(
             active_generator = generator or generation_service_for(runtime_settings)
             from app.services.auth import api_keys as api_key_service
 
-            runtime_options = _pop_runtime_options(record.id)
-            pref_provider = runtime_options.get("preferred_provider")
-            model_override = runtime_options.get("model_override")
-            local_fallback = runtime_options.get("local_fallback_enabled")
+            pref_provider = record.preferred_provider
+            model_override = record.model_override
+            local_fallback = record.local_fallback_enabled
             if local_fallback is None:
-                local_fallback = api_key_service.get_local_fallback_pref(user_id)
+                local_fallback = api_key_service.get_local_fallback_pref(session, user_id)
 
             user_keys = api_key_service.get_decrypted_user_api_keys(
                 session, user_id, runtime_settings
             )
-            user_models = api_key_service.get_user_provider_models(user_id)
+            user_models = api_key_service.get_user_provider_models(session, user_id)
+
+            def _before_shared_attempt(_provider: str) -> bool:
+                fresh = session.get(Research, record.id)
+                if fresh is not None and fresh.shared_quota_reserved:
+                    return True
+                reserved_ok, reserved_day, _ = reserve_shared_quota_slot(
+                    session,
+                    user_id=user_id,
+                    settings=runtime_settings,
+                    commit=True,
+                )
+                if not reserved_ok:
+                    return False
+                if fresh is not None:
+                    fresh.shared_quota_reserved = True
+                    fresh.shared_quota_date = reserved_day
+                    session.add(fresh)
+                    session.commit()
+                return True
+
             gen_kwargs: dict[str, object] = {
                 "user_api_keys": user_keys or None,
                 "preferred_provider": (str(pref_provider) if pref_provider else None),
@@ -430,6 +436,8 @@ def execute_research(
                 "local_fallback_enabled": (
                     bool(local_fallback) if local_fallback is not None else None
                 ),
+                "allow_shared_providers": bool(record.allow_shared_providers),
+                "before_shared_attempt": _before_shared_attempt,
                 "provider_timeout_seconds": profile.provider_timeout_seconds,
                 "primary_timeout_seconds": profile.primary_timeout_seconds,
                 "allow_sticky_fallback": profile.allow_sticky_fallback,
@@ -466,6 +474,36 @@ def execute_research(
                         last_resp.provider,
                         tokens=total_tokens,
                     )
+                usage_source = (
+                    "byok"
+                    if used_byok
+                    else ("local" if last_resp.provider == "ollama" else "shared")
+                )
+                was_reserved = bool(record.shared_quota_reserved)
+                if usage_source in ("byok", "local") and was_reserved:
+                    release_research_shared_quota(session, record.id, commit=False)
+                elif usage_source == "shared" and was_reserved:
+                    record.shared_quota_reserved = False
+                    record.shared_quota_date = None
+                    session.add(record)
+
+                cost_usd = estimate_cost_usd(
+                    last_resp.provider,
+                    prompt_tokens,
+                    completion_tokens,
+                )
+                record_model_usage(
+                    session,
+                    user_id=user_id,
+                    provider=last_resp.provider,
+                    model_name=last_resp.model,
+                    usage_source=usage_source,
+                    input_tokens=prompt_tokens,
+                    output_tokens=completion_tokens,
+                    estimated_cost_usd=cost_usd,
+                    increment_shared_quota=(usage_source == "shared" and not was_reserved),
+                    commit=False,
+                )
                 if runtime_settings.telemetry_enabled:
                     record_telemetry_event(
                         session,
@@ -494,6 +532,7 @@ def execute_research(
                 # report insufficient evidence instead of an unsupported reply.
                 insufficient = True
         if insufficient:
+            release_research_shared_quota(session, record.id, commit=False)
             answer = INSUFFICIENT_EVIDENCE_ANSWER
             validated = CitationValidator().validate(answer, evidence)
         else:
@@ -539,10 +578,12 @@ def execute_research(
         )
     except AppError:
         session.rollback()
+        release_research_shared_quota(session, record.id, commit=False)
         research.mark_research_failed(session, record.id)
         raise
     except Exception as exc:
         session.rollback()
+        release_research_shared_quota(session, record.id, commit=False)
         research.mark_research_failed(session, record.id)
         raise AppError(
             "The grounded research request could not be completed",

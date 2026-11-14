@@ -937,7 +937,7 @@ export const ModelControlBar: React.FC<ModelControlBarProps> = ({
                       <div className="flex items-center justify-between gap-2">
                         <dt>Fair share across active accounts</dt>
                         <dd className="tabular-nums text-ink-soft">
-                          {usage.enrolledUsers} enrolled {usage.enrolledUsers === 1 ? 'user' : 'users'}
+                          {usage.enrolledUsers} active {usage.enrolledUsers === 1 ? 'user' : 'users'}
                         </dd>
                       </div>
                       <div className="flex items-center justify-between gap-2">

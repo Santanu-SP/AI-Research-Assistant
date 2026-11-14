@@ -13,6 +13,19 @@ from app.db.session import normalize_database_url
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_DATABASE_URL = "sqlite:///./backend/data/research_assistant.db"
+DEV_BYOK_ENCRYPTION_SECRET = (
+    "dev-only-byok-encryption-" + "secret-change-in-production"
+)
+_WEAK_BYOK_SECRETS = frozenset(
+    {
+        DEV_BYOK_ENCRYPTION_SECRET,
+        "change-me",
+        "changeme",
+        "secret",
+        "dev-secret",
+        "development",
+    }
+)
 
 
 def _legacy_supabase_defaults() -> dict[str, str | None]:
@@ -106,7 +119,7 @@ class Settings(BaseSettings):
     google_client_secret: str | None = None
     google_redirect_uri: str = "http://localhost:8000/api/v1/auth/google/callback"
     google_oauth_state_minutes: int = Field(default=10, ge=1, le=30)
-    api_key_encryption_secret: str = "dev-only-byok-encryption-secret-change-in-production"
+    api_key_encryption_secret: str | None = None
 
     # Embeddings configuration (local Qwen3-Embedding-0.6B or Cloudflare Workers AI).
     embedding_provider: Literal["local", "cloudflare"] = "local"
@@ -260,6 +273,7 @@ class Settings(BaseSettings):
     model_warmup_on_startup: bool = False
 
     @field_validator(
+        "api_key_encryption_secret",
         "google_client_id",
         "google_client_secret",
         "neon_database_url",
@@ -348,7 +362,35 @@ class Settings(BaseSettings):
             raise ValueError("AUTH_COOKIE_SECURE must be true in production")
         if (self.google_client_id is None) != (self.google_client_secret is None):
             raise ValueError("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set together")
+        if (
+            self.app_environment == "production"
+            and self.api_key_encryption_secret is not None
+            and self._is_weak_encryption_secret(self.api_key_encryption_secret)
+        ):
+            raise ValueError(
+                "API_KEY_ENCRYPTION_SECRET must not use a default or weak value (min 16 characters) in production"
+            )
         return self
+
+    @staticmethod
+    def _is_weak_encryption_secret(secret: str | None) -> bool:
+        cleaned = (secret or "").strip()
+        return not cleaned or len(cleaned) < 16 or cleaned.lower() in _WEAK_BYOK_SECRETS
+
+    def validate_production_startup(self) -> None:
+        """Fail fast when production runs without an explicit strong BYOK encryption key."""
+        if self.app_environment == "production" and self._is_weak_encryption_secret(
+            self.api_key_encryption_secret
+        ):
+            raise ValueError(
+                "API_KEY_ENCRYPTION_SECRET must be set to a strong non-default secret "
+                "(at least 16 characters) before starting in production"
+            )
+
+    def effective_byok_encryption_secret(self) -> str:
+        """Return the active BYOK encryption passphrase, refusing insecure defaults in production."""
+        self.validate_production_startup()
+        return (self.api_key_encryption_secret or "").strip() or DEV_BYOK_ENCRYPTION_SECRET
 
     @property
     def migration_database_url(self) -> str:

@@ -37,6 +37,7 @@ def create_app(app_settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        active_settings.validate_production_startup()
         if active_settings.worker_enabled:
             worker.start()
         try:
