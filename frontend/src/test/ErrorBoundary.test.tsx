@@ -57,4 +57,36 @@ describe('ErrorBoundary', () => {
     fireEvent.click(screen.getByText('go'));
     expect(screen.getByText('Page B')).toBeInTheDocument();
   });
+
+  it('resets caught error on resetKey change without unmounting healthy siblings', () => {
+    const onMount = vi.fn();
+    const TrackedShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+      React.useEffect(() => {
+        onMount();
+      }, []);
+      return <div>{children}</div>;
+    };
+
+    const Harness: React.FC = () => {
+      const [route, setRoute] = useState('/broken');
+      return (
+        <>
+          <button type="button" onClick={() => setRoute('/healthy')}>navigate</button>
+          <TrackedShell>
+            <ErrorBoundary resetKey={route}>
+              {route === '/broken' ? <Bomb /> : <p>Recovered route</p>}
+            </ErrorBoundary>
+          </TrackedShell>
+        </>
+      );
+    };
+
+    render(<Harness />);
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+    expect(onMount).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByText('navigate'));
+    expect(screen.getByText('Recovered route')).toBeInTheDocument();
+    expect(onMount).toHaveBeenCalledTimes(1);
+  });
 });

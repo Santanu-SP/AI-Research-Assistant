@@ -156,3 +156,40 @@ describe('409 codes other than duplicates', () => {
     );
   });
 });
+
+describe('documentsService caching signals', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', undefined);
+  });
+
+  it('forwards AbortSignal to getDocuments fetch options', async () => {
+    let capturedSignal: AbortSignal | undefined;
+    const fetchMock = vi.fn().mockImplementation((_url: string, init: RequestInit) => {
+      capturedSignal = init.signal ?? undefined;
+      return new Promise((_, reject) => {
+        init.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const controller = new AbortController();
+
+    const pending = documentsService.getDocuments({ limit: 50 }, controller.signal);
+    expect(capturedSignal?.aborted).toBe(false);
+    controller.abort();
+    expect(capturedSignal?.aborted).toBe(true);
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
+  it('dispatches documents:changed after deleteDocument succeeds', async () => {
+    const fetchMock = mockFetch(null, 204);
+    vi.stubGlobal('fetch', fetchMock);
+    const listener = vi.fn();
+    window.addEventListener('documents:changed', listener);
+    try {
+      await documentsService.deleteDocument('doc-42');
+      expect(listener).toHaveBeenCalledTimes(1);
+    } finally {
+      window.removeEventListener('documents:changed', listener);
+    }
+  });
+});

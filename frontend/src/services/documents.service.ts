@@ -1,6 +1,20 @@
 import { Document, DocumentListResponse } from '../types/document';
 import { ApiError, UPLOAD_REQUEST_TIMEOUT_MS, apiErrorCode, apiErrorMessage, apiRequest } from './api';
 
+export const DOCUMENTS_CHANGED_EVENT = 'documents:changed';
+
+export interface DocumentsChangedDetail {
+  action: 'upload' | 'delete' | 'retry';
+  document?: Document;
+  documentId?: string;
+}
+
+const notifyDocumentsChanged = (detail: DocumentsChangedDetail): void => {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent<DocumentsChangedDetail>(DOCUMENTS_CHANGED_EVENT, { detail }));
+  }
+};
+
 export interface ProjectDocumentListParams {
   search?: string;
   status?: string;
@@ -25,24 +39,30 @@ const documentListPath = (
 };
 
 export const documentsService = {
-  async getDocuments(params?: ProjectDocumentListParams): Promise<DocumentListResponse> {
-    return apiRequest<DocumentListResponse>(documentListPath('/documents', params));
+  async getDocuments(
+    params?: ProjectDocumentListParams,
+    signal?: AbortSignal,
+  ): Promise<DocumentListResponse> {
+    return apiRequest<DocumentListResponse>(documentListPath('/documents', params), { signal });
   },
 
   async uploadDocument(file: File): Promise<Document> {
     const formData = new FormData();
     formData.append('file', file);
-    return apiRequest<Document>('/documents', {
+    const document = await apiRequest<Document>('/documents', {
       method: 'POST',
       body: formData,
       timeoutMs: UPLOAD_REQUEST_TIMEOUT_MS,
     });
+    notifyDocumentsChanged({ action: 'upload', document });
+    return document;
   },
 
   async deleteDocument(id: string): Promise<boolean> {
     await apiRequest<void>(`/documents/${encodeURIComponent(id)}`, {
       method: 'DELETE',
     });
+    notifyDocumentsChanged({ action: 'delete', documentId: id });
     return true;
   },
 
@@ -58,17 +78,21 @@ export const documentsService = {
   async uploadProjectDocument(projectId: string, file: File): Promise<Document> {
     const formData = new FormData();
     formData.append('file', file);
-    return apiRequest<Document>(
+    const document = await apiRequest<Document>(
       `/projects/${encodeURIComponent(projectId)}/documents`,
       { method: 'POST', body: formData, timeoutMs: UPLOAD_REQUEST_TIMEOUT_MS }
     );
+    notifyDocumentsChanged({ action: 'upload', document });
+    return document;
   },
 
   /** Queue a failed document for another ingestion attempt. */
   async retryDocument(id: string): Promise<Document> {
-    return apiRequest<Document>(`/documents/${encodeURIComponent(id)}/retry`, {
+    const document = await apiRequest<Document>(`/documents/${encodeURIComponent(id)}/retry`, {
       method: 'POST',
     });
+    notifyDocumentsChanged({ action: 'retry', document });
+    return document;
   },
 };
 

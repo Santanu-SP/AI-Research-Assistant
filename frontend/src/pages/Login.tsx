@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { AuthShell, authInputClass, authLabelClass } from '../components/auth/AuthShell';
 import { useAuth } from '../app/AuthContext';
-import { authErrorMessage, authService } from '../services/auth.service';
+import { authErrorMessage, authService, googleAuthErrorMessage } from '../services/auth.service';
 
 export const LoginPage: React.FC = () => {
   const { user, login, refreshUser } = useAuth();
@@ -40,7 +40,7 @@ export const LoginPage: React.FC = () => {
   };
 
   const oauthError = searchParams.get('oauthError');
-  const oauthMessage = oauthError ? 'Google sign-in was not completed. Please try again or use email and password.' : null;
+  const oauthMessage = oauthError ? googleAuthErrorMessage(oauthError) : null;
 
   return <AuthShell title="Sign in" description="Welcome back. Pick up where you left off.">
     <form onSubmit={(event) => void submit(event)} className="space-y-4">

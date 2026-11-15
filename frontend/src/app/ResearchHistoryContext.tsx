@@ -1,5 +1,4 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { useLocation } from 'react-router-dom';
 import { researchService } from '../services/research.service';
 import { ResearchResponse } from '../types/research';
 
@@ -24,7 +23,6 @@ const byUpdatedDesc = (a: ResearchResponse, b: ResearchResponse) =>
   new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
 
 export const ResearchHistoryProvider: React.FC<React.PropsWithChildren> = ({ children }) => {
-  const location = useLocation();
   const [items, setItems] = useState<ResearchResponse[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -55,10 +53,13 @@ export const ResearchHistoryProvider: React.FC<React.PropsWithChildren> = ({ chi
     }
   }, []);
 
-  // Refresh on navigation so new runs and status changes show up without a reload.
+  // Load once on mount and refresh on explicit mutations rather than every route transition.
   useEffect(() => {
     void load();
-  }, [load, location.pathname]);
+    const onRefresh = () => void load();
+    window.addEventListener('research-history:refresh', onRefresh);
+    return () => window.removeEventListener('research-history:refresh', onRefresh);
+  }, [load]);
 
   const reload = useCallback(() => void load(), [load]);
 

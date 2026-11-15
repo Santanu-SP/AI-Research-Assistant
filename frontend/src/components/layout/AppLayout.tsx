@@ -6,6 +6,8 @@ import { SidebarRail } from './SidebarRail';
 import { AnimatedResearchBackground } from './AnimatedResearchBackground';
 import { MobileNavContext } from './MobileNavContext';
 import { ResearchHistoryProvider } from '../../app/ResearchHistoryContext';
+import { SessionDataCacheProvider } from '../../app/SessionDataCacheContext';
+import { ErrorBoundary } from '../common/ErrorBoundary';
 import { isModShortcut } from '../../lib/shortcuts';
 
 const SIDEBAR_WIDTH = 260;
@@ -95,8 +97,9 @@ export const AppLayout: React.FC = () => {
   } as React.CSSProperties;
 
   return (
-    <ResearchHistoryProvider>
-      <MobileNavContext.Provider value={mobileNav}>
+    <SessionDataCacheProvider>
+      <ResearchHistoryProvider>
+        <MobileNavContext.Provider value={mobileNav}>
         <div className="relative isolate min-h-screen overflow-x-clip bg-canvas text-ink" style={layoutStyle}>
           <a
             href="#main-content"
@@ -147,14 +150,17 @@ export const AppLayout: React.FC = () => {
             id="main-content"
             className="app-content-surface relative z-10 flex min-h-screen flex-col transition-[padding] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] lg:pl-[var(--sidebar-w)]"
           >
-            <Suspense fallback={<CenteredLoadingState label="Loading…" />}>
-              <div key={location.pathname} className="page-enter flex min-h-screen flex-1 flex-col">
-                <Outlet />
-              </div>
-            </Suspense>
+            <ErrorBoundary resetKey={location.pathname}>
+              <Suspense fallback={<CenteredLoadingState label="Loading…" />}>
+                <div className="flex min-h-screen flex-1 flex-col">
+                  <Outlet />
+                </div>
+              </Suspense>
+            </ErrorBoundary>
           </div>
         </div>
       </MobileNavContext.Provider>
     </ResearchHistoryProvider>
+  </SessionDataCacheProvider>
   );
 };

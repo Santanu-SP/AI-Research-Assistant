@@ -26,12 +26,23 @@ const buildResearchQuery = (params: ResearchListParams = {}): string => {
   return serialized ? `/research?${serialized}` : '/research';
 };
 
-export const createResearch = (payload: CreateResearchInput): Promise<ResearchResponse> =>
-  apiRequest<ResearchResponse>('/research', {
+export const RESEARCH_HISTORY_REFRESH_EVENT = 'research-history:refresh';
+
+const notifyResearchHistoryUpdated = (): void => {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(RESEARCH_HISTORY_REFRESH_EVENT));
+  }
+};
+
+export const createResearch = async (payload: CreateResearchInput): Promise<ResearchResponse> => {
+  const created = await apiRequest<ResearchResponse>('/research', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
+  notifyResearchHistoryUpdated();
+  return created;
+};
 
 /** Local generation can take a while, so the answer gets a longer timeout. */
 export const QUERY_REQUEST_TIMEOUT_MS = 5 * 60_000;
@@ -54,6 +65,7 @@ export const queryResearch = async (
     });
   } finally {
     notifyUsageUpdated();
+    notifyResearchHistoryUpdated();
   }
 };
 
@@ -72,6 +84,7 @@ export const startResearchJob = async (
     });
   } finally {
     notifyUsageUpdated();
+    notifyResearchHistoryUpdated();
   }
 };
 
@@ -94,6 +107,7 @@ export const retryResearch = async (
     );
   } finally {
     notifyUsageUpdated();
+    notifyResearchHistoryUpdated();
   }
 };
 

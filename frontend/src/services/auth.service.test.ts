@@ -92,4 +92,20 @@ describe('Google authentication popup', () => {
     await expect(authService.startGoogleLogin()).rejects.toThrow('popup was blocked');
     expect(timer).not.toHaveBeenCalled();
   });
+
+  it('surfaces specific error messages posted from the completion popup', async () => {
+    enableGoogleAuth();
+    const popup = popupStub();
+    vi.spyOn(window, 'open').mockReturnValue(popup as unknown as Window);
+    const result = authService.startGoogleLogin();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    dispatchGoogleMessage(popup, window.location.origin, {
+      type: 'google-auth-error',
+      error: 'google_unverified_email',
+    });
+
+    await expect(result).rejects.toThrow('does not have a verified email address');
+    expect(popup.close).toHaveBeenCalledOnce();
+  });
 });

@@ -7,6 +7,7 @@ only its own opaque session token, hashed in ``auth_sessions``.
 from dataclasses import dataclass
 from datetime import timedelta
 from hashlib import sha256
+import logging
 import secrets
 from urllib.parse import urlencode
 
@@ -22,9 +23,11 @@ from app.core.errors import AppError
 from app.core.time import utc_now
 from app.models.user import AuthSession, OAuthState, User
 
+logger = logging.getLogger(__name__)
 GOOGLE_AUTHORIZATION_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_ISSUERS = {"accounts.google.com", "https://accounts.google.com"}
+GOOGLE_ID_TOKEN_CLOCK_SKEW_SECONDS = 10
 
 
 @dataclass(frozen=True)
@@ -124,10 +127,24 @@ def verify_google_identity(code: str, settings: Settings) -> GoogleIdentity:
             raw_id_token,
             GoogleRequest(),
             settings.google_client_id,
+            clock_skew_in_seconds=GOOGLE_ID_TOKEN_CLOCK_SKEW_SECONDS,
         )
     except Exception as exc:
         # Provider and cryptographic failures share one response so the
-        # callback never reveals which check failed.
+        # callback never reveals which check failed. Log only safe metadata.
+        oauth_error = None
+        if isinstance(exc, httpx.HTTPStatusError):
+            try:
+                body = exc.response.json()
+                if isinstance(body, dict) and isinstance(body.get("error"), str):
+                    oauth_error = body["error"]
+            except ValueError:
+                oauth_error = None
+        logger.warning(
+            "Google OAuth verification failed (error=%s, detail=%s)",
+            type(exc).__name__,
+            oauth_error or "none",
+        )
         raise AppError(
             "Google sign-in could not be completed",
             status_code=401,
@@ -161,6 +178,12 @@ def resolve_google_user(session: Session, identity: GoogleIdentity) -> User:
         select(User).where(User.google_sub == identity.subject)
     )
     if existing_subject is not None:
+        if not existing_subject.is_active:
+            raise AppError(
+                "This account is disabled",
+                status_code=403,
+                code="account_disabled",
+            )
         if existing_subject.email != identity.email:
             raise AppError(
                 "Google identity conflicts with this account",
@@ -178,6 +201,12 @@ def resolve_google_user(session: Session, identity: GoogleIdentity) -> User:
             email_verified_at=utc_now(),
         )
         session.add(user)
+    elif not user.is_active:
+        raise AppError(
+            "This account is disabled",
+            status_code=403,
+            code="account_disabled",
+        )
     elif user.google_sub is None:
         if user.email_verified_at is None and user.password_hash is not None:
             # Nobody ever proved they own this address, so the existing

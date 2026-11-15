@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Document, DocumentListResponse } from '../types/document';
 import { documentsService, getDocumentErrorMessage } from '../services/documents.service';
 import { activeIngestionKey, useBackoffPolling } from './useBackoffPolling';
+import { useSessionDataCache } from '../app/SessionDataCacheContext';
 
 /** Which documents to list: one project's, or every document the user has. */
 export type DocumentScope = { projectId: string } | { all: true };
@@ -21,11 +22,35 @@ export interface DocumentLibrary {
 }
 
 const LIST_LIMIT = 100;
+const DOCUMENT_CACHE_TTL_MS = 30_000;
+
+const documentsListEqual = (a: Document[], b: Document[]): boolean => {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    const left = a[i];
+    const right = b[i];
+    if (
+      left.id !== right.id ||
+      left.name !== right.name ||
+      left.status !== right.status ||
+      left.ingestionStatus !== right.ingestionStatus ||
+      left.updatedAt !== right.updatedAt ||
+      left.processingError !== right.processingError ||
+      left.projectId !== right.projectId ||
+      left.size !== right.size ||
+      left.chunkCount !== right.chunkCount
+    ) {
+      return false;
+    }
+  }
+  return true;
+};
 
 const fetchScope = (scope: DocumentScope, search: string | undefined, signal?: AbortSignal) =>
   'projectId' in scope
     ? documentsService.getProjectDocuments(scope.projectId, { search, limit: LIST_LIMIT }, signal)
-    : documentsService.getDocuments({ search, limit: LIST_LIMIT });
+    : documentsService.getDocuments({ search, limit: LIST_LIMIT }, signal);
 
 /**
  * Lists documents and keeps them current. While any file is still being
@@ -33,57 +58,107 @@ const fetchScope = (scope: DocumentScope, search: string | undefined, signal?: A
  * own once the server has finished with it.
  */
 export function useDocumentLibrary(scope: DocumentScope | null, search?: string): DocumentLibrary {
-  const [documents, setDocuments] = useState<Document[]>([]);
-  const [total, setTotal] = useState(0);
-  const [isLoading, setIsLoading] = useState(Boolean(scope));
+  const cache = useSessionDataCache();
+  const scopeKey = scope ? ('projectId' in scope ? `p:${scope.projectId}` : 'all') : '';
+  const term = search?.trim() || undefined;
+  const cacheKey = scopeKey ? `${scopeKey}::${term ?? ''}` : '';
+  const initialCached = cacheKey && cache ? cache.getDocuments(cacheKey) : undefined;
+
+  const [documents, setDocuments] = useState<Document[]>(() => initialCached?.documents ?? []);
+  const [total, setTotal] = useState(() => initialCached?.total ?? 0);
+  const [isLoading, setIsLoading] = useState(() => Boolean(scope) && initialCached === undefined);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const forceReloadRef = useRef(false);
+  const loadedKeyRef = useRef<string | null>(initialCached ? cacheKey : null);
   const abortRef = useRef<AbortController | null>(null);
-  const scopeKey = scope ? ('projectId' in scope ? `p:${scope.projectId}` : 'all') : '';
   const scopeRef = useRef(scope);
   scopeRef.current = scope;
-  const term = search?.trim() || undefined;
 
-  const reload = useCallback(() => setReloadKey((key) => key + 1), []);
+  const reload = useCallback(() => {
+    forceReloadRef.current = true;
+    setReloadKey((key) => key + 1);
+  }, []);
+
+  useEffect(() => {
+    if (!cache || !cacheKey) return;
+    return cache.subscribeDocuments(() => {
+      const updated = cache.getDocuments(cacheKey);
+      if (!updated) return;
+      setDocuments((prev) => (documentsListEqual(prev, updated.documents) ? prev : updated.documents));
+      setTotal(updated.total);
+    });
+  }, [cache, cacheKey]);
 
   useEffect(() => {
     const current = scopeRef.current;
-    if (!current) {
+    if (!current || !cacheKey) {
+      loadedKeyRef.current = null;
       setDocuments([]);
       setTotal(0);
       setIsLoading(false);
       return;
     }
+
+    const cached = cache?.getDocuments(cacheKey);
+    const hasSameKeyLoaded = loadedKeyRef.current === cacheKey;
+
+    if (cached) {
+      setDocuments((prev) => (documentsListEqual(prev, cached.documents) ? prev : cached.documents));
+      setTotal(cached.total);
+      setIsLoading(false);
+      setError(null);
+      loadedKeyRef.current = cacheKey;
+
+      const hasPending = activeIngestionKey(cached.documents) !== '';
+      const isFresh = !cached.stale && Date.now() - cached.fetchedAt < DOCUMENT_CACHE_TTL_MS;
+      if (!forceReloadRef.current && isFresh && !hasPending) {
+        return;
+      }
+    } else if (!hasSameKeyLoaded) {
+      setDocuments([]);
+      setTotal(0);
+      setIsLoading(true);
+    }
+
+    setError(null);
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
-    setIsLoading(true);
-    setError(null);
     fetchScope(current, term, controller.signal)
       .then((res: DocumentListResponse) => {
         if (controller.signal.aborted) return;
-        setDocuments(res.items);
+        forceReloadRef.current = false;
+        cache?.setDocuments(cacheKey, res.items, res.total);
+        loadedKeyRef.current = cacheKey;
+        setDocuments((prev) => (documentsListEqual(prev, res.items) ? prev : res.items));
         setTotal(res.total);
+        setError(null);
       })
       .catch((err: unknown) => {
         if (controller.signal.aborted) return;
-        setDocuments([]);
-        setTotal(0);
+        forceReloadRef.current = false;
+        if (!cached && !hasSameKeyLoaded) {
+          setDocuments([]);
+          setTotal(0);
+        }
         setError(getDocumentErrorMessage(err, 'Your documents could not be loaded.'));
       })
       .finally(() => {
         if (!controller.signal.aborted) setIsLoading(false);
       });
     return () => controller.abort();
-  }, [scopeKey, term, reloadKey]);
+  }, [scopeKey, term, reloadKey, cacheKey, cache]);
 
   const refresh = useCallback(async () => {
     const current = scopeRef.current;
-    if (!current) return;
+    if (!current || !cacheKey) return;
     const res = await fetchScope(current, term);
-    setDocuments(res.items);
+    cache?.setDocuments(cacheKey, res.items, res.total);
+    loadedKeyRef.current = cacheKey;
+    setDocuments((prev) => (documentsListEqual(prev, res.items) ? prev : res.items));
     setTotal(res.total);
-  }, [term]);
+  }, [cache, cacheKey, term]);
 
   const pendingKey = activeIngestionKey(documents);
   const { timedOut } = useBackoffPolling(Boolean(scope) && pendingKey !== '', refresh, `${scopeKey}:${pendingKey}`);

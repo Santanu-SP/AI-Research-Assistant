@@ -22,6 +22,19 @@ const isGoogleAuthMessage = (value: unknown): value is GoogleAuthMessage => {
     && Object.keys(message).every((key) => key === 'type' || key === 'error');
 };
 
+const GOOGLE_ERROR_MESSAGES: Record<string, string> = {
+  cancelled: 'Google sign-in was cancelled.',
+  google_not_configured: 'Google sign-in is not configured on this server. Use email and password instead.',
+  google_unverified_email: 'This Google account does not have a verified email address.',
+  google_identity_conflict: 'This email is already linked to a different Google account.',
+  google_invalid_state: 'Google sign-in expired before completing. Please try again.',
+  account_disabled: 'This account has been disabled.',
+};
+
+export const googleAuthErrorMessage = (code: string | null | undefined): string =>
+  (code && GOOGLE_ERROR_MESSAGES[code])
+  || 'Google sign-in was not completed. Please try again or use email and password.';
+
 const startGoogleLogin = (): Promise<void> => {
   // Open synchronously while the user's click is still active. Opening after
   // the async status request can leave Chromium popups stuck on about:blank.
@@ -33,9 +46,12 @@ const startGoogleLogin = (): Promise<void> => {
   if (!popup) return Promise.reject(new Error('Google sign-in popup was blocked. Allow popups and try again.'));
 
   return apiRequest<{ enabled: boolean }>('/auth/google/status').then(({ enabled }) => {
+    if (popup.closed) {
+      throw new Error(googleAuthErrorMessage('cancelled'));
+    }
     if (!enabled) {
       popup.close();
-      throw new Error('Google sign-in is not configured on this server. Use email and password instead.');
+      throw new Error(googleAuthErrorMessage('google_not_configured'));
     }
 
     return new Promise<void>((resolve, reject) => {
@@ -54,12 +70,12 @@ const startGoogleLogin = (): Promise<void> => {
       const receiveMessage = (event: MessageEvent<unknown>) => {
         if (event.origin !== expectedOrigin || event.source !== popup || !isGoogleAuthMessage(event.data)) return;
         if (event.data.type === 'google-auth-success') finish();
-        else finish(new Error('Google sign-in was not completed. Please try again or use email and password.'));
+        else finish(new Error(googleAuthErrorMessage(event.data.error)));
       };
 
       window.addEventListener('message', receiveMessage);
       closeTimer = window.setInterval(() => {
-        if (popup.closed) finish(new Error('Google sign-in was cancelled.'));
+        if (popup.closed) finish(new Error(googleAuthErrorMessage('cancelled')));
       }, 400);
       popup.focus();
       popup.location.replace(`${API_BASE_URL}/auth/google/start`);
