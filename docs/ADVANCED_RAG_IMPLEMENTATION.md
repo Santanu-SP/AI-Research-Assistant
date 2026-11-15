@@ -249,7 +249,9 @@ New ingestion settings:
 - `INGESTION_VERSION=docling-llamaindex-v1` records the pipeline contract used
   to build nodes.
 - `DOCUMENT_CHUNK_MAX_TOKENS=512` bounds hybrid chunks with the Qwen tokenizer.
-- `DOCLING_OCR_MODE=auto` uses normal Docling behavior; `disabled` turns OCR
+- `DOCLING_OCR_MODE=auto` skips OCR for PDFs that already have selectable
+  text (OCR roughly doubles reading time and adds nothing there) and keeps
+  normal Docling behavior for scans and other files; `disabled` turns OCR
   off; `force` selects Docling's full-page OCR mode.
 
 Existing settings still control upload size/storage, Qwen embedding dimensions

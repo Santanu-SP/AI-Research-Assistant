@@ -52,6 +52,39 @@ def _extract_doi(reader: PdfReader, pages: list[ExtractedPage]) -> str | None:
     return None
 
 
+def pdf_has_text_layer(
+    path: Path,
+    *,
+    sample_pages: int = 12,
+    min_chars: int = 40,
+    min_ratio: float = 0.8,
+) -> bool:
+    """True when most sampled pages already contain selectable text.
+
+    Such PDFs (exported from Word, Docs, a browser...) gain nothing from OCR,
+    which is the slowest part of reading a document. Scanned PDFs have
+    little or no text layer, so they still get OCR. Any read error returns
+    False, which keeps OCR on.
+    """
+    try:
+        reader = PdfReader(path, strict=False)
+        if reader.is_encrypted:
+            return False
+        total = len(reader.pages)
+        if total == 0:
+            return False
+        count = min(sample_pages, total)
+        indexes = sorted({round(i * (total - 1) / max(count - 1, 1)) for i in range(count)})
+        with_text = 0
+        for index in indexes:
+            text = reader.pages[index].extract_text() or ""
+            if len("".join(text.split())) >= min_chars:
+                with_text += 1
+        return with_text / len(indexes) >= min_ratio
+    except Exception:
+        return False
+
+
 def extract_pdf(path: Path) -> ExtractedPdf:
     """Extract page-aware text and only metadata explicitly present in the PDF."""
 
