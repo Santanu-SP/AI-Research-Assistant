@@ -1,3 +1,4 @@
+import logging
 from typing import Annotated
 from urllib.parse import urlencode
 
@@ -13,6 +14,7 @@ from app.schemas.auth import LoginRequest, RegisterRequest, UserResponse
 from app.services.auth import google as google_auth
 from app.services.auth import sessions as auth_service
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["auth"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
 
@@ -124,6 +126,12 @@ def google_callback(
         )
     except AppError as exc:
         return _google_error_redirect(request, exc.code)
+    except Exception:
+        # Never trap the OAuth popup on a raw 500 JSON page; recover cleanly to
+        # the completion page so it can notify the opener and close itself.
+        session.rollback()
+        logger.exception("Unexpected error during Google OAuth callback")
+        return _google_error_redirect(request, "failed")
     response = RedirectResponse(
         f"{request.app.state.settings.frontend_url.rstrip('/')}/auth/google/complete",
         status_code=303,

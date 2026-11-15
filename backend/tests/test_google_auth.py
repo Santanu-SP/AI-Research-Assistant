@@ -1,12 +1,14 @@
 from urllib.parse import parse_qs, urlparse
 
+import httpx
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.core.config import Settings
 from app.core.time import utc_now
 from app.models.user import AuthSession, User
-from app.services.auth.google import GoogleIdentity
+from app.services.auth.google import GoogleIdentity, verify_google_identity
 
 
 def _start_state(client: TestClient) -> str:
@@ -106,3 +108,93 @@ def test_new_google_user_is_marked_verified(
     with db_session_factory() as session:
         user = session.scalar(select(User).where(User.email == "fresh@example.com"))
         assert user is not None and user.email_verified_at is not None
+
+
+def test_google_callback_redirects_cleanly_on_unexpected_database_error(
+    anonymous_client: TestClient, monkeypatch
+) -> None:
+    from app.services.auth import google as google_auth
+
+    monkeypatch.setattr(
+        google_auth,
+        "verify_google_identity",
+        lambda *_: GoogleIdentity("google-sub-5", "boom@example.com", "Boom"),
+    )
+
+    def raise_schema_error(*_args, **_kwargs):
+        raise RuntimeError("column users.local_fallback_enabled does not exist")
+
+    monkeypatch.setattr(google_auth, "resolve_google_user", raise_schema_error)
+    state = _start_state(anonymous_client)
+    response = anonymous_client.get(
+        f"/api/v1/auth/google/callback?state={state}&code=verified",
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"].endswith("/auth/google/complete?oauthError=failed")
+
+
+def test_google_login_rejects_disabled_user(
+    anonymous_client: TestClient, db_session_factory: sessionmaker[Session], monkeypatch
+) -> None:
+    from app.services.auth import google as google_auth
+
+    anonymous_client.post(
+        "/api/v1/auth/register",
+        json={"name": "Disabled", "email": "disabled@example.com", "password": "long-password-123"},
+    )
+    with db_session_factory() as session:
+        user = session.scalar(select(User).where(User.email == "disabled@example.com"))
+        assert user is not None
+        user.is_active = False
+        session.commit()
+
+    monkeypatch.setattr(
+        google_auth,
+        "verify_google_identity",
+        lambda *_: GoogleIdentity("google-sub-6", "disabled@example.com", "Disabled"),
+    )
+    state = _start_state(anonymous_client)
+    response = anonymous_client.get(
+        f"/api/v1/auth/google/callback?state={state}&code=verified",
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"].endswith("/auth/google/complete?oauthError=account_disabled")
+
+
+def test_verify_google_identity_allows_small_clock_skew(monkeypatch) -> None:
+    from app.services.auth import google as google_auth
+
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        google_auth.httpx,
+        "post",
+        lambda *_a, **_k: httpx.Response(
+            200,
+            json={"id_token": "header.payload.sig"},
+            request=httpx.Request("POST", google_auth.GOOGLE_TOKEN_URL),
+        ),
+    )
+
+    def fake_verify(raw_token: str, req: object, audience: str, **kwargs: object) -> dict[str, object]:
+        captured["kwargs"] = kwargs
+        return {
+            "iss": "https://accounts.google.com",
+            "email_verified": True,
+            "sub": "google-sub-skew",
+            "email": "SkewUser@example.com",
+            "name": "Skew User",
+        }
+
+    monkeypatch.setattr(google_auth.id_token, "verify_oauth2_token", fake_verify)
+    settings = Settings(
+        _env_file=None,
+        app_environment="test",
+        google_client_id="client-id",
+        google_client_secret="client-secret",
+    )
+    identity = verify_google_identity("auth-code", settings)
+    assert identity == GoogleIdentity("google-sub-skew", "skewuser@example.com", "Skew User")
+    assert captured["kwargs"] == {"clock_skew_in_seconds": 10}
