@@ -1,3 +1,4 @@
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
@@ -31,6 +32,22 @@ def test_cors_allows_configured_frontend_origin(client: TestClient) -> None:
 
     assert response.status_code == 200
     assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
+
+
+@pytest.mark.parametrize("method", ["POST", "PUT", "PATCH", "DELETE"])
+def test_cors_allows_every_method_the_frontend_uses(client: TestClient, method: str) -> None:
+    # Saving an API key is a PUT, so the browser preflight must allow it.
+    response = client.options(
+        "/api/v1/auth/api-keys/openai",
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": method,
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+
+    assert response.status_code == 200
+    assert method in response.headers["access-control-allow-methods"]
 
 
 def test_cors_does_not_allow_unconfigured_origin(client: TestClient) -> None:
