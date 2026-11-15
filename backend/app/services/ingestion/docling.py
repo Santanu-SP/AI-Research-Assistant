@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from importlib.metadata import PackageNotFoundError, version
 import json
+import logging
 from pathlib import Path
 import re
 from typing import Any, Sequence
@@ -30,7 +31,10 @@ from transformers import AutoTokenizer
 from app.core.config import Settings
 from app.domain.documents import MetadataProvenance
 from app.domain.ingestion import CanonicalMetadata, ParsedDocument, ParsedNode
+from app.services.ingestion.pdf import pdf_has_text_layer
 from app.services.ingestion.pipeline import DocumentIngestionError, stable_node_id
+
+logger = logging.getLogger(__name__)
 
 
 DOI_PATTERN = re.compile(r"\b10\.\d{4,9}/[-._;()/:A-Z0-9]+", re.IGNORECASE)
@@ -353,12 +357,58 @@ def _cached_docling_adapter(
     return DoclingIngestionAdapter(converter, chunker, tokenizer)
 
 
-def docling_adapter_for(settings: Settings) -> DoclingIngestionAdapter:
+def _is_pdf(path: Path) -> bool:
+    try:
+        with path.open("rb") as handle:
+            return handle.read(5) == b"%PDF-"
+    except OSError:
+        return False
+
+
+class _AutoOcrDoclingAdapter:
+    """In ``auto`` OCR mode, skip OCR for PDFs that already have text.
+
+    OCR roughly doubles the time to read a PDF and is only useful for
+    scanned pages. Text PDFs use the OCR-free converter; everything else
+    (scans, images, other formats) keeps the normal ``auto`` behaviour.
+    """
+
+    def __init__(self, settings: Settings) -> None:
+        self._settings = settings
+
+    def parse(
+        self,
+        path: Path,
+        *,
+        document_id: UUID,
+        ingestion_version: str,
+    ) -> ParsedDocument:
+        mode = "auto"
+        if _is_pdf(path) and pdf_has_text_layer(path):
+            mode = "disabled"
+        logger.info(
+            "Docling OCR mode chosen",
+            extra={"document_id": str(document_id), "ocr_mode": mode},
+        )
+        return _adapter_for_mode(self._settings, mode).parse(
+            path,
+            document_id=document_id,
+            ingestion_version=ingestion_version,
+        )
+
+
+def _adapter_for_mode(settings: Settings, ocr_mode: str) -> DoclingIngestionAdapter:
     return _cached_docling_adapter(
         settings.embedding_model_name,
         str(settings.model_cache_dir) if settings.model_cache_dir else None,
         settings.document_chunk_max_tokens,
-        settings.docling_ocr_mode,
+        ocr_mode,
         settings.embedding_model_revision,
         settings.model_trust_remote_code,
     )
+
+
+def docling_adapter_for(settings: Settings) -> DoclingIngestionAdapter | _AutoOcrDoclingAdapter:
+    if settings.docling_ocr_mode == "auto":
+        return _AutoOcrDoclingAdapter(settings)
+    return _adapter_for_mode(settings, settings.docling_ocr_mode)

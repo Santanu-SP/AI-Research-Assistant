@@ -219,3 +219,76 @@ def test_sources_count_is_zero_before_a_report_exists(
     created = client.post("/api/v1/research", json={"question": "Draft question"}).json()
     assert created["sourceCount"] == 0
     assert db_session.scalar(select(Source)) is None
+
+
+# --- research lane and heartbeat -------------------------------------------
+
+
+def test_research_does_not_wait_behind_a_long_upload(
+    client: TestClient, db_session_factory: sessionmaker[Session]
+) -> None:
+    import threading
+
+    upload_started = threading.Event()
+    release_upload = threading.Event()
+    research_done = threading.Event()
+
+    def slow_upload(session, target_id, settings):
+        upload_started.set()
+        release_upload.wait(10)
+
+    def research(session, target_id, settings):
+        research_done.set()
+
+    settings = client.app.state.settings.model_copy(
+        update={"worker_threads": 1, "research_worker_threads": 1, "worker_poll_seconds": 0.05}
+    )
+    worker = JobWorker(
+        db_session_factory,
+        settings,
+        handlers={job_queue.INGEST_DOCUMENT: slow_upload, job_queue.RUN_RESEARCH: research},
+    )
+    with db_session_factory() as session:
+        job_queue.enqueue(session, job_queue.INGEST_DOCUMENT, UUID(int=1))
+    worker.start()
+    try:
+        assert upload_started.wait(5)
+        with db_session_factory() as session:
+            job_queue.enqueue(session, job_queue.RUN_RESEARCH, UUID(int=2))
+        worker.wake()
+        # The question is answered while the upload is still running.
+        assert research_done.wait(5)
+        assert not release_upload.is_set()
+    finally:
+        release_upload.set()
+        worker.stop()
+
+
+def test_lanes_only_claim_their_own_job_kinds(
+    client: TestClient, db_session_factory: sessionmaker[Session]
+) -> None:
+    with db_session_factory() as session:
+        job_queue.enqueue(session, job_queue.INGEST_DOCUMENT, UUID(int=1))
+        job_queue.enqueue(session, job_queue.RUN_RESEARCH, UUID(int=2))
+    with db_session_factory() as session:
+        claimed = job_queue.claim_next(session, kinds=(job_queue.RUN_RESEARCH,))
+        assert claimed is not None and claimed.kind == job_queue.RUN_RESEARCH
+        assert job_queue.claim_next(session, kinds=(job_queue.RUN_RESEARCH,)) is None
+        claimed = job_queue.claim_next(session, exclude_kinds=(job_queue.RUN_RESEARCH,))
+        assert claimed is not None and claimed.kind == job_queue.INGEST_DOCUMENT
+
+
+def test_heartbeat_keeps_a_long_running_job_from_looking_stale(
+    client: TestClient, db_session_factory: sessionmaker[Session]
+) -> None:
+    with db_session_factory() as session:
+        job_queue.enqueue(session, job_queue.INGEST_DOCUMENT, UUID(int=1))
+        claimed = job_queue.claim_next(session)
+        assert claimed is not None
+        session.execute(update(BackgroundJob).values(locked_at=utc_now() - timedelta(hours=1)))
+        session.commit()
+        job_queue.touch(session, claimed.id)
+    worker = JobWorker(db_session_factory, client.app.state.settings)
+    assert worker.run_maintenance()["jobs_requeued"] == 0
+    with db_session_factory() as session:
+        assert session.get(BackgroundJob, claimed.id).state == "running"

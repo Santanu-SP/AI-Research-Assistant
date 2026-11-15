@@ -106,13 +106,35 @@ class JobWorker:
             return
         self.settings.validate_production_startup()
         self._stop.clear()
-        for index in range(self.settings.worker_threads):
-            thread = threading.Thread(
-                target=self._loop, name=f"job-worker-{index}", daemon=True
+        research_threads = self.settings.research_worker_threads
+        # Uploads can take many minutes (a big PDF), and there is usually one
+        # general thread. Research questions get their own lane so they never
+        # sit at "Planning research" waiting for an upload to finish.
+        lanes: list[tuple[str, int, dict[str, tuple[str, ...]]]] = [
+            (
+                "job-worker",
+                self.settings.worker_threads,
+                {"exclude_kinds": (job_queue.RUN_RESEARCH,)} if research_threads else {},
+            ),
+        ]
+        if research_threads:
+            lanes.append(
+                ("research-worker", research_threads, {"kinds": (job_queue.RUN_RESEARCH,)})
             )
-            thread.start()
-            self._threads.append(thread)
-        logger.info("Background worker started", extra={"threads": len(self._threads)})
+        for name, count, lane in lanes:
+            for index in range(count):
+                thread = threading.Thread(
+                    target=self._loop,
+                    kwargs={"lane": lane, "warm_up": name == "job-worker" and index == 0},
+                    name=f"{name}-{index}",
+                    daemon=True,
+                )
+                thread.start()
+                self._threads.append(thread)
+        logger.info(
+            "Background worker started",
+            extra={"threads": len(self._threads), "research_threads": research_threads},
+        )
 
     def stop(self, timeout: float = 5.0) -> None:
         self._stop.set()
@@ -126,23 +148,32 @@ class JobWorker:
 
     # -- work ----------------------------------------------------------------
 
-    def _loop(self) -> None:
-        if self.settings.model_warmup_on_startup:
+    def _loop(
+        self,
+        lane: dict[str, tuple[str, ...]] | None = None,
+        warm_up: bool = True,
+    ) -> None:
+        if warm_up and self.settings.model_warmup_on_startup:
             self._warm_up()
         while not self._stop.is_set():
             try:
                 self.run_maintenance_if_due()
-                if self.run_once():
+                if self.run_once(**(lane or {})):
                     continue
             except Exception:  # pragma: no cover - keep the worker alive
                 logger.exception("Background worker loop error")
             self._wake.wait(self.settings.worker_poll_seconds)
             self._wake.clear()
 
-    def run_once(self) -> bool:
+    def run_once(
+        self,
+        *,
+        kinds: tuple[str, ...] | None = None,
+        exclude_kinds: tuple[str, ...] | None = None,
+    ) -> bool:
         """Claim and run one job. Returns False when the queue is empty."""
         with self.session_factory() as session:
-            claimed = job_queue.claim_next(session)
+            claimed = job_queue.claim_next(session, kinds=kinds, exclude_kinds=exclude_kinds)
             if claimed is None:
                 return False
             self._execute(session, claimed)
@@ -169,6 +200,40 @@ class JobWorker:
         if handler is None:
             job_queue.mark_failed(session, job.id, f"Unknown job kind {job.kind}")
             return
+        heartbeat_stop = self._start_heartbeat(job.id)
+        try:
+            self._run_handler(session, job, handler, started)
+        finally:
+            heartbeat_stop.set()
+
+    def _start_heartbeat(self, job_id: UUID) -> threading.Event:
+        """Keep ``locked_at`` fresh while a job runs.
+
+        Without this, a long upload looks "stale" after
+        ``job_stale_after_seconds`` and maintenance would queue it again
+        while it is still running.
+        """
+        stop = threading.Event()
+        interval = max(5.0, self.settings.job_stale_after_seconds / 3)
+
+        def beat() -> None:
+            while not stop.wait(interval):
+                try:
+                    with self.session_factory() as heartbeat_session:
+                        job_queue.touch(heartbeat_session, job_id)
+                except Exception:  # pragma: no cover - best effort only
+                    logger.warning("Job heartbeat failed", extra={"job_id": str(job_id)})
+
+        threading.Thread(target=beat, name=f"job-heartbeat-{job_id}", daemon=True).start()
+        return stop
+
+    def _run_handler(
+        self,
+        session: Session,
+        job: job_queue.ClaimedJob,
+        handler: JobHandler,
+        started: float,
+    ) -> None:
         try:
             handler(session, job.target_id, self.settings)
         except AppError as exc:

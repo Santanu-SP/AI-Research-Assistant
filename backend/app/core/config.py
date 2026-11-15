@@ -266,6 +266,10 @@ class Settings(BaseSettings):
     celery_task_soft_time_limit_seconds: int = Field(default=540, ge=15, le=3500)
     worker_enabled: bool = True
     worker_threads: int = Field(default=1, ge=1, le=8)
+    # Separate threads that only run research questions, so a question never
+    # waits behind a long document upload. 0 puts research back in the
+    # shared queue.
+    research_worker_threads: int = Field(default=2, ge=0, le=8)
     worker_poll_seconds: float = Field(default=2.0, gt=0.0, le=60.0)
     job_max_attempts: int = Field(default=3, ge=1, le=10)
     job_stale_after_seconds: int = Field(default=900, ge=30)

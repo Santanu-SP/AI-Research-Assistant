@@ -51,7 +51,7 @@ The backend loads the repository-root `.env` even when this command is launched 
 
 ### Background jobs
 
-Uploads and `POST /api/v1/research/jobs` write a row to `background_jobs` and return `202 Accepted`. By default the API process runs the worker in a thread (`WORKER_ENABLED=true`, `WORKER_THREADS=1`), so nothing extra needs to be started locally. To run the worker separately:
+Uploads and `POST /api/v1/research/jobs` write a row to `background_jobs` and return `202 Accepted`. By default the API process runs the worker in a thread (`WORKER_ENABLED=true`, `WORKER_THREADS=1`), so nothing extra needs to be started locally. Research questions have their own threads (`RESEARCH_WORKER_THREADS=2`), so a question is answered even while a big upload is still being read. Long jobs refresh their lock while they run, so a slow upload is not mistaken for a crashed one. To run the worker separately:
 
 ```bash
 WORKER_ENABLED=false uvicorn app.main:app --app-dir backend   # API only
