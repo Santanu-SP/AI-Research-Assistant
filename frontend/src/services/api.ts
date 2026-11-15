@@ -5,21 +5,41 @@
  * hostname on port 8000, so a LAN address stays on the same host.
  */
 
-const pageHostname = window.location.hostname;
-const localApiBaseUrl = `${window.location.protocol}//${pageHostname}:8000/api/v1`;
-const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL;
 const isLoopbackHost = (hostname: string) => hostname === 'localhost' || hostname === '127.0.0.1';
-const configuredHost = configuredApiBaseUrl
-  ? new URL(configuredApiBaseUrl, window.location.origin).hostname
-  : null;
 
-// Older local .env files point at localhost. When the page is opened through a
-// LAN IP, that creates a cross-origin request and browsers block it by CORS.
-const usePageHostname = !configuredApiBaseUrl
-  || (!isLoopbackHost(pageHostname) && configuredHost !== null && isLoopbackHost(configuredHost));
+/**
+ * Pick the API base URL for the page the user opened.
+ *
+ * Login uses a SameSite cookie, and the browser treats "localhost" and
+ * "127.0.0.1" as two different sites. If the page is on one and the API on
+ * the other, the cookie is never sent back and login looks like it does
+ * nothing. So when both are local, the API follows the page's hostname.
+ */
+export const resolveApiBaseUrl = (
+  page: { protocol: string; hostname: string; origin: string },
+  configured?: string,
+): string => {
+  const fallback = `${page.protocol}//${page.hostname}:8000/api/v1`;
+  if (!configured) {
+    return fallback;
+  }
+  const url = new URL(configured, page.origin);
+  if (!isLoopbackHost(url.hostname)) {
+    return configured;
+  }
+  // Older local .env files point at localhost. When the page is opened
+  // through a LAN IP, that creates a cross-origin request blocked by CORS.
+  if (!isLoopbackHost(page.hostname)) {
+    return fallback;
+  }
+  if (url.hostname !== page.hostname) {
+    url.hostname = page.hostname;
+    return url.toString().replace(/\/$/, '');
+  }
+  return configured;
+};
 
-export const API_BASE_URL =
-  usePageHostname ? localApiBaseUrl : configuredApiBaseUrl;
+export const API_BASE_URL = resolveApiBaseUrl(window.location, import.meta.env.VITE_API_BASE_URL);
 
 export class ApiError extends Error {
   constructor(

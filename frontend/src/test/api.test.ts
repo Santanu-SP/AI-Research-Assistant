@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, apiErrorCode, apiErrorMessage, apiRequest, isTimeoutError } from '../services/api';
+import {
+  ApiError,
+  apiErrorCode,
+  apiErrorMessage,
+  apiRequest,
+  isTimeoutError,
+  resolveApiBaseUrl,
+} from '../services/api';
 
 const jsonResponse = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -77,5 +84,41 @@ describe('apiRequest', () => {
 
     const limited = new ApiError('429', 429, 'Too Many Requests');
     expect(apiErrorMessage(limited, 'fallback')).toMatch(/too many requests/i);
+  });
+});
+
+describe('resolveApiBaseUrl', () => {
+  const page = (url: string) => {
+    const { protocol, hostname, origin } = new URL(url);
+    return { protocol, hostname, origin };
+  };
+
+  it('uses the page hostname on port 8000 when nothing is configured', () => {
+    expect(resolveApiBaseUrl(page('http://127.0.0.1:3000/'))).toBe('http://127.0.0.1:8000/api/v1');
+  });
+
+  it('keeps the login cookie working when localhost and 127.0.0.1 are mixed', () => {
+    expect(resolveApiBaseUrl(page('http://localhost:3000/'), 'http://127.0.0.1:8000/api/v1')).toBe(
+      'http://localhost:8000/api/v1',
+    );
+    expect(resolveApiBaseUrl(page('http://127.0.0.1:3000/'), 'http://localhost:8000/api/v1')).toBe(
+      'http://127.0.0.1:8000/api/v1',
+    );
+  });
+
+  it('leaves a matching local URL, a same-origin path and a real domain alone', () => {
+    expect(resolveApiBaseUrl(page('http://127.0.0.1:3000/'), 'http://127.0.0.1:8000/api/v1')).toBe(
+      'http://127.0.0.1:8000/api/v1',
+    );
+    expect(resolveApiBaseUrl(page('http://localhost:3000/'), '/api/v1')).toBe('/api/v1');
+    expect(resolveApiBaseUrl(page('https://app.example.com/'), 'https://api.example.com/api/v1')).toBe(
+      'https://api.example.com/api/v1',
+    );
+  });
+
+  it('follows a LAN page address instead of a local .env URL', () => {
+    expect(resolveApiBaseUrl(page('http://192.168.1.5:3000/'), 'http://localhost:8000/api/v1')).toBe(
+      'http://192.168.1.5:8000/api/v1',
+    );
   });
 });
