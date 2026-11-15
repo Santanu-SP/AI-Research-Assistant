@@ -48,7 +48,7 @@ const ProtectedLayout: React.FC = () => {
 export const AppRouter: React.FC = () => {
   const location = useLocation();
   return (
-    <ErrorBoundary key={location.pathname}>
+    <ErrorBoundary resetKey={location.pathname}>
       <Suspense fallback={<CenteredLoadingState label="Loading…" />}>
         <Routes>
           <Route path="/" element={<LandingPage />} />

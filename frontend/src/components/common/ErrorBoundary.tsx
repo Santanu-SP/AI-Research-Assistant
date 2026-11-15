@@ -5,6 +5,8 @@ interface ErrorBoundaryProps {
   children: React.ReactNode;
   /** Optional custom fallback. Receives the error and a reset callback. */
   fallback?: (error: Error, reset: () => void) => React.ReactNode;
+  /** Clears any caught error when this value changes without unmounting children. */
+  resetKey?: unknown;
 }
 
 interface ErrorBoundaryState {
@@ -18,14 +20,20 @@ const isChunkLoadError = (error: Error): boolean =>
 
 /**
  * Catches render errors so one broken page shows a recoverable message
- * instead of a blank screen. Give it a `key` (for example the route path)
- * to reset it on navigation.
+ * instead of a blank screen. Pass `resetKey` (for example the route path)
+ * to clear caught errors on navigation without unmounting children.
  */
 export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
   state: ErrorBoundaryState = { error: null };
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { error };
+  }
+
+  componentDidUpdate(prevProps: ErrorBoundaryProps): void {
+    if (this.state.error && prevProps.resetKey !== this.props.resetKey) {
+      this.setState({ error: null });
+    }
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo): void {

@@ -2,7 +2,7 @@
  * Switching :projectId clears the previous project's documents before the
  * next fetch, so a slow response cannot paint the wrong workspace.
  */
-import React, { useCallback, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams, useSearchParams, Link } from 'react-router-dom';
 import { FileText, MessageSquareText, ArrowLeft, Archive, ChevronRight } from 'lucide-react';
 import { TopBar } from '../components/layout/TopBar';
@@ -29,6 +29,38 @@ export const ProjectWorkspacePage: React.FC = () => {
     useProject();
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab: WorkspaceTab = searchParams.get('tab') === 'documents' ? 'documents' : 'ask';
+  const [visitedTabs, setVisitedTabs] = useState<{
+    projectId?: string;
+    ask: boolean;
+    documents: boolean;
+  }>(() => ({
+    projectId,
+    ask: activeTab === 'ask',
+    documents: activeTab === 'documents',
+  }));
+  useEffect(() => {
+    setVisitedTabs((prev) => {
+      if (prev.projectId !== projectId) {
+        return {
+          projectId,
+          ask: activeTab === 'ask',
+          documents: activeTab === 'documents',
+        };
+      }
+      if ((activeTab === 'ask' && prev.ask) || (activeTab === 'documents' && prev.documents)) {
+        return prev;
+      }
+      return {
+        ...prev,
+        ask: prev.ask || activeTab === 'ask',
+        documents: prev.documents || activeTab === 'documents',
+      };
+    });
+  }, [projectId, activeTab]);
+  const askMounted = activeTab === 'ask' || (visitedTabs.projectId === projectId && visitedTabs.ask);
+  const documentsMounted =
+    activeTab === 'documents' || (visitedTabs.projectId === projectId && visitedTabs.documents);
+
   const setActiveTab = useCallback(
     (tab: WorkspaceTab) =>
       setSearchParams(
@@ -45,7 +77,7 @@ export const ProjectWorkspacePage: React.FC = () => {
   // The Ask tab shows this project's documents beside the question box.
   const projectReady = Boolean(projectId) && selectedProject?.id === projectId;
   const askLibrary = useDocumentLibrary(
-    projectReady && activeTab === 'ask' && projectId ? { projectId } : null,
+    projectReady && askMounted && projectId ? { projectId } : null,
   );
 
   // When the URL project changes, update the selected project context
@@ -57,7 +89,7 @@ export const ProjectWorkspacePage: React.FC = () => {
 
   const isArchived = Boolean(selectedProject?.archivedAt);
 
-  if (projectLoading) {
+  if (projectLoading && !projectReady) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <CenteredLoadingState label="Loading project workspace…" />
@@ -151,7 +183,7 @@ export const ProjectWorkspacePage: React.FC = () => {
 
           <div className="mt-6 flex-1">
             <div id="panel-ask" role="tabpanel" aria-labelledby="tab-ask" hidden={activeTab !== 'ask'}>
-              {activeTab === 'ask' && (
+              {askMounted && (
                 <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
                   <ProjectResearchPanel
                     project={selectedProject}
@@ -171,7 +203,7 @@ export const ProjectWorkspacePage: React.FC = () => {
               )}
             </div>
             <div id="panel-documents" role="tabpanel" aria-labelledby="tab-documents" hidden={activeTab !== 'documents'}>
-              {activeTab === 'documents' && (
+              {documentsMounted && (
                 <ProjectSourcesPanel project={selectedProject} isArchived={isArchived} />
               )}
             </div>

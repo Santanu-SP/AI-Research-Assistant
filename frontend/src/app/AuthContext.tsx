@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AuthUser, authService } from '../services/auth.service';
+import { ApiError } from '../services/api';
 
 interface AuthState {
   user: AuthUser | null;
@@ -25,9 +26,13 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
       lastCheckedRef.current = Date.now();
       setUser(current);
       return current;
-    } catch {
+    } catch (error) {
       lastCheckedRef.current = Date.now();
-      setUser(null);
+      // Keep the current session mounted on transient network or server blips;
+      // only real auth failures end the session.
+      if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+        setUser(null);
+      }
       return null;
     }
   }, []);

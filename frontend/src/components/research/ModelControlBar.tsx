@@ -16,7 +16,10 @@ import {
   ProviderStatusItem,
 } from '../../services/clientAi.service';
 import { apiErrorMessage } from '../../services/api';
+import { useSessionDataCache } from '../../app/SessionDataCacheContext';
 import { ResearchDepth } from '../../types/research';
+
+const MODELS_STATUS_CACHE_TTL_MS = 60_000;
 
 export interface ModelControlBarProps {
   depth: ResearchDepth;
@@ -233,6 +236,7 @@ export const ModelControlBar: React.FC<ModelControlBarProps> = ({
   disabled = false,
   menuPlacement = 'up',
 }) => {
+  const cache = useSessionDataCache();
   const [modelsOpen, setModelsOpen] = useState(false);
   const [keyOpen, setKeyOpen] = useState(false);
   const [modelsLayout, setModelsLayout] = useState<PopoverLayout>({
@@ -245,7 +249,9 @@ export const ModelControlBar: React.FC<ModelControlBarProps> = ({
     maxHeight: 360,
     alignRight: false,
   });
-  const [status, setStatus] = useState<ModelsStatusResponse | null>(null);
+  const [status, setStatus] = useState<ModelsStatusResponse | null>(
+    () => cache?.getModelsStatus()?.data ?? null
+  );
   const [statusError, setStatusError] = useState<string | null>(null);
   const [togglingLocal, setTogglingLocal] = useState(false);
 
@@ -261,16 +267,21 @@ export const ModelControlBar: React.FC<ModelControlBarProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const modelsButtonRef = useRef<HTMLButtonElement>(null);
   const keyButtonRef = useRef<HTMLButtonElement>(null);
+  const localFallbackRef = useRef(localFallbackEnabled);
+  localFallbackRef.current = localFallbackEnabled;
+  const onLocalFallbackChangeRef = useRef(onLocalFallbackChange);
+  onLocalFallbackChangeRef.current = onLocalFallbackChange;
 
   const applyModelsStatus = useCallback(
     (data: ModelsStatusResponse) => {
       setStatus(data);
       setStatusError(null);
-      if (localFallbackEnabled === undefined) {
-        onLocalFallbackChange(Boolean(data.local.available && data.local.connected));
+      cache?.setModelsStatus(data);
+      if (localFallbackRef.current === undefined) {
+        onLocalFallbackChangeRef.current(Boolean(data.local.available && data.local.connected));
       }
     },
-    [localFallbackEnabled, onLocalFallbackChange]
+    [cache]
   );
 
   const refreshModelsStatus = useCallback(async () => {
@@ -283,6 +294,16 @@ export const ModelControlBar: React.FC<ModelControlBarProps> = ({
   }, [applyModelsStatus]);
 
   useEffect(() => {
+    const cached = cache?.getModelsStatus();
+    if (cached) {
+      applyModelsStatus(cached.data);
+      const isFresh =
+        !cached.stale && Date.now() - cached.fetchedAt < MODELS_STATUS_CACHE_TTL_MS;
+      if (isFresh) {
+        return;
+      }
+    }
+
     let cancelled = false;
     byokService
       .getModelsStatus()
@@ -297,7 +318,7 @@ export const ModelControlBar: React.FC<ModelControlBarProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [applyModelsStatus]);
+  }, [applyModelsStatus, cache]);
 
   useEffect(() => {
     const onUsageRefresh = () => {
@@ -371,14 +392,15 @@ export const ModelControlBar: React.FC<ModelControlBarProps> = ({
     try {
       const updated = await byokService.setLocalFallback(nextConnected);
       onLocalFallbackChange(updated.connected);
-      setStatus((prev) =>
-        prev
-          ? {
-              ...prev,
-              local: updated,
-            }
-          : prev
-      );
+      setStatus((prev) => {
+        if (!prev) return prev;
+        const next = {
+          ...prev,
+          local: updated,
+        };
+        cache?.setModelsStatus(next);
+        return next;
+      });
     } catch (error) {
       setStatusError(apiErrorMessage(error, 'Could not update local fallback state.'));
     } finally {
