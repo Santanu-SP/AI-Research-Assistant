@@ -91,17 +91,29 @@ def enqueue(
     return job
 
 
-def claim_next(session: Session) -> ClaimedJob | None:
+def claim_next(
+    session: Session,
+    *,
+    kinds: tuple[str, ...] | None = None,
+    exclude_kinds: tuple[str, ...] | None = None,
+) -> ClaimedJob | None:
     """Atomically move the oldest runnable job to ``running``.
 
     PostgreSQL uses ``FOR UPDATE SKIP LOCKED`` so concurrent workers never
     take the same row. SQLite ignores the lock hint, so the guarded UPDATE
     (``state = 'queued'``) is what keeps a second claimer out there.
+    Pass ``kinds`` to only take those job kinds, or ``exclude_kinds`` to
+    skip some, so separate worker "lanes" can share one table.
     """
     now = utc_now()
+    conditions = [BackgroundJob.state == QUEUED, BackgroundJob.run_after <= now]
+    if kinds is not None:
+        conditions.append(BackgroundJob.kind.in_(kinds))
+    if exclude_kinds:
+        conditions.append(BackgroundJob.kind.not_in(exclude_kinds))
     candidate = session.scalar(
         select(BackgroundJob.id)
-        .where(BackgroundJob.state == QUEUED, BackgroundJob.run_after <= now)
+        .where(*conditions)
         .order_by(BackgroundJob.run_after, BackgroundJob.created_at)
         .limit(1)
         .with_for_update(skip_locked=True)
@@ -148,6 +160,17 @@ def claim_by_id(session: Session, job_id: UUID) -> ClaimedJob | None:
     if job is None:
         return None
     return ClaimedJob(id=job.id, kind=job.kind, target_id=job.target_id, attempts=job.attempts)
+
+
+def touch(session: Session, job_id: UUID) -> None:
+    """Refresh ``locked_at`` so a long job still running is not seen as stale."""
+    now = utc_now()
+    session.execute(
+        update(BackgroundJob)
+        .where(BackgroundJob.id == job_id, BackgroundJob.state == RUNNING)
+        .values(locked_at=now, updated_at=now)
+    )
+    session.commit()
 
 
 def mark_succeeded(session: Session, job_id: UUID) -> None:
