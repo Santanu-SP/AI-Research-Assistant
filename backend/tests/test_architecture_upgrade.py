@@ -1192,7 +1192,10 @@ def test_adaptive_fast_path_and_lexical_reranking_profile() -> None:
     deep_profile = resolve_execution_profile("What is FlashAttention?", ResearchDepth.DEEP, cfg)
     assert deep_profile.mode == "deep"
     assert deep_profile.settings.reranker_provider == "local"
-    assert deep_profile.settings.final_context_k == cfg.final_context_k
+    # Deep reads a wider pool and more evidence than standard.
+    assert deep_profile.settings.final_context_k == 12
+    assert deep_profile.settings.hybrid_candidate_k == 30
+    assert deep_profile.settings.evidence_char_budget >= cfg.evidence_char_budget
     assert deep_profile.provider_timeout_seconds == cfg.llm_deep_timeout_seconds == 60.0
     assert deep_profile.primary_timeout_seconds == cfg.llm_deep_timeout_seconds == 60.0
     assert deep_profile.allow_sticky_fallback is False

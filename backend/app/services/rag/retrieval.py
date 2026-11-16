@@ -5,7 +5,8 @@ import math
 import re
 from uuid import UUID
 
-from sqlalchemy import func, literal, or_, select, union_all
+from sqlalchemy import Text, case, cast, func, literal, or_, select, union_all
+from sqlalchemy.dialects.postgresql import TSQUERY
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.config import Settings
@@ -35,6 +36,55 @@ def preprocess_query(query: str) -> str:
     """Normalize whitespace and strip control characters while preserving terms."""
     cleaned = re.sub(r"[\x00-\x1f\x7f]+", " ", query)
     return re.sub(r"\s+", " ", cleaned).strip()
+
+
+# Phrases that point at "the documents" in general. They describe where to
+# look, not what to look for, so they only add noise to the search.
+_SOURCE_NOUN = (
+    r"(?:the\s+|my\s+|our\s+|these\s+|this\s+)?"
+    r"(?:(?:source|uploaded|provided|attached|given|supplied)\s+)?"
+    r"(?:documents?|docs|files?|sources?|pdfs?|papers?|notes|documentation)"
+)
+_SOURCE_PREPOSITION = r"(?:in|from|within|inside|according to|based on|as per|using)"
+# Only at the end of the question ("... in the source documents?") or at its
+# start followed by a comma ("According to the files, ..."), so a real
+# question like "What is in the docs folder?" is left alone.
+_TRAILING_SOURCE_REFERENCE = re.compile(
+    rf"\s+{_SOURCE_PREPOSITION}\s+{_SOURCE_NOUN}\s*(?=[?.!]*$)", re.IGNORECASE
+)
+_LEADING_SOURCE_REFERENCE = re.compile(
+    rf"^{_SOURCE_PREPOSITION}\s+{_SOURCE_NOUN}\s*,\s*", re.IGNORECASE
+)
+
+
+def search_text_for(query: str) -> str:
+    """The part of a question worth searching for.
+
+    "How does X work in the source documents?" searches for "How does X
+    work?". The full question is still what the model answers.
+    """
+    normalized = preprocess_query(query)
+    stripped = _LEADING_SOURCE_REFERENCE.sub("", normalized)
+    stripped = _TRAILING_SOURCE_REFERENCE.sub("", stripped).strip()
+    return stripped if _TOKEN_RE.search(stripped) else normalized
+
+
+def _any_term_tsquery(query: str):
+    """Match chunks containing ANY of the query's words, ranked by how many.
+
+    ``websearch_to_tsquery`` joins every word with AND, so a natural question
+    ("how will A2A delegation take place in the project") only matches a
+    chunk that contains all of those words, which is usually none, and the
+    keyword half of hybrid search silently returns nothing. Turning the ANDs
+    into ORs keeps quoted phrases and lets ``ts_rank_cd`` rank by overlap.
+    Queries using ``-word`` exclusions keep the original AND meaning.
+    """
+    strict = func.websearch_to_tsquery(FTS_CONFIGURATION, query)
+    strict_text = cast(strict, Text)
+    return case(
+        (func.strpos(strict_text, "!") > 0, strict),
+        else_=cast(func.replace(strict_text, " & ", " | "), TSQUERY),
+    )
 
 
 def _require_postgres(session: Session) -> None:
@@ -97,7 +147,7 @@ def keyword_search(
     limit: int,
     project_id: UUID | None = None,
 ) -> list[RankedChunk]:
-    query_expression = func.websearch_to_tsquery(FTS_CONFIGURATION, query)
+    query_expression = _any_term_tsquery(query)
     rank = func.ts_rank_cd(DocumentChunk.search_vector, query_expression)
     filters = [
         Document.user_id == user_id,
@@ -258,7 +308,7 @@ def _postgres_hybrid_search(
         .limit(vector_limit)
     )
 
-    query_expression = func.websearch_to_tsquery(FTS_CONFIGURATION, query)
+    query_expression = _any_term_tsquery(query)
     ts_rank = func.ts_rank_cd(DocumentChunk.search_vector, query_expression)
     kw_q = (
         select(
@@ -312,6 +362,7 @@ def retrieve(
             status_code=422,
             code="retrieval_query_required",
         )
+    normalized = search_text_for(normalized)
     if project_id is not None:
         project_service.get_project(session, project_id, user_id)
 

@@ -81,4 +81,43 @@ describe('SafeMarkdown', () => {
     expect(container.querySelector('ul')).toBeTruthy();
     expect(container.querySelectorAll('li')).toHaveLength(2);
   });
+
+  it('renders numbered steps as an ordered list that keeps its numbers', () => {
+    const content = '1. Agent A signs the card\n2. The handler verifies it\n\n3. Agent B runs the task';
+    const { container } = render(<SafeMarkdown content={content} />);
+    const lists = container.querySelectorAll('ol');
+    expect(lists).toHaveLength(2);
+    expect(lists[0].querySelectorAll('li')).toHaveLength(2);
+    expect(lists[1].getAttribute('start')).toBe('3');
+  });
+
+  it('keeps each bullet on its own line, including * bullets and indented ones', () => {
+    const content = '* **Signed cards:** checked first\n  - nested detail\n+ plus item';
+    const { container } = render(<SafeMarkdown content={content} />);
+    const items = container.querySelectorAll('ul li');
+    expect(items).toHaveLength(3);
+    expect(items[0].querySelector('strong')!.textContent).toBe('Signed cards:');
+    expect(container.textContent).not.toContain('**');
+  });
+
+  it('draws [S1] markers with renderCitation', () => {
+    const { container } = render(
+      <SafeMarkdown
+        content="Agent A signs it [S1][S3]."
+        renderCitation={(n, key) => (
+          <button key={key} data-testid={`cite-${n}`}>
+            {n}
+          </button>
+        )}
+      />
+    );
+    expect(screen.getByTestId('cite-1')).toBeInTheDocument();
+    expect(screen.getByTestId('cite-3')).toBeInTheDocument();
+    expect(container.textContent).toBe('Agent A signs it 13.');
+  });
+
+  it('leaves [S1] markers as text without renderCitation', () => {
+    render(<SafeMarkdown content="Plain marker [S2]" />);
+    expect(screen.getByText('Plain marker [S2]')).toBeInTheDocument();
+  });
 });

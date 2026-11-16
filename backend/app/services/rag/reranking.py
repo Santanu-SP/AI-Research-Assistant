@@ -25,6 +25,21 @@ _QUERY_STOPWORDS = frozenset({
 })
 
 
+def rerank_text(candidate: RetrievalCandidate) -> str:
+    """Chunk text with its heading path in front.
+
+    Many chunks are a list or a diagram with no words from their heading
+    ("REQUESTED → AUTHENTICATED → ..." under "Product States"). Showing the
+    heading lets the reranker see what the chunk is about.
+    """
+    path = [part for part in (candidate.section_path or []) if part]
+    if not path and candidate.section:
+        path = [candidate.section]
+    if not path:
+        return candidate.text
+    return f"{' > '.join(path)}\n{candidate.text}"
+
+
 def _apply_scores_and_sort(
     candidates: list[RetrievalCandidate],
     scores: list[float],
@@ -106,7 +121,7 @@ class RerankerService:
             model = self._load_model()
             try:
                 raw_scores = model.predict(
-                    [(query, candidate.text) for candidate in candidates],
+                    [(query, rerank_text(candidate)) for candidate in candidates],
                     batch_size=self.batch_size,
                     show_progress_bar=False,
                 )
@@ -163,7 +178,7 @@ class JinaRerankerService:
         payload = {
             "model": self.model_name,
             "query": query,
-            "documents": [candidate.text for candidate in candidates],
+            "documents": [rerank_text(candidate) for candidate in candidates],
             "top_n": len(candidates),
             "return_documents": False,
         }
@@ -238,7 +253,7 @@ class CloudflareBGERerankerService:
         url = f"https://api.cloudflare.com/client/v4/accounts/{self.account_id}/ai/run/{self.model_name}"
         payload = {
             "query": query,
-            "contexts": [{"text": candidate.text} for candidate in candidates],
+            "contexts": [{"text": rerank_text(candidate)} for candidate in candidates],
         }
         headers = {
             "Authorization": f"Bearer {self.api_token}",

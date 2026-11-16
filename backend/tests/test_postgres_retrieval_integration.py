@@ -154,6 +154,21 @@ def test_postgres_project_scoped_vector_fts_and_gin_index(
     assert [item.chunk.document_id for item in alpha_keyword] == [alpha_document.id]
     assert beta_keyword == []
 
+    # A natural question still finds the chunk: words are matched with OR,
+    # not "every word must appear".
+    natural = keyword_search(
+        postgres_session,
+        user_a.id,
+        "How does the transformer handle attention in the source documents?",
+        10,
+        alpha.id,
+    )
+    assert [item.chunk.document_id for item in natural] == [alpha_document.id]
+    # An explicit exclusion keeps its strict meaning.
+    assert keyword_search(
+        postgres_session, user_a.id, "transformer -attention", 10, alpha.id
+    ) == []
+
     candidates = retrieve(
         postgres_session,
         user_a.id,

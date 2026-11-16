@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { TopBar } from '../components/layout/TopBar';
 import { StatusBadge } from '../components/common/StatusBadge';
 import { CitationChip } from '../components/research/CitationChip';
+import { SafeMarkdown } from '../components/common/SafeMarkdown';
 import { SourcesPanel } from '../components/sources/SourcesPanel';
 import { CenteredLoadingState } from '../components/common/LoadingState';
 import { ErrorState } from '../components/common/ErrorState';
@@ -17,6 +18,8 @@ import {
   Download,
   Link2,
 } from 'lucide-react';
+
+const INLINE_CITATION = /\[S\d+\]/;
 
 const buildReportMarkdown = (
   report: ResearchReportResponse,
@@ -139,6 +142,15 @@ export const ResearchReportPage: React.FC = () => {
   }
 
   const getSourceByNum = (n: number) => sources.find((s) => s.number === n);
+  const renderCitation = (sourceNumber: number, key: string) => (
+    <CitationChip
+      key={key}
+      number={sourceNumber}
+      source={getSourceByNum(sourceNumber)}
+      isSelected={selectedSourceNumber === sourceNumber}
+      onSelect={handleCitationSelect}
+    />
+  );
   const showSummary = !(
     report.sections.length > 0 && report.sections[0].content === report.summary
   );
@@ -215,9 +227,11 @@ export const ResearchReportPage: React.FC = () => {
                   <h2 className="mb-3 text-[13px] font-semibold uppercase tracking-[0.06em] text-ink-muted">
                     Summary
                   </h2>
-                  <p className="font-serif text-[18px] leading-[1.75] text-ink">
-                    {report.summary}
-                  </p>
+                  <SafeMarkdown
+                    content={report.summary}
+                    className="font-serif text-[18px] leading-[1.75]"
+                    renderCitation={renderCitation}
+                  />
                 </section>
               )}
 
@@ -227,8 +241,13 @@ export const ResearchReportPage: React.FC = () => {
                     {section.heading}
                   </h2>
                   <div className="font-serif text-[17px] leading-[1.8] text-ink sm:text-[18px]">
-                    {section.content}{' '}
-                    {section.citations && section.citations.length > 0 && section.citations.map((citation, idx) => (
+                    <SafeMarkdown
+                      content={section.content}
+                      className="text-[17px] leading-[1.8] sm:text-[18px]"
+                      renderCitation={renderCitation}
+                    />
+                    {/* Older reports have no inline markers; list their sources at the end. */}
+                    {!INLINE_CITATION.test(section.content) && section.citations && section.citations.length > 0 && section.citations.map((citation, idx) => (
                       <React.Fragment key={citation.id}>
                         <CitationChip
                           number={citation.number}

@@ -18,14 +18,41 @@ class EvidenceBuilder:
         candidates: list[RetrievalCandidate],
         *,
         limit: int,
+        char_budget: int = 0,
+        max_items: int | None = None,
+        min_extra_score: float = 0.0,
     ) -> list[EvidenceItem]:
+        """Take the ``limit`` best chunks, then top up while space allows.
+
+        Chunks vary a lot in size: a PDF chunk can be 2,000 characters while a
+        DOCX section is often 200. A fixed count therefore gives the model very
+        little to read for short-chunk documents. With ``char_budget`` set,
+        further relevant chunks (score at least ``min_extra_score``) are added
+        until the evidence reaches that many characters or ``max_items``.
+        """
         evidence: list[EvidenceItem] = []
         seen_chunks = set()
+        seen_texts = set()
+        total_chars = 0
+        hard_limit = max(limit, max_items or limit)
         for candidate in candidates:
-            if len(evidence) >= limit:
+            if len(evidence) >= hard_limit:
+                break
+            if len(evidence) >= limit and (
+                total_chars >= char_budget
+                or candidate.rerank_score is None
+                or candidate.rerank_score < min_extra_score
+            ):
                 break
             if candidate.chunk_id in seen_chunks or candidate.rerank_score is None:
                 continue
+            # The same paragraph can appear in more than one document (or twice
+            # in one); sending it again only wastes space.
+            text_key = " ".join(candidate.text.split()).lower()
+            if text_key in seen_texts:
+                continue
+            seen_texts.add(text_key)
+            total_chars += len(candidate.text)
             seen_chunks.add(candidate.chunk_id)
             evidence.append(
                 EvidenceItem(
