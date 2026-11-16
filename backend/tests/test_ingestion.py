@@ -284,6 +284,8 @@ def test_docx_upload_persists_canonical_nodes_and_duplicate_policy(
     assert first.json()["contentLevel"] == "user_document"
     assert duplicate.status_code == 409
     assert duplicate.json()["error"]["code"] == "duplicate_document"
+    # The existing copy is named so the client can use it instead.
+    assert duplicate.json()["error"]["details"]["documentId"] == first.json()["id"]
     assert other_project.status_code == 201
     assert adapter.calls == 2
     assert len(list(upload_dir.iterdir())) == 2

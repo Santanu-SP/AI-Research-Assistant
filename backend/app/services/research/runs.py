@@ -77,6 +77,7 @@ def create_research(session: Session, payload: ResearchCreate, user_id: UUID | N
                 code="research_project_user_required",
             )
         project_service.get_project(session, payload.project_id, user_id)
+    attached = _documents_to_attach(session, payload, user_id)
     research = Research(
         user_id=user_id,
         project_id=payload.project_id,
@@ -87,10 +88,58 @@ def create_research(session: Session, payload: ResearchCreate, user_id: UUID | N
         status=ResearchStatus.DRAFT,
         project_status=ProjectStatus.DRAFT,
     )
+    if attached is not None:
+        research.documents_scoped = True
+        research.attached_documents = attached
     session.add(research)
     _commit(session)
     session.refresh(research)
     return research
+
+
+MAX_ATTACHED_DOCUMENTS = 100
+
+
+def _documents_to_attach(
+    session: Session, payload: ResearchCreate, user_id: UUID | None
+) -> list[Document] | None:
+    """Check the documents picked for a new run and return them.
+
+    ``None`` means no list was sent, so the run is not limited to chosen
+    documents. Documents that don't exist, belong to someone else, or sit
+    outside the run's project get the same 404, so nothing leaks.
+    """
+    if payload.document_ids is None:
+        return None
+    wanted = list(dict.fromkeys(payload.document_ids))
+    if not wanted:
+        if payload.project_id is not None:
+            # A project run with nothing picked uses the whole project.
+            return None
+        raise AppError(
+            "Upload or pick a document first",
+            status_code=422,
+            code="research_documents_required",
+        )
+    if user_id is None:
+        raise AppError(
+            "Choosing documents requires an authenticated user",
+            status_code=422,
+            code="research_documents_user_required",
+        )
+    if len(wanted) > MAX_ATTACHED_DOCUMENTS:
+        raise AppError(
+            f"Pick at most {MAX_ATTACHED_DOCUMENTS} documents",
+            status_code=422,
+            code="research_documents_too_many",
+        )
+    filters = [Document.id.in_(wanted), Document.user_id == user_id]
+    if payload.project_id is not None:
+        filters.append(Document.project_id == payload.project_id)
+    found = {document.id: document for document in session.scalars(select(Document).where(*filters))}
+    if len(found) != len(wanted):
+        raise AppError("Document not found", status_code=404, code="document_not_found")
+    return [found[document_id] for document_id in wanted]
 
 
 def list_research(
@@ -277,7 +326,9 @@ def _document_readiness(session: Session, research: Research) -> tuple[int, int]
     if research.user_id is None:
         return 0, 0
     filters = [Document.user_id == research.user_id]
-    if research.project_id is not None:
+    if research.documents_scoped:
+        filters.append(Document.id.in_(research.document_ids))
+    elif research.project_id is not None:
         filters.append(Document.project_id == research.project_id)
     counts = dict(
         session.execute(

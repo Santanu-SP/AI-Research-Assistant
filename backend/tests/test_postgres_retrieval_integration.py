@@ -164,6 +164,38 @@ def test_postgres_project_scoped_vector_fts_and_gin_index(
         alpha.id,
     )
     assert [item.chunk.document_id for item in natural] == [alpha_document.id]
+    # A research limited to chosen documents searches only those.
+    second_alpha = _document(
+        user_id=user_a.id,
+        project_id=alpha.id,
+        name="Alpha second",
+        text_value="transformer attention in a second paper",
+    )
+    postgres_session.add(second_alpha)
+    postgres_session.commit()
+    picked = retrieve(
+        postgres_session,
+        user_a.id,
+        "transformer attention",
+        Settings(database_url=str(postgres_session.bind.url)),
+        FixedEmbeddingService(),
+        document_ids=[second_alpha.id],
+    )
+    assert {item.document_id for item in picked} == {second_alpha.id}
+    assert keyword_search(
+        postgres_session, user_a.id, "transformer attention", 10, document_ids=[gamma_document.id]
+    ) == []
+    assert retrieve(
+        postgres_session,
+        user_a.id,
+        "transformer attention",
+        Settings(database_url=str(postgres_session.bind.url)),
+        FixedEmbeddingService(),
+        document_ids=[],
+    ) == []
+    postgres_session.delete(second_alpha)
+    postgres_session.commit()
+
     # An explicit exclusion keeps its strict meaning.
     assert keyword_search(
         postgres_session, user_a.id, "transformer -attention", 10, alpha.id

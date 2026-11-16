@@ -105,6 +105,21 @@ def _active_project_filter():
     )
 
 
+def _scope_filters(project_id: UUID | None, document_ids: list[UUID] | None) -> list:
+    """Limit a search to one project and/or a chosen set of documents.
+
+    ``document_ids=None`` means no document limit; an empty list matches
+    nothing, so a run whose documents were all deleted finds no evidence
+    instead of quietly searching everything.
+    """
+    filters = []
+    if project_id is not None:
+        filters.append(Document.project_id == project_id)
+    if document_ids is not None:
+        filters.append(Document.id.in_(list(document_ids)))
+    return filters
+
+
 def _reciprocal_rank(rank: int, rrf_k: int = RRF_K) -> float:
     return 1 / (rrf_k + rank)
 
@@ -115,6 +130,7 @@ def semantic_search(
     query_vector: list[float],
     limit: int,
     project_id: UUID | None = None,
+    document_ids: list[UUID] | None = None,
 ) -> list[RankedChunk]:
     distance = DocumentChunk.embedding.cosine_distance(query_vector)
     filters = [
@@ -123,8 +139,7 @@ def semantic_search(
         DocumentChunk.embedding.is_not(None),
         _active_project_filter(),
     ]
-    if project_id is not None:
-        filters.append(Document.project_id == project_id)
+    filters.extend(_scope_filters(project_id, document_ids))
     rows = session.execute(
         select(DocumentChunk, distance.label("distance"))
         .options(joinedload(DocumentChunk.document))
@@ -146,6 +161,7 @@ def keyword_search(
     query: str,
     limit: int,
     project_id: UUID | None = None,
+    document_ids: list[UUID] | None = None,
 ) -> list[RankedChunk]:
     query_expression = _any_term_tsquery(query)
     rank = func.ts_rank_cd(DocumentChunk.search_vector, query_expression)
@@ -155,8 +171,7 @@ def keyword_search(
         DocumentChunk.search_vector.op("@@")(query_expression),
         _active_project_filter(),
     ]
-    if project_id is not None:
-        filters.append(Document.project_id == project_id)
+    filters.extend(_scope_filters(project_id, document_ids))
     rows = session.execute(
         select(DocumentChunk, rank.label("rank"))
         .options(joinedload(DocumentChunk.document))
@@ -191,14 +206,14 @@ def _sqlite_hybrid_search(
     vector_limit: int,
     keyword_limit: int,
     project_id: UUID | None = None,
+    document_ids: list[UUID] | None = None,
 ) -> tuple[list[RankedChunk], list[RankedChunk]]:
     filters = [
         Document.user_id == user_id,
         Document.status == DocumentStatus.INDEXED,
         _active_project_filter(),
     ]
-    if project_id is not None:
-        filters.append(Document.project_id == project_id)
+    filters.extend(_scope_filters(project_id, document_ids))
     chunks = list(
         session.scalars(
             select(DocumentChunk)
@@ -284,6 +299,7 @@ def _postgres_hybrid_search(
     vector_limit: int,
     keyword_limit: int,
     project_id: UUID | None = None,
+    document_ids: list[UUID] | None = None,
 ) -> tuple[list[RankedChunk], list[RankedChunk]]:
     """Fetch vector and FTS top-k candidates in a single PostgreSQL round-trip."""
     base_filters = [
@@ -291,8 +307,7 @@ def _postgres_hybrid_search(
         Document.status == DocumentStatus.INDEXED,
         _active_project_filter(),
     ]
-    if project_id is not None:
-        base_filters.append(Document.project_id == project_id)
+    base_filters.extend(_scope_filters(project_id, document_ids))
 
     distance = DocumentChunk.embedding.cosine_distance(query_vector)
     vec_q = (
@@ -354,6 +369,7 @@ def retrieve(
     embeddings: EmbeddingService | None = None,
     *,
     project_id: UUID | None = None,
+    document_ids: list[UUID] | None = None,
 ) -> list[RetrievalCandidate]:
     normalized = preprocess_query(query)
     if not normalized:
@@ -365,6 +381,8 @@ def retrieve(
     normalized = search_text_for(normalized)
     if project_id is not None:
         project_service.get_project(session, project_id, user_id)
+    if document_ids is not None and not document_ids:
+        return []
 
     dialect = None if session.bind is None else session.bind.dialect.name
     if dialect != "postgresql" and not settings.allow_sqlite_retrieval_fallback:
@@ -382,6 +400,7 @@ def retrieve(
             settings.vector_top_k,
             settings.keyword_top_k,
             project_id,
+            document_ids,
         )
     else:
         vector_results, keyword_results = _sqlite_hybrid_search(
@@ -392,6 +411,7 @@ def retrieve(
             settings.vector_top_k,
             settings.keyword_top_k,
             project_id,
+            document_ids,
         )
 
     rrf_k = getattr(settings, "rrf_k", RRF_K)

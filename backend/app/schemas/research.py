@@ -31,6 +31,8 @@ DomainText = Annotated[
 class ResearchCreate(ApiSchema):
     question: QuestionText
     project_id: UUID | None = None
+    # See ResearchQueryRequest.document_ids.
+    document_ids: list[UUID] | None = Field(default=None, max_length=100)
     title: TitleText | None = None
     domain: DomainText | None = None
     research_depth: ResearchDepth = ResearchDepth.STANDARD
@@ -69,6 +71,10 @@ class ResearchResponse(ApiSchema):
     status: ResearchStatus
     research_depth: ResearchDepth
     source_count: int = 0
+    # True when the run reads only ``document_ids``; false for project runs
+    # and older runs, which use the project's or all of the user's documents.
+    documents_scoped: bool = False
+    document_ids: list[UUID] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
     archived_at: datetime | None
