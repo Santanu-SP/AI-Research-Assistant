@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, Trash2 } from 'lucide-react';
+import { FileText, Trash2, X } from 'lucide-react';
 import { Document } from '../../types/document';
 import { isDocumentPending } from '../../services/documents.service';
 
@@ -8,6 +8,8 @@ interface SourceCardProps {
   /** Opens a ready document. Files that are still being prepared can't be opened. */
   onOpen?: (document: Document) => void;
   onDelete?: (id: string) => void;
+  /** Takes the document off a list (e.g. this research) without deleting the file. */
+  onRemove?: (id: string) => void;
   onRetry?: (id: string) => void;
   isRetrying?: boolean;
   isDeleting?: boolean;
@@ -68,6 +70,7 @@ export const SourceCard: React.FC<SourceCardProps> = ({
   document,
   onOpen,
   onDelete,
+  onRemove,
   onRetry,
   isRetrying = false,
   isDeleting = false,
@@ -121,6 +124,20 @@ export const SourceCard: React.FC<SourceCardProps> = ({
               <div aria-disabled={state === 'preparing' || undefined}>{name}</div>
             )}
           </div>
+
+          {onRemove && (
+            <button
+              type="button"
+              aria-label={`Remove from this research: ${displayName}`}
+              title="Remove from this research"
+              onClick={() => onRemove(document.id)}
+              className={`relative z-[1] flex shrink-0 cursor-pointer items-center justify-center rounded-md text-ink-muted transition-[opacity,color,background-color] hover:bg-subtle hover:text-ink focus-visible:opacity-100 ${
+                compact ? 'h-7 w-7' : 'h-8 w-8'
+              } opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100`}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
 
           {onDelete && canEdit && (
             <button

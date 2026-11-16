@@ -5,14 +5,18 @@ from uuid import UUID, uuid4
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    Column,
     Date,
     Enum,
     ForeignKey,
     Index,
     Integer,
     String,
+    Table,
     Text,
     Uuid,
+    false,
+    func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -60,6 +64,28 @@ research_progress_stage_enum = Enum(
     create_constraint=True,
     validate_strings=True,
     values_callable=_enum_values,
+)
+
+
+# Documents a research run is allowed to read. Only used when the run's
+# ``documents_scoped`` flag is set; older runs have no rows here.
+research_documents = Table(
+    "research_documents",
+    Base.metadata,
+    Column(
+        "research_id",
+        Uuid(as_uuid=True),
+        ForeignKey("research.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column(
+        "document_id",
+        Uuid(as_uuid=True),
+        ForeignKey("documents.id", ondelete="CASCADE"),
+        primary_key=True,
+        index=True,
+    ),
+    Column("created_at", UTCDateTime(), server_default=func.now(), nullable=False),
 )
 
 
@@ -167,6 +193,21 @@ class Research(TimestampMixin, Base):
         nullable=False,
     )
     shared_quota_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # True when the run reads only its attached documents (research_documents).
+    # False for project runs and for runs made before attachments existed:
+    # those use the project's documents, or all of the user's documents.
+    documents_scoped: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default=false(),
+        nullable=False,
+    )
+    attached_documents: Mapped[list["Document"]] = relationship(
+        secondary=research_documents,
+        lazy="selectin",
+        passive_deletes=True,
+        order_by="Document.created_at",
+    )
     project: Mapped["ResearchProject | None"] = relationship(
         back_populates="research_runs"
     )
@@ -181,3 +222,8 @@ class Research(TimestampMixin, Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+
+    @property
+    def document_ids(self) -> list[UUID]:
+        """IDs of the attached documents (empty for unscoped runs)."""
+        return [document.id for document in self.attached_documents]

@@ -41,7 +41,7 @@ def _install_retrieval_fakes(monkeypatch) -> None:
         )
     ]
 
-    def fake_retrieve(session, user_id, query, settings, *, project_id=None):
+    def fake_retrieve(session, user_id, query, settings, *, project_id=None, document_ids=None):
         return items
 
     monkeypatch.setattr(rag_service.retrieval, "retrieve", fake_retrieve)

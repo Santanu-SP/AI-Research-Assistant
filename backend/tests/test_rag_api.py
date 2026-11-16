@@ -68,7 +68,7 @@ def install_pipeline_fakes(monkeypatch, items, *, score=5.0):
     generator = FakeGenerator()
     captured_scopes = []
 
-    def fake_retrieve(session, user_id, query, settings, *, project_id=None):
+    def fake_retrieve(session, user_id, query, settings, *, project_id=None, document_ids=None):
         captured_scopes.append((user_id, project_id))
         return items
 

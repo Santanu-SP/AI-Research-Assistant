@@ -9,6 +9,8 @@ from app.schemas.base import ApiSchema
 class RetrievalRequest(ApiSchema):
     query: str = Field(min_length=1, max_length=4000)
     project_id: UUID | None = None
+    # Search only these documents. Left out: the project's, or all of yours.
+    document_ids: list[UUID] | None = Field(default=None, max_length=100)
 
 
 class RetrievalCandidate(ApiSchema):

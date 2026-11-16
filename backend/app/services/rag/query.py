@@ -357,9 +357,33 @@ def find_recent_duplicate(
         filters.append(Research.project_id.is_(None))
     else:
         filters.append(Research.project_id == payload.project_id)
-    return session.scalar(
-        select(Research).where(*filters).order_by(Research.created_at.desc()).limit(1)
+    # Only the same question over the same documents counts as a repeat;
+    # asking it again about other files is a new research.
+    wanted = _requested_document_scope(payload)
+    recent = session.scalars(
+        select(Research).where(*filters).order_by(Research.created_at.desc()).limit(5)
     )
+    for candidate in recent:
+        if _document_scope(candidate) == wanted:
+            return candidate
+    return None
+
+
+def scoped_document_ids(record: Research) -> list[UUID] | None:
+    """The documents a run may read, or None when it isn't limited to chosen ones."""
+    return list(record.document_ids) if record.documents_scoped else None
+
+
+def _document_scope(record: Research) -> frozenset[UUID] | None:
+    ids = scoped_document_ids(record)
+    return None if ids is None else frozenset(ids)
+
+
+def _requested_document_scope(payload: ResearchQueryRequest) -> frozenset[UUID] | None:
+    if not payload.document_ids:
+        # Not sent, or empty inside a project: the run won't be limited.
+        return None
+    return frozenset(payload.document_ids)
 
 
 def _apply_run_options(
@@ -429,6 +453,7 @@ def _create_started_record(
             ResearchCreate(
                 question=normalized_query,
                 project_id=payload.project_id,
+                document_ids=payload.document_ids,
                 research_depth=payload.research_depth,
             ),
             user_id,
@@ -551,6 +576,7 @@ def execute_research(
             normalized_query,
             runtime_settings,
             project_id=record.project_id,
+            document_ids=scoped_document_ids(record),
         )
         if candidates:
             ranked = (reranker or reranker_service_for(runtime_settings)).rerank(

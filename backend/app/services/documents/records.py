@@ -103,6 +103,8 @@ def _register_upload(
             "This document has already been uploaded in this project",
             status_code=409,
             code="duplicate_document",
+            # The caller owns this copy; the New research page attaches it.
+            details={"documentId": str(duplicate.id)},
         )
     document = Document(
         user_id=user_id,

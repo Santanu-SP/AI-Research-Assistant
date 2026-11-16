@@ -13,6 +13,10 @@ from app.schemas.base import ApiSchema
 class ResearchQueryRequest(ApiSchema):
     query: str = Field(min_length=1, max_length=10_000)
     project_id: UUID | None = None
+    # The documents this research may read. Outside a project the list must
+    # not be empty. Left out entirely, the run uses the project's documents
+    # (or, outside a project, all of the user's: the behaviour of older clients).
+    document_ids: list[UUID] | None = Field(default=None, max_length=100)
     research_depth: ResearchDepth = ResearchDepth.STANDARD
     preferred_provider: str | None = Field(default=None, max_length=64)
     model_override: str | None = Field(default=None, max_length=160)

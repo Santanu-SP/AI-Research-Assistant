@@ -118,7 +118,9 @@ describe('Workspace navigation and state stability', () => {
     );
 
     expect(await screen.findByText('What is market research?')).toBeInTheDocument();
-    expect(await screen.findByText('paper-1.pdf')).toBeInTheDocument();
+    // A new research starts with no files; the library is offered instead.
+    expect(await screen.findByRole('button', { name: /Add from library/i })).toBeInTheDocument();
+    expect(screen.queryByText('paper-1.pdf')).not.toBeInTheDocument();
     expect(listResearchSpy).toHaveBeenCalledTimes(1);
     expect(getDocsSpy).toHaveBeenCalledTimes(1);
     expect(getModelsSpy).toHaveBeenCalledTimes(1);
@@ -133,7 +135,7 @@ describe('Workspace navigation and state stability', () => {
     // Navigate back to New research — cached docs and models render immediately with no "Loading…" skeleton.
     fireEvent.click(screen.getAllByRole('link', { name: /New research/i })[0]);
     expect(screen.queryByText('Loading…')).not.toBeInTheDocument();
-    expect(await screen.findByText('paper-1.pdf')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /Add from library/i })).toBeInTheDocument();
     expect(listResearchSpy).toHaveBeenCalledTimes(1);
     expect(getDocsSpy).toHaveBeenCalledTimes(1);
     expect(getModelsSpy).toHaveBeenCalledTimes(1);

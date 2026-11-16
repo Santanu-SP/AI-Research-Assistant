@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { TopBar } from '../components/layout/TopBar';
 import { ResearchComposer } from '../components/research/ResearchComposer';
@@ -11,10 +11,19 @@ import {
 import { FolderOpen, History } from 'lucide-react';
 import { shortcutLabel } from '../lib/shortcuts';
 import { ResearchDepth } from '../types/research';
-import { DocumentsPanel } from '../components/documents/DocumentsPanel';
+import { ResearchDocumentsPanel } from '../components/documents/ResearchDocumentsPanel';
 import { useDocumentLibrary } from '../hooks/useDocumentLibrary';
+import { documentsBlockedReason } from '../lib/researchDocuments';
+import { ApiError } from '../services/api';
+import { Document } from '../types/document';
 
 const ALL_DOCUMENTS = { all: true } as const;
+
+const apiErrorCode = (error: unknown): string | null => {
+  if (!(error instanceof ApiError)) return null;
+  const code = (error.data as { error?: { code?: unknown } } | null)?.error?.code;
+  return typeof code === 'string' ? code : null;
+};
 
 const TIP_CLASS =
   'group flex h-full w-full flex-col rounded-lg border border-line bg-panel/80 p-4 text-left shadow-xs transition-[border-color,box-shadow] duration-200 hover:border-line-strong hover:shadow-sm';
@@ -29,13 +38,22 @@ export const NewResearch: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const library = useDocumentLibrary(ALL_DOCUMENTS);
+  // A new research starts with no documents; the user adds the ones to ask about.
+  const [attachedIds, setAttachedIds] = useState<string[]>([]);
   // Set synchronously so a double click or Ctrl+Enter pressed twice can't
   // send the same question before React re-renders the disabled button.
   const submitting = useRef(false);
 
   useEffect(() => {
     setCreateError(null);
+    setAttachedIds([]);
   }, [location.key]);
+
+  const attachedDocuments = useMemo(() => {
+    const byId = new Map(library.documents.map((doc) => [doc.id, doc]));
+    return attachedIds.map((id) => byId.get(id)).filter((doc): doc is Document => Boolean(doc));
+  }, [attachedIds, library.documents]);
+  const blockedReason = documentsBlockedReason(attachedDocuments, attachedIds.length);
 
   const handleStartResearch = async (payload: {
     question: string;
@@ -44,11 +62,12 @@ export const NewResearch: React.FC = () => {
     modelOverride?: string | null;
     localFallbackEnabled?: boolean;
   }) => {
-    if (submitting.current) return;
+    if (submitting.current || blockedReason) return;
     submitting.current = true;
     setIsSubmitting(true);
     setCreateError(null);
     const requestExtras = {
+      documentIds: attachedIds,
       ...(payload.preferredProvider ? { preferredProvider: payload.preferredProvider } : {}),
       ...(payload.modelOverride ? { modelOverride: payload.modelOverride } : {}),
       ...(payload.localFallbackEnabled !== undefined
@@ -81,7 +100,9 @@ export const NewResearch: React.FC = () => {
         return;
       }
       setCreateError(
-        getResearchErrorMessage(error, 'Research could not be started. Please try again.')
+        apiErrorCode(error) === 'document_not_found'
+          ? 'One of the picked files no longer exists. Remove it and try again.'
+          : getResearchErrorMessage(error, 'Research could not be started. Please try again.')
       );
     } finally {
       submitting.current = false;
@@ -105,8 +126,8 @@ export const NewResearch: React.FC = () => {
                 What do you want to find out?
               </h1>
               <p className="mt-2 max-w-xl text-sm leading-relaxed text-ink-soft">
-                Answers come only from your documents, and each claim links to the passage it came
-                from.
+                Answers come only from the documents you add for this research, and each claim
+                links to the passage it came from.
               </p>
             </div>
 
@@ -114,6 +135,7 @@ export const NewResearch: React.FC = () => {
               key={location.key}
               onStartResearch={handleStartResearch}
               isLoading={isSubmitting}
+              blockedReason={blockedReason}
             />
             {createError ? (
               <div className="mt-3">
@@ -145,9 +167,13 @@ export const NewResearch: React.FC = () => {
             </ul>
           </div>
 
-          <DocumentsPanel
+          <ResearchDocumentsPanel
             library={library}
-            title="Your documents"
+            attachedIds={attachedIds}
+            onChange={(ids) => {
+              setAttachedIds(ids);
+              setCreateError(null);
+            }}
             className="order-2 min-w-0 lg:order-none lg:sticky lg:top-20 lg:mt-[7.5rem] lg:max-h-[calc(100vh-7rem)]"
           />
         </div>
