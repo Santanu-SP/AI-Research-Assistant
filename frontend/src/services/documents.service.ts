@@ -114,6 +114,14 @@ export const isDuplicateDocumentError = (error: unknown): boolean => {
   return true;
 };
 
+/** The existing copy named by a duplicate-upload error, if the server sent it. */
+export const duplicateDocumentIdFromError = (error: unknown): string | null => {
+  if (!(error instanceof ApiError)) return null;
+  const data = error.data as { error?: { details?: { documentId?: unknown } } } | null;
+  const id = data?.error?.details?.documentId;
+  return typeof id === 'string' ? id : null;
+};
+
 export const getDocumentErrorMessage = (
   error: unknown,
   fallback: string

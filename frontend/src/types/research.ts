@@ -26,6 +26,9 @@ export interface ResearchResponse {
   status: ResearchStatus;
   researchDepth: ResearchDepth;
   sourceCount: number;
+  /** True when the run reads only `documentIds`; false for project and older runs. */
+  documentsScoped?: boolean;
+  documentIds?: string[];
   createdAt: string;
   updatedAt: string;
   archivedAt: string | null;
@@ -111,6 +114,8 @@ export interface ResearchProgress {
 export interface ResearchQueryRequest {
   query: string;
   projectId?: string;
+  /** The documents this research may read. Required (non-empty) outside a project. */
+  documentIds?: string[];
   researchDepth?: ResearchDepth;
   preferredProvider?: string;
   modelOverride?: string;

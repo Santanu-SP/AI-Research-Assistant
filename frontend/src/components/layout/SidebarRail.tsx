@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutGrid, LogOut, Moon, PanelLeftOpen, Plus, Search, Settings, Sun } from 'lucide-react';
+import { Files, LayoutGrid, LogOut, Moon, PanelLeftOpen, Plus, Search, Settings, Sun } from 'lucide-react';
 import { useAuth } from '../../app/AuthContext';
 import { BrandMark } from '../common/BrandMark';
 import { applyTheme, getAppliedTheme } from '../../theme';
@@ -36,6 +36,7 @@ export const SidebarRail: React.FC<SidebarRailProps> = ({ onExpand, onSearch }) 
 
   const projectsActive = location.pathname.startsWith('/projects');
   const settingsActive = location.pathname.startsWith('/settings');
+  const documentsActive = location.pathname.startsWith('/documents');
   const newActive = location.pathname === '/research/new';
 
   useEffect(() => {
@@ -107,6 +108,15 @@ export const SidebarRail: React.FC<SidebarRailProps> = ({ onExpand, onSearch }) 
           className={railButton(projectsActive)}
         >
           <LayoutGrid className="h-4 w-4" />
+        </Link>
+        <Link
+          to="/documents"
+          aria-label="Documents"
+          data-tip="Documents"
+          aria-current={documentsActive ? 'page' : undefined}
+          className={railButton(documentsActive)}
+        >
+          <Files className="h-4 w-4" />
         </Link>
         <Link
           to="/settings"

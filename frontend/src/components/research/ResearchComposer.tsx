@@ -15,6 +15,8 @@ interface ResearchComposerProps {
     localFallbackEnabled?: boolean;
   }) => void;
   isLoading?: boolean;
+  /** Why the question can't be sent yet, e.g. no documents picked. Shown next to the button. */
+  blockedReason?: string | null;
 }
 
 const LOADING_MESSAGES = [
@@ -27,6 +29,7 @@ export const ResearchComposer: React.FC<ResearchComposerProps> = ({
   initialPrompt = '',
   onStartResearch,
   isLoading = false,
+  blockedReason = null,
 }) => {
   const [prompt, setPrompt] = useState(initialPrompt);
   const [depth, setDepth] = useState<ResearchDepth>('standard');
@@ -62,7 +65,7 @@ export const ResearchComposer: React.FC<ResearchComposerProps> = ({
   };
 
   const handleSubmit = () => {
-    if (!prompt.trim() || isLoading) return;
+    if (!prompt.trim() || isLoading || blockedReason) return;
     // isLoading only updates on the next render; block a second press now.
     const now = Date.now();
     if (now - lastSubmitAt.current < 1500) return;
@@ -116,6 +119,10 @@ export const ResearchComposer: React.FC<ResearchComposerProps> = ({
             <span className="hidden text-xs text-ink-muted md:inline" aria-live="polite">
               {LOADING_MESSAGES[loadingMessageIndex]}
             </span>
+          ) : blockedReason ? (
+            <span id="research-blocked-reason" className="text-xs text-ink-muted" aria-live="polite">
+              {blockedReason}
+            </span>
           ) : (
             <kbd className="hidden select-none rounded border border-line bg-panel px-1.5 py-0.5 font-sans text-[10.5px] text-ink-muted xl:inline">
               {shortcutLabel('Enter')}
@@ -124,7 +131,8 @@ export const ResearchComposer: React.FC<ResearchComposerProps> = ({
           <button
             type="button"
             onClick={handleSubmit}
-            disabled={!prompt.trim() || isLoading}
+            disabled={!prompt.trim() || isLoading || Boolean(blockedReason)}
+            aria-describedby={blockedReason && !isLoading ? 'research-blocked-reason' : undefined}
             className="group flex h-8 cursor-pointer items-center gap-1.5 rounded-md bg-solid px-3.5 text-[13px] font-medium text-on-solid shadow-xs transition-colors duration-150 hover:bg-solid-hover disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isLoading ? <LoadingOrb size={16} className="loading-orb--on-solid" /> : null}

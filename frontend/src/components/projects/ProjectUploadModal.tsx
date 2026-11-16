@@ -5,6 +5,7 @@ import {
   documentsService,
   getDocumentErrorMessage,
   isDuplicateDocumentError,
+  duplicateDocumentIdFromError,
   isDocumentPending,
 } from '../../services/documents.service';
 import { Document } from '../../types/document';
@@ -31,6 +32,8 @@ interface ProjectUploadModalProps {
   projectId?: string | null;
   onClose: () => void;
   onUploaded: (document: Document) => void;
+  /** Called with the existing copy's id when a file was already uploaded. */
+  onDuplicate?: (documentId: string) => void;
 }
 
 const ALLOWED_EXTENSIONS = [
@@ -102,6 +105,7 @@ export const ProjectUploadModal: React.FC<ProjectUploadModalProps> = ({
   projectId,
   onClose,
   onUploaded,
+  onDuplicate,
 }) => {
   const { addToast } = useToast();
   const [dragOver, setDragOver] = useState(false);
@@ -195,6 +199,8 @@ export const ProjectUploadModal: React.FC<ProjectUploadModalProps> = ({
         onUploaded(doc);
       } catch (err) {
         if (isDuplicateDocumentError(err)) {
+          const existingId = duplicateDocumentIdFromError(err);
+          if (existingId && onDuplicate) onDuplicate(existingId);
           setQueue((prev) =>
             prev.map((q) =>
               q.id === item.id
@@ -211,7 +217,10 @@ export const ProjectUploadModal: React.FC<ProjectUploadModalProps> = ({
           addToast({
             type: 'warning',
             title: 'Already added',
-            description: `“${item.file.name}” is already ${projectId ? 'in this project' : 'in your documents'}.`,
+            description:
+              existingId && onDuplicate
+                ? `“${item.file.name}” is already in your documents, so that copy will be used.`
+                : `“${item.file.name}” is already ${projectId ? 'in this project' : 'in your documents'}.`,
           });
         } else {
           const msg = getDocumentErrorMessage(err, 'Upload failed.');
