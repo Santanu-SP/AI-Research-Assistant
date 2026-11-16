@@ -393,7 +393,28 @@ const ResearchResult: React.FC<ResearchResultProps> = ({
             {result.citations.length !== 1 ? 's' : ''}
           </span>
         </div>
-        <SafeMarkdown content={result.answer} />
+        <SafeMarkdown
+          content={result.answer}
+          renderCitation={(sourceNumber, key) => {
+            const citationId = `S${sourceNumber}`;
+            if (!result.citations.some((c) => c.citationId === citationId)) {
+              return null;
+            }
+            return (
+              <button
+                key={key}
+                type="button"
+                aria-label={`View citation ${citationId}`}
+                onClick={() =>
+                  onSelectCitation(selectedCitationId === citationId ? null : citationId)
+                }
+                className="mx-0.5 inline-flex h-[18px] min-w-[18px] -translate-y-px items-center justify-center rounded bg-accent-soft px-1 align-middle font-mono text-[11px] font-medium leading-none text-accent hover:bg-accent-muted"
+              >
+                {sourceNumber}
+              </button>
+            );
+          }}
+        />
 
         {result.citations.length > 0 && (
           <div className="mt-4 pt-4 border-t border-line">
