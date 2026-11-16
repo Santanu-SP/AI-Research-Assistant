@@ -150,6 +150,11 @@ class Settings(BaseSettings):
     jina_reranker_model: str = "jina-reranker-v2-base-multilingual"
     jina_reader_base_url: str = "https://r.jina.ai"
     final_context_k: int = Field(default=8, ge=1, le=12)
+    # After the best final_context_k chunks, keep adding relevant ones until
+    # the evidence holds about this many characters (0 turns it off). Helps
+    # documents with short chunks, such as DOCX files with many small sections.
+    evidence_char_budget: int = Field(default=8000, ge=0, le=40000)
+    evidence_max_items: int = Field(default=16, ge=1, le=24)
     minimum_evidence_count: int = Field(default=1, ge=1, le=8)
     reranker_min_score: float = 0.0
     adaptive_fast_path_enabled: bool = True

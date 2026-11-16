@@ -176,13 +176,41 @@ def resolve_execution_profile(
             allow_sticky_fallback=allow_sticky,
         )
 
+    # Deep reads more: chunks are often short (one heading each), so a wider
+    # pool and a few more evidence blocks cost little and catch the states,
+    # failure cases and endpoints that sit in separate sections.
     return ResearchExecutionProfile(
         mode="deep",
-        settings=settings,
+        settings=settings.model_copy(
+            update={
+                "hybrid_candidate_k": max(settings.hybrid_candidate_k, 30),
+                "final_context_k": max(settings.final_context_k, 12),
+                "evidence_char_budget": max(settings.evidence_char_budget, 12000),
+                "evidence_max_items": max(settings.evidence_max_items, 20),
+                "generation_max_new_tokens": max(settings.generation_max_new_tokens, 1024),
+            }
+        ),
         provider_timeout_seconds=provider_timeout,
         primary_timeout_seconds=primary_timeout,
         allow_sticky_fallback=allow_sticky,
     )
+
+
+def build_evidence(ranked, settings: Settings, mode: str):
+    """Pick the evidence blocks for the prompt.
+
+    Quick and fast paths keep their small fixed count. Standard and deep top
+    up with further relevant chunks while the evidence is still short.
+    """
+    if mode in ("standard", "deep"):
+        return EvidenceBuilder().build(
+            ranked,
+            limit=settings.final_context_k,
+            char_budget=settings.evidence_char_budget,
+            max_items=settings.evidence_max_items,
+            min_extra_score=settings.reranker_min_score,
+        )
+    return EvidenceBuilder().build(ranked, limit=settings.final_context_k)
 
 
 def _plain_answer(answer: str) -> str:
@@ -228,8 +256,10 @@ def _report_payload(
         )
         citation_payloads.append({"sourceId": source_uuid, "position": position})
 
-    display_answer = _plain_answer(answer)
-    reading_minutes = max(1, len(display_answer.split()) // 200 + 1)
+    # Keep the [S1] markers: the report page turns them into clickable
+    # source chips next to the sentence they support.
+    display_answer = answer.strip()
+    reading_minutes = max(1, len(_plain_answer(answer).split()) // 200 + 1)
     return ResearchReportCreate(
         title=title,
         summary=display_answer,
@@ -528,9 +558,7 @@ def execute_research(
             )
         else:
             ranked = []
-        evidence = EvidenceBuilder().build(
-            ranked, limit=runtime_settings.final_context_k
-        )
+        evidence = build_evidence(ranked, runtime_settings, profile.mode)
         insufficient = not evidence_is_sufficient(
             evidence,
             minimum_count=runtime_settings.minimum_evidence_count,
