@@ -37,6 +37,8 @@ const documentsListEqual = (a: Document[], b: Document[]): boolean => {
       left.ingestionStatus !== right.ingestionStatus ||
       left.updatedAt !== right.updatedAt ||
       left.processingError !== right.processingError ||
+      left.processingStage !== right.processingStage ||
+      left.processingProgress !== right.processingProgress ||
       left.projectId !== right.projectId ||
       left.size !== right.size ||
       left.chunkCount !== right.chunkCount

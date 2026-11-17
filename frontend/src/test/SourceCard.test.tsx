@@ -33,9 +33,28 @@ describe('SourceCard', () => {
     expect(screen.queryByText(/processing|indexed|chunk/i)).not.toBeInTheDocument();
   });
 
-  it('treats freshly uploaded files as preparing', () => {
+  it('treats freshly uploaded files as waiting to start', () => {
     render(<SourceCard document={makeDocument({ status: 'uploaded', ingestionStatus: 'uploaded' })} onOpen={vi.fn()} />);
-    expect(screen.getByText('Preparing…')).toBeInTheDocument();
+    expect(screen.getByText('Waiting to start')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Open/i })).not.toBeInTheDocument();
+  });
+
+  it('shows the current step while a file is being prepared', () => {
+    const { rerender } = render(
+      <SourceCard document={makeProcessingDocument({ processingStage: 'ocr', pageCount: null })} />
+    );
+    expect(screen.getByText('Reading text from images (OCR)')).toBeInTheDocument();
+
+    rerender(
+      <SourceCard
+        document={makeProcessingDocument({ processingStage: 'embedding', processingProgress: 40, pageCount: 12 })}
+      />
+    );
+    expect(screen.getByText('Making it searchable · 40% · 12 pages')).toBeInTheDocument();
+    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '71');
+
+    rerender(<SourceCard document={makeProcessingDocument({ processingStage: 'saving', pageCount: null })} />);
+    expect(screen.getByText('Saving')).toBeInTheDocument();
   });
 
   it('shows a plain message for failed files', () => {

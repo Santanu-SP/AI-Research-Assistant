@@ -52,6 +52,10 @@ export interface Document {
   pageCount?: number | null;
   uploadedAt: string;
   processingError?: string | null;
+  /** While preparing: reading, ocr, embedding or saving. */
+  processingStage?: string | null;
+  /** 0-100 within the embedding step. */
+  processingProgress?: number | null;
   chunkCount?: number;
   createdAt: string;
   updatedAt: string;

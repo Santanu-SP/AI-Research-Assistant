@@ -8,6 +8,7 @@ import {
   duplicateDocumentIdFromError,
   isDocumentPending,
 } from '../../services/documents.service';
+import { ingestionStep } from '../../lib/ingestionProgress';
 import { Document } from '../../types/document';
 import { useToast } from '../../app/ToastContext';
 import { useSessionDataCache } from '../../app/SessionDataCacheContext';
@@ -27,6 +28,8 @@ interface QueuedItem {
   documentId?: string;
   status: FileItemStatus;
   errorMessage?: string;
+  /** The server's current step while the file is being prepared. */
+  stepLabel?: string;
 }
 
 interface ProjectUploadModalProps {
@@ -180,7 +183,11 @@ export const ProjectUploadModal: React.FC<ProjectUploadModalProps> = ({
         prev.map((item) => {
           if (item.status !== 'processing' || !item.documentId) return item;
           const fresh = resolvedById.get(item.documentId);
-          if (!fresh || isDocumentPending(fresh)) return item;
+          if (!fresh) return item;
+          if (isDocumentPending(fresh)) {
+            const stepLabel = ingestionStep(fresh).label;
+            return stepLabel === item.stepLabel ? item : { ...item, stepLabel };
+          }
           anyFinished = true;
           const mapped = mapServerDocumentStatus(fresh);
           return {
@@ -577,7 +584,7 @@ export const ProjectUploadModal: React.FC<ProjectUploadModalProps> = ({
                         : 'text-ink-muted'
                     }`}
                   >
-                    {STATUS_LABELS[item.status]}
+                    {item.status === 'processing' && item.stepLabel ? item.stepLabel : STATUS_LABELS[item.status]}
                   </span>
                 </div>
               ))}

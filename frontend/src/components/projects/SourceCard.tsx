@@ -2,6 +2,7 @@ import React from 'react';
 import { FileText, Trash2, X } from 'lucide-react';
 import { Document } from '../../types/document';
 import { isDocumentPending } from '../../services/documents.service';
+import { ingestionStep } from '../../lib/ingestionProgress';
 
 interface SourceCardProps {
   document: Document;
@@ -81,6 +82,7 @@ export const SourceCard: React.FC<SourceCardProps> = ({
   const showFileName = !compact && document.title && document.title !== document.name;
   const state = document.status === 'failed' ? 'failed' : isDocumentPending(document) ? 'preparing' : 'ready';
   const canOpen = state === 'ready' && Boolean(onOpen);
+  const step = ingestionStep(document);
   const canEdit = !isArchived && !isDeleting;
 
   const meta: string[] = [];
@@ -168,8 +170,24 @@ export const SourceCard: React.FC<SourceCardProps> = ({
 
         {state === 'preparing' ? (
           <p className="mt-1 flex items-center gap-2 text-xs text-ink-muted">
-            <span>Preparing…</span>
-            <span className="doc-skeleton h-1.5 w-16 rounded-full" aria-hidden="true" />
+            <span aria-live="polite">{step.label}</span>
+            {step.percent === null ? (
+              <span className="doc-skeleton h-1.5 w-16 rounded-full" aria-hidden="true" />
+            ) : (
+              <span
+                className="relative h-1.5 w-16 overflow-hidden rounded-full bg-subtle"
+                role="progressbar"
+                aria-label={`Preparing ${displayName}`}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={step.percent}
+              >
+                <span
+                  className="absolute inset-y-0 left-0 rounded-full bg-accent transition-[width] duration-500"
+                  style={{ width: `${step.percent}%` }}
+                />
+              </span>
+            )}
           </p>
         ) : state === 'failed' ? (
           <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-xs text-ink-soft">
