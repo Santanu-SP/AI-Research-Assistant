@@ -127,6 +127,37 @@ describe('projectsService', () => {
       expect(opts.method).toBe('DELETE');
     });
   });
+
+  describe('restoreProject', () => {
+    it('sends POST to the restore endpoint and returns the project', async () => {
+      const fetchMock = mockFetch(makeProject({ archivedAt: null }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      const result = await projectsService.restoreProject('proj-alpha-123');
+      const [url, opts] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toMatch(/\/projects\/proj-alpha-123\/restore$/);
+      expect(opts.method).toBe('POST');
+      expect(result.archivedAt).toBeNull();
+    });
+  });
+
+  describe('deleteProjectPermanently', () => {
+    it('sends DELETE to the permanent endpoint', async () => {
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 204,
+        statusText: 'No Content',
+        json: () => Promise.resolve(undefined),
+        text: () => Promise.resolve(''),
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      await projectsService.deleteProjectPermanently('proj-alpha-123');
+      const [url, opts] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toMatch(/\/projects\/proj-alpha-123\/permanent$/);
+      expect(opts.method).toBe('DELETE');
+    });
+  });
 });
 
 describe('getProjectErrorMessage', () => {
