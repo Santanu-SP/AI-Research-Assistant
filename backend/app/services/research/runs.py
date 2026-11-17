@@ -645,6 +645,26 @@ def archive_research(session: Session, research_id: UUID, user_id: UUID | None =
     _commit(session)
 
 
+def restore_research(session: Session, research_id: UUID, user_id: UUID | None = None) -> Research:
+    """Bring back a deleted research run. Deleting only hides it, so undo is safe."""
+    filters = [Research.id == research_id]
+    if user_id is not None:
+        filters.append(Research.user_id == user_id)
+    research = session.scalar(select(Research).where(*filters))
+    if research is None:
+        raise AppError(
+            "Research not found",
+            status_code=404,
+            code="research_not_found",
+        )
+    if research.archived_at is not None:
+        research.archived_at = None
+        research.updated_at = utc_now()
+        _commit(session)
+        session.refresh(research)
+    return research
+
+
 def attach_source_counts(session: Session, records: list[Research]) -> list[Research]:
     """Fill the response-only ``source_count`` with one grouped query."""
     if not records:
