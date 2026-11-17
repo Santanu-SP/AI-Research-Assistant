@@ -117,7 +117,32 @@ export interface ModelUsageBreakdownItem {
   lastUsedAt?: string | null;
 }
 
+export interface ProviderCreditItem {
+  provider: string;
+  label: string;
+  modelName: string;
+  mode: string;
+  unlimited: boolean;
+  remainingPct: number;
+  shortWindowPct: number;
+  longWindowPct: number;
+  shortResetsAt: string;
+  longResetsAt: string;
+  shortRemaining: number;
+  shortCap: number;
+  longRemaining: number;
+  longCap: number;
+}
+
 export interface ModelUsageQuotaSummary {
+  overallRemainingPct?: number;
+  shortWindowHours?: number;
+  longWindowDays?: number;
+  shortCreditsPerModel?: number;
+  longCreditsPerModel?: number;
+  shortResetsAt?: string | null;
+  longResetsAt?: string | null;
+  providerCredits?: ProviderCreditItem[];
   enrolledUsers: number;
   sharedRequestsUsedToday: number;
   userDailyRequestCap: number;
