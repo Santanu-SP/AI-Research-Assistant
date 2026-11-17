@@ -84,7 +84,19 @@ export const SourceCard: React.FC<SourceCardProps> = ({
   const canEdit = !isArchived && !isDeleting;
 
   const meta: string[] = [];
-  if (document.pageCount && document.pageCount > 0) meta.push(`${document.pageCount} pages`);
+  if (document.pageCount && document.pageCount > 0) {
+    const unit =
+      document.type === 'pptx'
+        ? ['slide', 'slides']
+        : document.type === 'xlsx'
+          ? ['sheet', 'sheets']
+          : document.type === 'audio' || document.type === 'video' || document.type === 'youtube'
+            ? ['segment', 'segments']
+            : document.type === 'web' || document.type === 'html' || document.type === 'image'
+              ? ['section', 'sections']
+              : ['page', 'pages'];
+    meta.push(`${document.pageCount} ${document.pageCount === 1 ? unit[0] : unit[1]}`);
+  }
   meta.push(formatSize(document.size));
   if (!compact) meta.push(`Added ${formatDate(document.uploadedAt)}`);
 

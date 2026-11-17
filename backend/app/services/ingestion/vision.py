@@ -60,7 +60,14 @@ def inspect_image_for_vision(
                 return ImageInspection(
                     False, width, height, 0.0, "extreme_aspect_ratio_banner"
                 )
-            grayscale = img.convert("L").resize((64, 64))
+            # Flatten transparent diagrams onto white so transparent margins don't read as black.
+            if img.mode in {"RGBA", "LA"} or "transparency" in img.info:
+                rgba = img.convert("RGBA")
+                background = Image.new("RGBA", rgba.size, (255, 255, 255, 255))
+                composited = Image.alpha_composite(background, rgba).convert("L")
+            else:
+                composited = img.convert("L")
+            grayscale = composited.resize((64, 64))
             arr = np.asarray(grayscale, dtype=np.float32)
             std_dev = float(arr.std())
             if std_dev < min_std_dev:
@@ -134,7 +141,16 @@ class GeminiVisionAnalyzer:
         if context_hint:
             prompt = f"{prompt}\nContext: {context_hint}"
 
-        encoded = base64.b64encode(image_bytes).decode("ascii")
+        send_bytes = image_bytes
+        send_mime = mime_type
+        if mime_type not in {"image/png", "image/jpeg", "image/webp"}:
+            with Image.open(BytesIO(image_bytes)) as img:
+                png_buf = BytesIO()
+                img.convert("RGBA").save(png_buf, format="PNG")
+                send_bytes = png_buf.getvalue()
+                send_mime = "image/png"
+
+        encoded = base64.b64encode(send_bytes).decode("ascii")
         payload = {
             "contents": [
                 {
@@ -142,7 +158,7 @@ class GeminiVisionAnalyzer:
                         {"text": prompt},
                         {
                             "inline_data": {
-                                "mime_type": mime_type,
+                                "mime_type": send_mime,
                                 "data": encoded,
                             }
                         },

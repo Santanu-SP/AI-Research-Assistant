@@ -192,4 +192,21 @@ describe('documentsService caching signals', () => {
       window.removeEventListener('documents:changed', listener);
     }
   });
+
+  it('posts project URL sources via addUrlDocument and notifies listeners', async () => {
+    const fetchMock = mockFetch({ id: 'doc-url-1', name: 'Example', type: 'web' }, 201);
+    vi.stubGlobal('fetch', fetchMock);
+    const listener = vi.fn();
+    window.addEventListener('documents:changed', listener);
+    try {
+      await documentsService.addUrlDocument('https://example.com', 'Example', 'proj-1');
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining('/projects/proj-1/documents/url'),
+        expect.objectContaining({ method: 'POST' })
+      );
+      expect(listener).toHaveBeenCalledTimes(1);
+    } finally {
+      window.removeEventListener('documents:changed', listener);
+    }
+  });
 });

@@ -173,6 +173,7 @@ def _register_url_document(
             "This URL source has already been added to this project",
             status_code=409,
             code="duplicate_document",
+            details={"documentId": str(duplicate.id)},
         )
 
     extension = ".youtube" if is_yt else ".web"
@@ -309,7 +310,11 @@ async def retry_document(
             status_code=409,
             code="document_not_retryable",
         )
-    if not storage.path_for(document.stored_name).is_file():
+    is_url_source = (
+        document.file_type in (DocumentType.YOUTUBE, DocumentType.WEB)
+        and bool(document.source_url)
+    )
+    if not is_url_source and not storage.path_for(document.stored_name).is_file():
         raise AppError(
             "The stored file for this document is missing; upload it again",
             status_code=409,
