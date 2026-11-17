@@ -9,6 +9,7 @@ An evidence-first research workspace for ingesting multimodal documents and URLs
 - **Multimodal & URL Ingestion**:
   - **Files**: `.pdf`, `.docx`, `.pptx`, `.xlsx`, `.html`/`.htm`, audio (`.mp3`, `.wav`, `.m4a`, `.ogg`, `.flac`, `.webm`), video (`.mp4`, `.mov`, `.mkv`, `.webm`), and images (`.png`, `.jpg`, `.jpeg`, `.webp`, `.tiff`, `.tif`).
   - **URLs**: YouTube transcripts (`YouTubeIngestionAdapter`) and public web pages (`r.jina.ai` + BeautifulSoup SSRF-guarded fallback).
+  - **Controlled Discovery**: Keyless scholarly & encyclopedia connectors (**OpenAlex**, **Crossref**, **arXiv**, **Wikipedia**) queried in parallel with DOI/title deduplication, trust tier classification (`peer-reviewed`, `preprint`, `institutional`), and SSRF-safe ingestion (Open-Access PDF full text with graceful fallback to verified abstracts).
   - **Parsing & Deduplication**: Default Docling + LlamaIndex `Document` / `HybridChunker` normalization (preserving page ranges, sections, tables, and captions), explicit `pypdf` PDF-only fallback, SHA-256 duplicate checks scoped per user and project, and retry/replacement of failed uploads.
 - **Hybrid Retrieval & Adaptive RAG Pipeline**:
   - **Embeddings**: Local `Qwen/Qwen3-Embedding-0.6B` (1,024-dim, offline-first cache + LRU query embedding cache) or Cloudflare Workers AI (`@cf/baai/bge-m3`).
@@ -35,6 +36,7 @@ backend/app/
   schemas/        Pydantic request and response models
   services/
     auth/         cookie sessions, sliding inactivity, password hashing, and Google OAuth
+    discovery/    curated OpenAlex, Crossref, arXiv, and Wikipedia connectors + SSRF-safe ingestion
     documents/    upload records, local disk and Cloudflare R2 storage, presigned URLs
     ingestion/    Docling, pypdf fallback, Office/HTML, audio, video, vision, web, and YouTube parsers
     jobs/         PostgreSQL SKIP LOCKED queue, background worker, maintenance recovery, Celery option
@@ -59,7 +61,8 @@ docs/             setup, project structure, and handoff guides
 
 ```text
 Authenticated user + owned project (or unscoped library)
-  → File upload (.pdf/.docx/.pptx/.xlsx/.html/audio/video/image) or URL (web/YouTube)
+  → File upload (.pdf/.docx/.pptx/.xlsx/.html/audio/video/image), URL (web/YouTube),
+    or Controlled Discovery (OpenAlex / Crossref / arXiv / Wikipedia)
   → SHA-256 project-scoped deduplication + local or Cloudflare R2 storage
   → 202 Accepted + job dispatch (PostgreSQL `background_jobs` or Celery/Redis)
   → Worker: Docling/LlamaIndex HybridChunker or multimodal/URL extractor
@@ -109,7 +112,8 @@ npm run dev
 - `/projects`: private project creation, listing/search/archive filters, updates, and soft archiving.
 - `/documents`: user-scoped upload (`POST`), URL ingestion (`POST /url`), list/filter (`GET`), metadata/delete, inline file streaming (`GET /{id}/file`), R2 presigned downloads (`GET /{id}/signed-url`), `POST /{id}/reembed`, and failed document retry (`POST /{id}/retry`).
 - `/projects/{project_id}/documents`: exact project-scoped file upload, URL ingestion (`/url`), and document listing.
-- `/research`: research CRUD, project filtering, progress polling (`/status`), persisted reports (`/report`), raw hybrid retrieval inspection (`POST /retrieve`), grounded synchronous fast queries (`POST /query`), background research jobs (`POST /jobs`), and in-place retry (`POST /{id}/retry`).
+- `/discovery`: `GET /status` (active scopes & providers), `POST /search` (rate-limited cross-provider search with library annotation), and `POST /import` (SSRF-guarded batch ingestion into personal library or project).
+- `/research`: research CRUD, project filtering, progress polling (`/status`), persisted reports (`/report`), raw hybrid retrieval inspection (`POST /retrieve`), grounded synchronous fast queries (`POST /query`), background research jobs (`POST /jobs`), and in-place retry (`POST /{id}/retry`). Supports scoped `documentIds`, `autoDiscover: true`, and `discoveryScope`.
 - `/jobs/{job_id}` and `/telemetry/summary`: background job status tracking and pipeline latency/cache/token telemetry.
 - `/health`, `/health/live`, and `/health/ready`: liveness and dependency readiness checks (database, `pgvector`, and Ollama or LLM router availability).
 
@@ -123,6 +127,7 @@ Existing records with `project_id = NULL` remain supported. Project-scoped retri
 - `0013`: persistent `background_jobs` table (`FOR UPDATE SKIP LOCKED`) and lease/heartbeat recovery columns.
 - `0014`–`0015`: Neon/multimodal extensions, user BYOK key table, telemetry events, widened `file_type`/`source_type`/`content_level` enums and `CHECK` constraints.
 - `0016_model_prefs_usage_quota`: persisted user provider/model preferences, `local_fallback` setting, and atomic daily quota ledger (`daily_usage_quotas`).
+- `0017_research_documents`: per-research document scope join table and foreign key cascading.
 
 ## Supported vs remaining deferred scope
 
@@ -130,12 +135,12 @@ Existing records with `project_id = NULL` remain supported. Project-scoped retri
 
 - Files: PDF, DOCX, PPTX, XLSX, HTML/HTM, audio (`mp3`, `wav`, `m4a`, `ogg`, `flac`, `webm`), video (`mp4`, `mov`, `mkv`, `webm`), and images (`png`, `jpg`, `jpeg`, `webp`, `tiff`, `tif`).
 - URLs: YouTube video transcripts and public web articles (SSRF-guarded).
+- Controlled Discovery: Live OpenAlex, Crossref, arXiv, and Wikipedia scholarly connectors with automated DOI resolution, trust tier badges, and Open-Access PDF or verified abstract ingestion.
 - Cloud & local deployment stack: Neon PostgreSQL + `pgvector`, Cloudflare R2 object storage, optional Celery/Redis workers, Cloudflare Workers AI / Jina adapters, 8-provider LLM router + BYOK + Ollama, and Ragas-style quality metrics in `observability/evaluation.py`.
 
 ### Deferred
 
 - Plain text/Markdown/CSV direct file upload types (`txt`, `md`, `csv`) and structured metadata retrieval filter UI.
-- Live Crossref / OpenAlex scholarly API connectors and automated DOI resolution (schema fields exist cleanly for future wiring).
 - Schema-constrained (strict Pydantic) structured generation and LangGraph multi-agent orchestration.
 - Shared multi-process (Redis) HTTP rate limiter and full email-verification workflow.
 
@@ -156,8 +161,14 @@ Every PR merged into `main` (plus the current stack) shaped the system as follow
 | **#40–#42** | Neon PostgreSQL + Cloudflare R2 + multimodal parsers + Celery/Redis option + centralized free-tier LLM router & evaluation helpers (`0014`–`0015`, #40); `cryptography`/`pillow` CVE upgrades & Gitleaks CI fix (#41); adaptive RAG fast-path, lexical reranking, query embedding LRU cache, pooled HTTP clients, sticky Gemini fallback, and synchronous quick queries dropping warm latency from ~40s to ~2.5s (#42). |
 | **#43, #45** | Sliding 3-day inactivity / 7-day max sessions, 8 cloud LLM providers + dynamic Ollama probing, encrypted BYOK keys, persisted model/fallback preferences (`0016`), atomic fair-share daily quota enforcement, `ModelControlBar`, Settings usage breakdown (#43), and CI Alembic revision ID (`<= 32` chars) + Gitleaks cleanup (#45). |
 | **#44** | In-place retry for failed runs (`POST /research/{id}/retry`), 15s duplicate-submission guard, collapsed desktop sidebar icon rail, and pointer/layout polish. |
-| **#46** *(stack base)* | Fixed login on mixed `localhost`/`127.0.0.1` loopback hosts for `SameSite` cookies and added `PUT` to CORS allowed methods for BYOK API key updates. |
-| **Latest PR (this branch)** | Google OAuth hardening (10s clock-skew leeway, SQLAlchemy rollback on callback errors, disabled-account rejection, explicit error messages, loopback-host `.env.example` note), React navigation/cache stability (`ErrorBoundary` `resetKey`, `SessionDataCacheContext` SWR caching, quiet document reloads, event-driven sidebar history updates, persistent `Ask`/`Documents` tabs, `ModelControlBar` effect stabilization, resilient session checks), and comprehensive `README.md` sync. |
+| **#46** | Fixed login on mixed `localhost`/`127.0.0.1` loopback hosts for `SameSite` cookies and added `PUT` to CORS allowed methods for BYOK API key updates. |
+| **#47** | Google OAuth hardening (10s clock-skew leeway, SQLAlchemy rollback on callback errors, disabled-account rejection, explicit error messages, loopback-host `.env.example` note), React navigation/cache stability (`ErrorBoundary` `resetKey`, `SessionDataCacheContext` SWR caching, quiet document reloads, event-driven sidebar history updates, persistent `Ask`/`Documents` tabs, `ModelControlBar` effect stabilization, resilient session checks), and comprehensive `README.md` sync. |
+| **#48** | Research worker concurrency: dedicated worker threads for research queries and OCR skip when PDFs already contain valid digital text. |
+| **#49** | Answer quality improvements: list and bold markdown formatting, hybrid passage retrieval boost, prompt grounding, and citation validator preserving grounded citations. |
+| **#50** | Per-research document scoping via `research_documents` join table (`0017`), new research starting with zero documents, library picker modal (`LibraryPickerDialog`), and `POST /research/query` + `POST /research/jobs` document scoping. |
+| **#51** | Multimodal ingestion fixes: browser MIME aliases (`.mkv`, `.flac`, `.m4a`), PPTX/YouTube/audio/video/vision ingestion pipeline fixes, and upload modal status synchronization. |
+| **#52** | Route `/library` rename and dedicated Library view with filters, sidebar route-based active tab highlighting, light/dark theme switch moved to Settings, and project archive/restore/permanent delete. |
+| **Latest PR (this branch)** | Controlled Discovery: keyless curated connectors (OpenAlex, Crossref, arXiv, Wikipedia), parallel search with DOI/title deduplication, SSRF-safe ingestion ladder (Open-Access PDF full text → Wikipedia/web articles → verified abstract fallback), provenance & coverage badges, opt-in auto-discovery RAG with rich bibliographic citations (publisher, year, DOI, source URL), and regression test suite. |
 
 ## Validation
 
