@@ -48,7 +48,7 @@ describe('RunRecovery', () => {
     retryMock.mockImplementation(() => new Promise<void>((resolve) => (finish = resolve)));
     const onRestarted = renderRecovery(failed());
 
-    expect(screen.getByText(/language model didn’t reply/i)).toBeInTheDocument();
+    expect(screen.getByText(/The model didn’t reply/i)).toBeInTheDocument();
     const button = screen.getByRole('button', { name: /try again/i });
     fireEvent.click(button);
     fireEvent.click(button);
@@ -71,11 +71,11 @@ describe('RunRecovery', () => {
     expect(retryMock).toHaveBeenCalledWith('run-1', { query: 'What limits photosynthesis?' });
   });
 
-  it('points to the documents when they are still being prepared', () => {
+  it('points to the files when they are still being prepared', () => {
     renderRecovery(failed({ failureReason: 'no_ready_documents', documentsReady: 0, documentsPreparing: 2 }));
 
-    expect(screen.getByText(/2 documents are still being prepared/i)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /documents status/i })).toHaveAttribute(
+    expect(screen.getByText(/2 files are still being prepared/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /see file status/i })).toHaveAttribute(
       'href',
       '/projects/project-1?tab=documents',
     );

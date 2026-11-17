@@ -20,13 +20,13 @@ const explanation = (progress: ResearchProgressResponse): string => {
   const preparing = progress.documentsPreparing ?? 0;
   switch (progress.failureReason) {
     case 'model_unavailable':
-      return 'The language model didn’t reply, so no answer could be written. This is usually temporary: the model may be busy, switched off, or not set up yet.';
+      return 'The model didn’t reply, so no answer could be written. This is usually temporary: the model may be busy, switched off, or not set up yet.';
     case 'quota_reached':
       return 'Today’s shared model requests are used up. Add your own API key or turn on the local model, then try again.';
     case 'no_ready_documents':
       return preparing > 0
-        ? 'Your documents are still being prepared, so there was nothing to answer from yet. Try again once they’re ready.'
-        : 'There are no ready documents to answer from yet. Upload a document, then try again.';
+        ? 'Your files are still being prepared, so there was nothing to answer from yet. Try again once they’re ready.'
+        : 'There are no ready files to answer from yet. Upload a file, then try again.';
     default:
       return 'Something went wrong while the answer was being written. Trying again usually works.';
   }
@@ -110,9 +110,9 @@ export const RunRecovery: React.FC<RunRecoveryProps> = ({ progress, onRestarted 
           </p>
           {preparing > 0 && (
             <p className="mt-2 text-[13px] text-ink-soft">
-              {preparing} document{preparing === 1 ? ' is' : 's are'} still being prepared.{' '}
+              {preparing} file{preparing === 1 ? ' is' : 's are'} still being prepared.{' '}
               <Link to={documentsHref} className="font-medium text-accent hover:underline">
-                Check documents
+                Check files
               </Link>
             </p>
           )}
@@ -203,7 +203,7 @@ export const RunRecovery: React.FC<RunRecoveryProps> = ({ progress, onRestarted 
           </button>
           {showDocuments && (
             <Link to={documentsHref} className="btn-ghost">
-              {preparing > 0 ? 'Documents status' : 'Add documents'}
+              {preparing > 0 ? 'See file status' : 'Add files'}
               <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           )}

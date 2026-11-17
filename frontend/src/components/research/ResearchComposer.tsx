@@ -23,7 +23,7 @@ interface ResearchComposerProps {
 }
 
 const LOADING_MESSAGES = [
-  'Searching your papers',
+  'Searching your files',
   'Gathering the strongest evidence',
   'Writing your answer',
 ];
@@ -102,7 +102,7 @@ export const ResearchComposer: React.FC<ResearchComposerProps> = ({
           rows={4}
           disabled={isLoading}
           className="w-full min-h-[120px] resize-none border-0 bg-transparent p-0 text-[15px] leading-relaxed text-ink placeholder:text-ink-muted focus:outline-none focus-visible:outline-none"
-          placeholder="Ask a question about your papers, e.g. Does residence time predict in-vivo efficacy better than affinity?"
+          placeholder="Ask a question about your files, e.g. Does residence time predict in-vivo efficacy better than affinity?"
         />
       </div>
 

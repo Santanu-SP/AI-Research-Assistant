@@ -156,7 +156,7 @@ export function useDocumentLibrary(
           setDocuments([]);
           setTotal(0);
         }
-        setError(getDocumentErrorMessage(err, 'Your documents could not be loaded.'));
+        setError(getDocumentErrorMessage(err, 'Your files could not be loaded.'));
       })
       .finally(() => {
         if (!controller.signal.aborted) setIsLoading(false);

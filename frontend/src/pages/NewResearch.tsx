@@ -127,7 +127,7 @@ export const NewResearch: React.FC = () => {
                 What do you want to find out?
               </h1>
               <p className="mt-2 max-w-xl text-sm leading-relaxed text-ink-soft">
-                Answers come only from the documents you add for this research, and each claim
+                Answers come only from the files you add for this research, and each claim
                 links to the passage it came from.
               </p>
             </div>
@@ -152,7 +152,7 @@ export const NewResearch: React.FC = () => {
                   <FolderOpen className="h-4 w-4 text-accent" strokeWidth={1.75} />
                   <span className="mt-3 text-[13px] font-medium text-ink">Keep a topic scoped</span>
                   <span className="mt-1 text-xs leading-relaxed text-ink-muted">
-                    Ask inside a project to use just that project’s papers.
+                    Ask inside a project to use just that project’s files.
                   </span>
                 </Link>
               </li>

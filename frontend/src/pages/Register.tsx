@@ -29,7 +29,7 @@ export const RegisterPage: React.FC = () => {
     } finally { setBusy(false); }
   };
 
-  return <AuthShell title="Create your account" description="Upload your papers and start asking questions in a few minutes.">
+  return <AuthShell title="Create your account" description="Upload your files and start asking questions in a few minutes.">
     <form onSubmit={(event) => void submit(event)} className="space-y-4">
       {error && <p role="alert" className="rounded-md border border-danger-line bg-danger-soft px-3 py-2.5 text-[13px] text-danger">{error}</p>}
       <div><label htmlFor="register-name" className={authLabelClass}>Name</label><input id="register-name" autoComplete="name" required value={name} onChange={(event) => setName(event.target.value)} className={authInputClass} /></div>

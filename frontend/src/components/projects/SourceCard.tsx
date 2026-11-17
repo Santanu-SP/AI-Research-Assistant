@@ -160,7 +160,7 @@ export const SourceCard: React.FC<SourceCardProps> = ({
           {onDelete && canEdit && (
             <button
               type="button"
-              aria-label={`Delete document: ${displayName}`}
+              aria-label={`Delete file: ${displayName}`}
               title="Delete"
               onClick={() => onDelete(document.id)}
               className={`relative z-[1] flex shrink-0 items-center justify-center rounded-md text-ink-muted transition-[opacity,color,background-color] hover:bg-danger-soft hover:text-danger focus-visible:opacity-100 ${

@@ -129,9 +129,9 @@ export const DocumentsPanel: React.FC<DocumentsPanelProps> = ({
           </div>
         ) : documents.length === 0 ? (
           <div className="px-4 py-8 text-center">
-            <p className="text-[13px] font-medium text-ink">Add a paper to get started</p>
+            <p className="text-[13px] font-medium text-ink">Add a file to get started</p>
             <p className="mx-auto mt-1 max-w-[240px] text-xs leading-relaxed text-ink-muted">
-              Answers are drawn only from the documents listed here.
+              Answers are drawn only from the files listed here.
             </p>
             {!readOnly && (
               <button
@@ -140,7 +140,7 @@ export const DocumentsPanel: React.FC<DocumentsPanelProps> = ({
                 className="mt-3 inline-flex h-8 items-center gap-1.5 rounded-md bg-solid px-3 text-[13px] font-medium text-on-solid shadow-xs hover:bg-solid-hover"
               >
                 <Plus className="h-3.5 w-3.5" />
-                Upload a document
+                Upload a file
               </button>
             )}
           </div>
@@ -176,7 +176,7 @@ export const DocumentsPanel: React.FC<DocumentsPanelProps> = ({
           )}
           {manageHref && total > 0 && (
             <Link to={manageHref} className="inline-flex items-center gap-1 font-medium text-ink-soft hover:text-ink">
-              Manage documents
+              Manage files
               <ArrowRight className="h-3 w-3" />
             </Link>
           )}

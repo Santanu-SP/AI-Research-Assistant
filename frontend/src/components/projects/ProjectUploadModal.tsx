@@ -324,7 +324,7 @@ export const ProjectUploadModal: React.FC<ProjectUploadModalProps> = ({
             title: 'Already added',
             description:
               existingId && onDuplicate
-                ? `“${label}” is already in your documents, so that copy will be used.`
+                ? `“${label}” is already in your library, so that copy will be used.`
                 : `“${label}” is already ${projectId ? 'in this project' : 'in your library'}.`,
           });
         } else {
@@ -430,7 +430,7 @@ export const ProjectUploadModal: React.FC<ProjectUploadModalProps> = ({
               id="upload-modal-title"
               className="font-semibold text-base text-ink"
             >
-              Upload documents
+              Upload files
             </h3>
             <p className="text-xs text-ink-soft mt-0.5">
               Documents, slides, sheets, HTML, audio, video, images (up to 25 MB), or web &amp; YouTube links.
@@ -490,7 +490,7 @@ export const ProjectUploadModal: React.FC<ProjectUploadModalProps> = ({
               }}
               role="button"
               tabIndex={0}
-              aria-label="Choose research documents or media files"
+              aria-label="Choose files to upload"
               className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed px-6 py-8 text-center transition-colors duration-150 ${
                 dragOver
                   ? 'border-accent bg-accent-soft'

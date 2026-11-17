@@ -214,9 +214,9 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
         <p className="mb-3 text-xs text-ink-muted">
           {noReadyDocuments && !isArchived
             ? preparingCount > 0
-              ? 'Your documents are almost ready. You can ask as soon as one is ready.'
-              : 'Upload a document to this project to start asking questions.'
-            : <>Answers come only from documents in <span className="font-medium text-ink-soft">{project.name}</span>.</>}
+              ? 'Your files are almost ready. You can ask as soon as one is ready.'
+              : 'Upload a file to this project to start asking questions.'
+            : <>Answers come only from files in <span className="font-medium text-ink-soft">{project.name}</span>.</>}
         </p>
 
         {isArchived ? (
@@ -239,7 +239,7 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
                 value={question}
                 onChange={(e) => setQuestion(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Ask something these documents can answer"
+                placeholder="Ask something these files can answer"
                 rows={3}
                 maxLength={MAX_QUESTION_LENGTH}
                 disabled={researchState === 'submitting'}
@@ -308,7 +308,7 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
           <p className="text-xs text-ink-muted max-w-xs">
             {researchDepth === 'quick'
               ? 'Fast retrieval and synthesis from top passages.'
-              : 'Reading through your documents and writing an answer with citations.'}
+              : 'Reading through your files and writing an answer with citations.'}
           </p>
         </div>
       )}
@@ -378,7 +378,7 @@ const ResearchResult: React.FC<ResearchResultProps> = ({
           <Info className="w-4 h-4 shrink-0 mt-0.5" />
           <p>
             <strong>Limited evidence:</strong> The answer below is based on
-            insufficient evidence from this project's documents. Results may be
+            insufficient evidence from this project's files. Results may be
             incomplete.
           </p>
         </div>

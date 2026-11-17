@@ -79,7 +79,7 @@ describe('SourceCard', () => {
     const onDelete = vi.fn();
     render(<SourceCard document={doc} onDelete={onDelete} isArchived={false} />);
     expect(
-      screen.getByRole('button', { name: /Delete document/i })
+      screen.getByRole('button', { name: /Delete file/i })
     ).toBeInTheDocument();
   });
 
@@ -88,7 +88,7 @@ describe('SourceCard', () => {
     const onDelete = vi.fn();
     render(<SourceCard document={doc} onDelete={onDelete} isArchived={true} />);
     expect(
-      screen.queryByRole('button', { name: /Delete document/i })
+      screen.queryByRole('button', { name: /Delete file/i })
     ).not.toBeInTheDocument();
   });
 
@@ -96,7 +96,7 @@ describe('SourceCard', () => {
     const doc = makeDocument({ id: 'doc-001' });
     const onDelete = vi.fn();
     render(<SourceCard document={doc} onDelete={onDelete} isArchived={false} />);
-    fireEvent.click(screen.getByRole('button', { name: /Delete document/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Delete file/i }));
     expect(onDelete).toHaveBeenCalledWith('doc-001');
   });
 
