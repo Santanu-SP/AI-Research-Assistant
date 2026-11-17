@@ -4,6 +4,7 @@ import { LayoutGrid, Library, LogOut, PanelLeftOpen, Plus, Search, Settings } fr
 import { useAuth } from '../../app/AuthContext';
 import { BrandMark } from '../common/BrandMark';
 import { shortcutLabel } from '../../lib/shortcuts';
+import { activeSection, railButtonClass as railButton } from '../../lib/navigation';
 
 interface SidebarRailProps {
   onExpand: () => void;
@@ -19,11 +20,6 @@ const initials = (name?: string) =>
     .map((part) => part[0]?.toUpperCase())
     .join('');
 
-const railButton = (active = false) =>
-  `rail-tip inline-flex h-9 w-9 items-center justify-center rounded-md transition-colors ${
-    active ? 'bg-subtle text-accent' : 'text-ink-muted hover:bg-subtle hover:text-ink'
-  }`;
-
 /** The slim column of icons shown on desktop while the sidebar is hidden. */
 export const SidebarRail: React.FC<SidebarRailProps> = ({ onExpand, onSearch }) => {
   const location = useLocation();
@@ -32,10 +28,11 @@ export const SidebarRail: React.FC<SidebarRailProps> = ({ onExpand, onSearch }) 
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  const projectsActive = location.pathname.startsWith('/projects');
-  const settingsActive = location.pathname.startsWith('/settings');
-  const libraryActive = location.pathname.startsWith('/library');
-  const newActive = location.pathname === '/research/new';
+  const section = activeSection(location.pathname);
+  const projectsActive = section === 'projects';
+  const settingsActive = section === 'settings';
+  const libraryActive = section === 'library';
+  const newActive = section === 'new-research';
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -85,7 +82,11 @@ export const SidebarRail: React.FC<SidebarRailProps> = ({ onExpand, onSearch }) 
           aria-label="New research"
           data-tip={`New research  ${shortcutLabel('O', { shift: true })}`}
           aria-current={newActive ? 'page' : undefined}
-          className="rail-tip inline-flex h-9 w-9 items-center justify-center rounded-md bg-solid text-on-solid shadow-xs transition-colors hover:bg-solid-hover"
+          className={`rail-tip inline-flex h-9 w-9 items-center justify-center rounded-md border shadow-xs transition-colors ${
+            newActive
+              ? 'border-accent-line bg-accent-muted text-accent'
+              : 'border-line-strong bg-panel text-accent hover:border-accent-line hover:bg-accent-soft'
+          }`}
         >
           <Plus className="h-4 w-4" />
         </Link>
