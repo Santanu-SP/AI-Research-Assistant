@@ -39,6 +39,8 @@ class DocumentResponse(ApiSchema):
     page_count: int | None = Field(default=None, ge=0)
     uploaded_at: datetime
     processing_error: str | None
+    processing_stage: str | None = None
+    processing_progress: int | None = Field(default=None, ge=0, le=100)
     chunk_count: int = Field(default=0, ge=0)
     created_at: datetime
     updated_at: datetime
