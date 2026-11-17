@@ -11,11 +11,13 @@ import {
 import { FolderOpen, History } from 'lucide-react';
 import { shortcutLabel } from '../lib/shortcuts';
 import { ResearchDepth } from '../types/research';
+import { DiscoveryScope } from '../types/discovery';
 import { ResearchDocumentsPanel } from '../components/documents/ResearchDocumentsPanel';
 import { useDocumentLibrary } from '../hooks/useDocumentLibrary';
 import { documentsBlockedReason } from '../lib/researchDocuments';
 import { ApiError } from '../services/api';
 import { Document } from '../types/document';
+import { getDiscoveryErrorMessage } from '../services/discovery.service';
 
 const ALL_DOCUMENTS = { all: true } as const;
 
@@ -40,6 +42,10 @@ export const NewResearch: React.FC = () => {
   const library = useDocumentLibrary(ALL_DOCUMENTS);
   // A new research starts with no documents; the user adds the ones to ask about.
   const [attachedIds, setAttachedIds] = useState<string[]>([]);
+  const [knownDocs, setKnownDocs] = useState<Record<string, Document>>({});
+  const [promptDraft, setPromptDraft] = useState('');
+  const [autoDiscover, setAutoDiscover] = useState(false);
+  const [discoveryScope, setDiscoveryScope] = useState<DiscoveryScope>('all');
   // Set synchronously so a double click or Ctrl+Enter pressed twice can't
   // send the same question before React re-renders the disabled button.
   const submitting = useRef(false);
@@ -48,13 +54,22 @@ export const NewResearch: React.FC = () => {
   useEffect(() => {
     setCreateError(null);
     setAttachedIds([]);
+    setKnownDocs({});
+    setPromptDraft('');
+    setAutoDiscover(false);
+    setDiscoveryScope('all');
   }, [location.key]);
 
   const attachedDocuments = useMemo(() => {
     const byId = new Map(library.documents.map((doc) => [doc.id, doc]));
-    return attachedIds.map((id) => byId.get(id)).filter((doc): doc is Document => Boolean(doc));
-  }, [attachedIds, library.documents]);
-  const blockedReason = documentsBlockedReason(attachedDocuments, attachedIds.length);
+    return attachedIds
+      .map((id) => byId.get(id) ?? knownDocs[id])
+      .filter((doc): doc is Document => Boolean(doc));
+  }, [attachedIds, library.documents, knownDocs]);
+  const blockedReason =
+    attachedIds.length === 0 && autoDiscover
+      ? null
+      : documentsBlockedReason(attachedDocuments, attachedIds.length);
 
   const handleStartResearch = async (payload: {
     question: string;
@@ -68,7 +83,11 @@ export const NewResearch: React.FC = () => {
     setIsSubmitting(true);
     setCreateError(null);
     const requestExtras = {
-      documentIds: attachedIds,
+      ...(attachedIds.length > 0
+        ? { documentIds: attachedIds }
+        : autoDiscover
+          ? { autoDiscover: true, discoveryScope }
+          : { documentIds: attachedIds }),
       ...(payload.preferredProvider ? { preferredProvider: payload.preferredProvider } : {}),
       ...(payload.modelOverride ? { modelOverride: payload.modelOverride } : {}),
       ...(payload.localFallbackEnabled !== undefined
@@ -103,7 +122,9 @@ export const NewResearch: React.FC = () => {
       setCreateError(
         apiErrorCode(error) === 'document_not_found'
           ? 'One of the picked files no longer exists. Remove it and try again.'
-          : getResearchErrorMessage(error, 'Research could not be started. Please try again.')
+          : apiErrorCode(error) === 'no_discoverable_sources' || apiErrorCode(error) === 'discovery_disabled'
+            ? getDiscoveryErrorMessage(error, 'Research could not discover external sources.')
+            : getResearchErrorMessage(error, 'Research could not be started. Please try again.')
       );
     } finally {
       submitting.current = false;
@@ -122,64 +143,79 @@ export const NewResearch: React.FC = () => {
           {/* On small screens the documents panel sits right under the composer, before the tips. */}
           <div className="contents lg:block lg:min-w-0">
             <div className="order-1 min-w-0 lg:order-none">
-            <div className="mb-6">
-              <h1 className="font-serif text-[28px] leading-tight tracking-[-0.01em] text-ink sm:text-[34px]">
-                What do you want to find out?
-              </h1>
-              <p className="mt-2 max-w-xl text-sm leading-relaxed text-ink-soft">
-                Answers come only from the files you add for this research, and each claim
-                links to the passage it came from.
-              </p>
-            </div>
-
-            <ResearchComposer
-              key={location.key}
-              onStartResearch={handleStartResearch}
-              isLoading={isSubmitting}
-              blockedReason={blockedReason}
-              onBlockedAttempt={() => setFilesHighlight((n) => n + 1)}
-            />
-            {createError ? (
-              <div className="mt-3">
-                <ErrorState title="Research could not be started" message={createError} />
+              <div className="mb-6">
+                <h1 className="font-serif text-[28px] leading-tight tracking-[-0.01em] text-ink sm:text-[34px]">
+                  What do you want to find out?
+                </h1>
+                <p className="mt-2 max-w-xl text-sm leading-relaxed text-ink-soft">
+                  Answers come only from the files you add for this research, and each claim
+                  links to the passage it came from.
+                </p>
               </div>
-            ) : null}
 
+              <ResearchComposer
+                key={location.key}
+                onPromptChange={setPromptDraft}
+                onStartResearch={handleStartResearch}
+                isLoading={isSubmitting}
+                blockedReason={blockedReason}
+                onBlockedAttempt={() => setFilesHighlight((n) => n + 1)}
+              />
+              {createError ? (
+                <div className="mt-3">
+                  <ErrorState title="Research could not be started" message={createError} />
+                </div>
+              ) : null}
             </div>
-            <ul className="order-3 grid min-w-0 gap-3 sm:grid-cols-2 lg:order-none lg:mt-8">
-              <li>
-                <Link to="/projects" className={TIP_CLASS}>
-                  <FolderOpen className="h-4 w-4 text-accent" strokeWidth={1.75} />
-                  <span className="mt-3 text-[13px] font-medium text-ink">Keep a topic scoped</span>
-                  <span className="mt-1 text-xs leading-relaxed text-ink-muted">
-                    Ask inside a project to use just that project’s files.
-                  </span>
-                </Link>
-              </li>
-              <li>
-                <button type="button" onClick={focusResearchSearch} className={TIP_CLASS}>
-                  <History className="h-4 w-4 text-accent" strokeWidth={1.75} />
-                  <span className="mt-3 text-[13px] font-medium text-ink">Find past research</span>
-                  <span className="mt-1 text-xs leading-relaxed text-ink-muted">
-                    Everything you ask is listed in the sidebar, with search.
-                    <span className="hidden sm:inline"> Press {shortcutLabel('K')} to jump to it.</span>
-                  </span>
-                </button>
-              </li>
-            </ul>
-          </div>
+              <ul className="order-3 grid min-w-0 gap-3 sm:grid-cols-2 lg:order-none lg:mt-8">
+                <li>
+                  <Link to="/projects" className={TIP_CLASS}>
+                    <FolderOpen className="h-4 w-4 text-accent" strokeWidth={1.75} />
+                    <span className="mt-3 text-[13px] font-medium text-ink">Keep a topic scoped</span>
+                    <span className="mt-1 text-xs leading-relaxed text-ink-muted">
+                      Ask inside a project to use just that project’s files.
+                    </span>
+                  </Link>
+                </li>
+                <li>
+                  <button type="button" onClick={focusResearchSearch} className={TIP_CLASS}>
+                    <History className="h-4 w-4 text-accent" strokeWidth={1.75} />
+                    <span className="mt-3 text-[13px] font-medium text-ink">Find past research</span>
+                    <span className="mt-1 text-xs leading-relaxed text-ink-muted">
+                      Everything you ask is listed in the sidebar, with search.
+                      <span className="hidden sm:inline"> Press {shortcutLabel('K')} to jump to it.</span>
+                    </span>
+                  </button>
+                </li>
+              </ul>
+            </div>
 
-          <ResearchDocumentsPanel
-            library={library}
-            attachedIds={attachedIds}
-            highlightSignal={filesHighlight}
-            onChange={(ids) => {
-              setAttachedIds(ids);
-              setCreateError(null);
-            }}
-            className="order-2 min-w-0 lg:order-none lg:sticky lg:top-20 lg:mt-[7.5rem] lg:max-h-[calc(100vh-7rem)]"
-          />
-        </div>
+            <ResearchDocumentsPanel
+              library={library}
+              attachedIds={attachedIds}
+              highlightSignal={filesHighlight}
+              onChange={(ids) => {
+                setAttachedIds(ids);
+                setCreateError(null);
+              }}
+              onDocumentsResolved={(docs) =>
+                setKnownDocs((prev) => {
+                  const next = { ...prev };
+                  for (const doc of docs) next[doc.id] = doc;
+                  return next;
+                })
+              }
+              discoveryInitialQuery={promptDraft}
+              autoDiscover={autoDiscover}
+              onAutoDiscoverChange={(enabled) => {
+                setAutoDiscover(enabled);
+                setCreateError(null);
+              }}
+              discoveryScope={discoveryScope}
+              onDiscoveryScopeChange={setDiscoveryScope}
+              className="order-2 min-w-0 lg:order-none lg:sticky lg:top-20 lg:mt-[7.5rem] lg:max-h-[calc(100vh-7rem)]"
+            />
+          </div>
       </main>
     </div>
   );

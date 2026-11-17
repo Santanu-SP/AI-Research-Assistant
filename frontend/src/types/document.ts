@@ -17,11 +17,22 @@ export type SourceType =
   | 'doi'
   | 'openalex'
   | 'crossref'
+  | 'youtube_video'
+  | 'audio_file'
+  | 'video_file'
+  | 'image_file'
   | 'youtube_transcript'
   | 'audio_transcript'
   | 'video_transcript'
   | 'user_byok';
-export type ContentLevel = 'full_text' | 'abstract' | 'metadata_only' | 'web_page' | 'user_document';
+export type ContentLevel =
+  | 'full_text'
+  | 'abstract'
+  | 'metadata_only'
+  | 'web_page'
+  | 'user_document'
+  | 'transcript'
+  | 'visual_analysis';
 
 export interface Document {
   id: string;

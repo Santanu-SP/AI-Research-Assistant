@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import Literal
 from uuid import UUID
 
 from pydantic import Field, model_validator
@@ -14,9 +15,11 @@ class ResearchQueryRequest(ApiSchema):
     query: str = Field(min_length=1, max_length=10_000)
     project_id: UUID | None = None
     # The documents this research may read. Outside a project the list must
-    # not be empty. Left out entirely, the run uses the project's documents
-    # (or, outside a project, all of the user's: the behaviour of older clients).
+    # not be empty unless auto_discover is explicitly opted in. Left out
+    # entirely, the run uses the project's documents (or older client behaviour).
     document_ids: list[UUID] | None = Field(default=None, max_length=100)
+    auto_discover: bool = False
+    discovery_scope: Literal["all", "scholarly", "web"] = "all"
     research_depth: ResearchDepth = ResearchDepth.STANDARD
     preferred_provider: str | None = Field(default=None, max_length=64)
     model_override: str | None = Field(default=None, max_length=160)
@@ -76,6 +79,9 @@ class EvidenceItem(ApiSchema):
     paper_title: str | None
     authors: list[str] | None
     doi: str | None
+    url: str | None = None
+    publisher: str | None = None
+    year: int | None = None
     page: int | None
     page_end: int | None = None
     section: str | None
@@ -95,6 +101,9 @@ class ValidatedCitation(ApiSchema):
     paper_title: str | None
     authors: list[str] | None
     doi: str | None
+    url: str | None = None
+    publisher: str | None = None
+    year: int | None = None
     page: int | None
     page_end: int | None = None
     section: str | None

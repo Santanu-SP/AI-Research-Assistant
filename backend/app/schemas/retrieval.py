@@ -23,6 +23,9 @@ class RetrievalCandidate(ApiSchema):
     paper_title: str | None
     authors: list[str] | None
     doi: str | None
+    url: str | None = None
+    publisher: str | None = None
+    year: int | None = None
     page: int | None
     page_end: int | None = None
     section: str | None

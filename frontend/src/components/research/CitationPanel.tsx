@@ -1,6 +1,6 @@
 /** Page 0 and the placeholder "Unknown section" are omitted rather than shown. */
 import React from 'react';
-import { X, FileText, BookOpen, Hash } from 'lucide-react';
+import { X, FileText, BookOpen, Hash, ExternalLink } from 'lucide-react';
 import { Citation } from '../../types/research';
 import { SourceTypeLabel, ContentLevelLabel } from '../common/SourceTypeLabel';
 
@@ -18,6 +18,9 @@ export const CitationPanel: React.FC<CitationPanelProps> = ({
   const hasPage = citation.page !== null && citation.page !== undefined && citation.page > 0;
   const hasPageEnd = citation.pageEnd !== null && citation.pageEnd !== undefined && citation.pageEnd > 0;
   const hasDoi = Boolean(citation.doi);
+  const hasUrl = Boolean(citation.url && /^https?:\/\//i.test(citation.url));
+  const hasPublisher = Boolean(citation.publisher);
+  const hasYear = citation.year !== null && citation.year !== undefined;
   const hasSection = Boolean(citation.section);
   const hasAuthors = citation.authors && citation.authors.length > 0;
 
@@ -54,6 +57,13 @@ export const CitationPanel: React.FC<CitationPanelProps> = ({
                 {citation.authors!.join(', ')}
               </p>
             )}
+            {(hasPublisher || hasYear) && (
+              <p className="text-xs text-ink-muted mt-0.5 ml-6">
+                {[citation.publisher, hasYear ? String(citation.year) : null]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </p>
+            )}
           </div>
         )}
 
@@ -86,6 +96,17 @@ export const CitationPanel: React.FC<CitationPanelProps> = ({
               className="text-[10px] text-accent hover:underline"
             >
               DOI: {citation.doi}
+            </a>
+          )}
+          {hasUrl && (
+            <a
+              href={citation.url!}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-[10px] text-accent hover:underline"
+            >
+              <span>Open source</span>
+              <ExternalLink className="w-2.5 h-2.5" />
             </a>
           )}
         </div>

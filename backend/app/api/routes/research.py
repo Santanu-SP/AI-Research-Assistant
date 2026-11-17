@@ -18,6 +18,7 @@ from app.schemas.research import (
 from app.schemas.rag import ResearchQueryRequest, ResearchQueryResponse, ResearchRetryRequest
 from app.schemas.reports import ComposedReportResponse
 from app.schemas.retrieval import RetrievalRequest, RetrievalResponse
+from app.services.documents.storage import DocumentStorageBackend, get_document_storage
 from app.services.research import runs as research_service
 from app.services.research import reports as reports_service
 from app.services.rag import retrieval as retrieval_service
@@ -25,6 +26,7 @@ from app.services.rag import query as rag_service
 
 router = APIRouter(prefix="/research", tags=["research"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
+DocumentStorage = Annotated[DocumentStorageBackend, Depends(get_document_storage)]
 
 
 @router.post("/retrieve", response_model=RetrievalResponse)
@@ -61,15 +63,23 @@ def _enforce_query_rate_limit(request: Request, user_id: UUID) -> None:
 def query_research(
     payload: ResearchQueryRequest,
     session: DatabaseSession,
+    storage: DocumentStorage,
     user: CurrentUser,
     request: Request,
 ) -> ResearchQueryResponse:
     """Answer a question within this request (kept for inline project chat)."""
     _enforce_query_rate_limit(request, user.id)
-    return rag_service.run_query(
+    prepared = rag_service.prepare_discovered_documents_if_requested(
         session,
         user.id,
         payload,
+        storage,
+        request.app.state.settings,
+    )
+    return rag_service.run_query(
+        session,
+        user.id,
+        prepared,
         request.app.state.settings,
     )
 
@@ -78,6 +88,7 @@ def query_research(
 def queue_research_query(
     payload: ResearchQueryRequest,
     session: DatabaseSession,
+    storage: DocumentStorage,
     user: CurrentUser,
     request: Request,
 ) -> ResearchResponse:
@@ -87,10 +98,17 @@ def queue_research_query(
     ``GET /research/{id}/report`` once it has completed.
     """
     _enforce_query_rate_limit(request, user.id)
-    record = rag_service.queue_query(
+    prepared = rag_service.prepare_discovered_documents_if_requested(
         session,
         user.id,
         payload,
+        storage,
+        request.app.state.settings,
+    )
+    record = rag_service.queue_query(
+        session,
+        user.id,
+        prepared,
         request.app.state.settings,
     )
     request.app.state.job_worker.wake()

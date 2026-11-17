@@ -225,6 +225,13 @@ class Settings(BaseSettings):
     enable_webllm: bool = True
     webllm_default_model: str = "Qwen2.5-1.5B-Instruct-q4f16_1-MLC"
 
+    # Controlled Discovery (curated scholarly & trusted web APIs).
+    discovery_enabled: bool = True
+    discovery_max_results: int = Field(default=8, ge=1, le=20)
+    discovery_auto_import_limit: int = Field(default=3, ge=1, le=8)
+    discovery_timeout_seconds: float = Field(default=12.0, gt=1.0, le=60.0)
+    discovery_mailto: str | None = None
+
     # Observability (Langfuse & internal telemetry).
     telemetry_enabled: bool = True
     langfuse_public_key: str | None = None
@@ -304,6 +311,7 @@ class Settings(BaseSettings):
         "openai_api_key",
         "claude_api_key",
         "grok_api_key",
+        "discovery_mailto",
         "langfuse_public_key",
         "langfuse_secret_key",
         "celery_broker_url",
