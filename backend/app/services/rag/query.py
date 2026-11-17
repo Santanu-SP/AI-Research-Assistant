@@ -540,6 +540,9 @@ def retry_research(
             ),
             settings=runtime_settings,
         )
+        record.failure_provider = None
+        record.failure_model = None
+        record.failure_type = None
         research.restart_research(session, record.id, commit=False)
         job_queue.enqueue(session, job_queue.RUN_RESEARCH, record.id, commit=False)
         session.commit()
@@ -547,6 +550,59 @@ def retry_research(
         _release_on_error(session, user_id, reserved, quota_date)
         raise
     return research.get_research(session, record.id, user_id)
+
+
+_MODEL_ERROR_CODES = {
+    "generation_unavailable",
+    "generation_invalid_request",
+    "generation_timeout",
+    "generation_empty_response",
+}
+
+
+def _remember_model_failure(
+    session: Session,
+    record: Research,
+    exc: AppError,
+    user_id: UUID,
+    settings: Settings,
+) -> None:
+    """Store why the model failed on the run and log each failed attempt.
+
+    The run keeps the first failed attempt (the model the user asked for, or
+    the first in the fallback order), which is the one worth explaining.
+    """
+    if exc.code not in _MODEL_ERROR_CODES:
+        return
+    raw = (exc.details or {}).get("modelFailures")
+    failures = [item for item in raw if isinstance(item, dict)] if isinstance(raw, list) else []
+    if not failures and exc.code == "generation_timeout":
+        failures = [{"provider": "ollama", "model": "", "errorType": "timeout"}]
+    first = failures[0] if failures else None
+    record.failure_provider = str(first.get("provider") or "")[:64] or None if first else None
+    record.failure_model = str(first.get("model") or "")[:160] or None if first else None
+    record.failure_type = str(first.get("errorType") or "other")[:32] if first else "other"
+    session.add(record)
+    if not settings.telemetry_enabled:
+        return
+    for item in failures:
+        record_telemetry_event(
+            session,
+            event_type="llm_generation",
+            operation="research_answer",
+            provider=str(item.get("provider") or "") or None,
+            model=str(item.get("model") or "") or None,
+            status="error",
+            error_code=str(item.get("errorType") or "other"),
+            user_id=user_id,
+            metadata={
+                "used_byok": bool(item.get("usedByok")),
+                "depth": str(record.research_depth),
+                "research_id": str(record.id),
+            },
+            settings=settings,
+            commit=False,
+        )
 
 
 def execute_research(
@@ -784,9 +840,10 @@ def execute_research(
             evidence_count=len(evidence),
             insufficient_evidence=insufficient,
         )
-    except AppError:
+    except AppError as exc:
         session.rollback()
         release_research_shared_quota(session, record.id, commit=False)
+        _remember_model_failure(session, record, exc, user_id, runtime_settings)
         research.mark_research_failed(session, record.id)
         raise
     except Exception as exc:

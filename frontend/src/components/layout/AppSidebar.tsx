@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../app/AuthContext';
 import { groupByDate, useResearchHistory } from '../../app/ResearchHistoryContext';
+import { useToast } from '../../app/ToastContext';
 import { researchService } from '../../services/research.service';
 import { ResearchResponse } from '../../types/research';
 import { BrandMark } from '../common/BrandMark';
@@ -59,6 +60,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const history = useResearchHistory();
+  const { addToast } = useToast();
   const nav = useMobileNav();
   const [query, setQuery] = useState('');
   const [remoteMatches, setRemoteMatches] = useState<ResearchResponse[] | null>(null);
@@ -142,7 +144,26 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
 
   const handleDeleted = (item: ResearchResponse) => {
     setPendingDelete(null);
-    if (location.pathname.startsWith(`/research/${item.id}`)) navigate('/research/new', { replace: true });
+    const wasOpen = location.pathname.startsWith(`/research/${item.id}`);
+    if (wasOpen) navigate('/research/new', { replace: true });
+    addToast({
+      type: 'success',
+      title: 'Research deleted',
+      description: `“${item.title}” was removed.`,
+      action: {
+        label: 'Undo',
+        onClick: () => {
+          void (async () => {
+            try {
+              await history?.restore(item.id);
+              if (wasOpen) navigate(`/research/${item.id}`);
+            } catch {
+              addToast({ type: 'error', title: 'Couldn’t bring it back', description: 'Please try again in a moment.' });
+            }
+          })();
+        },
+      },
+    });
   };
 
   return (

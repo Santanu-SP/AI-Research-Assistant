@@ -43,6 +43,7 @@ export const NewResearch: React.FC = () => {
   // Set synchronously so a double click or Ctrl+Enter pressed twice can't
   // send the same question before React re-renders the disabled button.
   const submitting = useRef(false);
+  const [filesHighlight, setFilesHighlight] = useState(0);
 
   useEffect(() => {
     setCreateError(null);
@@ -126,7 +127,7 @@ export const NewResearch: React.FC = () => {
                 What do you want to find out?
               </h1>
               <p className="mt-2 max-w-xl text-sm leading-relaxed text-ink-soft">
-                Answers come only from the documents you add for this research, and each claim
+                Answers come only from the files you add for this research, and each claim
                 links to the passage it came from.
               </p>
             </div>
@@ -136,6 +137,7 @@ export const NewResearch: React.FC = () => {
               onStartResearch={handleStartResearch}
               isLoading={isSubmitting}
               blockedReason={blockedReason}
+              onBlockedAttempt={() => setFilesHighlight((n) => n + 1)}
             />
             {createError ? (
               <div className="mt-3">
@@ -150,7 +152,7 @@ export const NewResearch: React.FC = () => {
                   <FolderOpen className="h-4 w-4 text-accent" strokeWidth={1.75} />
                   <span className="mt-3 text-[13px] font-medium text-ink">Keep a topic scoped</span>
                   <span className="mt-1 text-xs leading-relaxed text-ink-muted">
-                    Ask inside a project to use just that project’s papers.
+                    Ask inside a project to use just that project’s files.
                   </span>
                 </Link>
               </li>
@@ -170,6 +172,7 @@ export const NewResearch: React.FC = () => {
           <ResearchDocumentsPanel
             library={library}
             attachedIds={attachedIds}
+            highlightSignal={filesHighlight}
             onChange={(ids) => {
               setAttachedIds(ids);
               setCreateError(null);

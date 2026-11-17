@@ -3,7 +3,6 @@ import { createPortal } from 'react-dom';
 import { Trash2 } from 'lucide-react';
 import { ResearchResponse } from '../../types/research';
 import { getResearchErrorMessage } from '../../services/research.service';
-import { useToast } from '../../app/ToastContext';
 
 interface DeleteResearchDialogProps {
   item: ResearchResponse;
@@ -13,7 +12,6 @@ interface DeleteResearchDialogProps {
 
 /** DELETE /research/{id} archives the research; it is removed from the history. */
 export const DeleteResearchDialog: React.FC<DeleteResearchDialogProps> = ({ item, onCancel, onConfirm }) => {
-  const { addToast } = useToast();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
@@ -34,8 +32,8 @@ export const DeleteResearchDialog: React.FC<DeleteResearchDialogProps> = ({ item
     setBusy(true);
     setError(null);
     try {
+      // The caller shows the "Research deleted" toast with Undo.
       await onConfirm();
-      addToast({ type: 'success', title: 'Research deleted', description: `“${item.title}” was removed.` });
     } catch (err) {
       setError(getResearchErrorMessage(err, 'Could not delete this research.'));
       setBusy(false);
@@ -63,7 +61,7 @@ export const DeleteResearchDialog: React.FC<DeleteResearchDialogProps> = ({ item
           </div>
           <p id="delete-research-description" className="text-sm leading-relaxed text-ink-soft">
             <strong className="font-medium text-ink">“{item.title}”</strong> and its report will be removed from
-            your history. Your documents are not affected.
+            your history. Your files are not affected, and you can undo this right after.
           </p>
           {error && (
             <p role="alert" className="mt-3 rounded-lg border border-danger-line bg-danger-soft px-3 py-2 text-xs text-danger">

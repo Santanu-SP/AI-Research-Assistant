@@ -115,6 +115,11 @@ class ResearchProgressResponse(ApiSchema):
     failure_reason: Literal[
         "model_unavailable", "quota_reached", "no_ready_documents", "unexpected"
     ] | None = None
+    # For model failures: which provider and model failed and how
+    # (quota, auth, timeout, unavailable, other). Never keys or raw messages.
+    failure_provider: str | None = None
+    failure_model: str | None = None
+    failure_type: Literal["quota", "auth", "timeout", "unavailable", "other"] | None = None
     # Documents in this run's scope (its project, or all of the user's).
     documents_ready: int = Field(default=0, ge=0)
     documents_preparing: int = Field(default=0, ge=0)

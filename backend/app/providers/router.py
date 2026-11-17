@@ -18,6 +18,8 @@ from app.providers.base import (
     LLMRequest,
     LLMResponse,
     ProviderError,
+    model_error_type,
+    redact_secrets,
 )
 from app.providers.cerebras import CerebrasProviderAdapter
 from app.providers.compatible import (
@@ -280,6 +282,9 @@ class CentralizedLLMRouter:
         )
 
         errors: list[ProviderError] = []
+        # Safe summary of each failed attempt (provider, model, short type) for
+        # the research record, telemetry and the UI. No keys, no raw messages.
+        failures: list[dict[str, object]] = []
         fallback_attempts = 0
         quota_blocked = False
         shared_quota_reserved = False
@@ -359,12 +364,26 @@ class CentralizedLLMRouter:
                             pass
                     return final_response
                 except ProviderError as exc:
+                    attempted_model = (
+                        effective_model_override
+                        or getattr(adapter, "default_model", None)
+                        or ""
+                    )
                     if isinstance(exc, InvalidRequestError) and not has_backup:
                         self._record_failure(provider, exc, using_byok=bool(byok_key))
+                        failures.append(
+                            {
+                                "provider": provider,
+                                "model": str(attempted_model),
+                                "errorType": model_error_type(exc),
+                                "usedByok": bool(byok_key),
+                            }
+                        )
                         raise AppError(
-                            f"Invalid LLM generation request: {exc.message}",
+                            f"Invalid LLM generation request: {redact_secrets(exc.message)}",
                             status_code=422,
                             code="generation_invalid_request",
+                            details={"modelFailures": failures},
                         ) from exc
 
                     # Only sleep and retry the same failing endpoint when no backup provider remains.
@@ -377,11 +396,19 @@ class CentralizedLLMRouter:
 
                     self._record_failure(provider, exc, using_byok=bool(byok_key))
                     errors.append(exc)
+                    failures.append(
+                        {
+                            "provider": provider,
+                            "model": str(attempted_model),
+                            "errorType": model_error_type(exc),
+                            "usedByok": bool(byok_key),
+                        }
+                    )
                     fallback_attempts += 1
                     logger.warning(
                         "LLM provider %s failed (%s); cascading to next provider",
                         provider,
-                        exc.message,
+                        redact_secrets(exc.message),
                     )
                     if self._on_event:
                         try:
@@ -389,9 +416,9 @@ class CentralizedLLMRouter:
                                 {
                                     "event_type": "llm_generation",
                                     "provider": provider,
-                                    "model": getattr(adapter, "default_model", None),
+                                    "model": attempted_model or None,
                                     "status": "error",
-                                    "error_code": exc.__class__.__name__,
+                                    "error_code": model_error_type(exc),
                                     "used_byok": bool(byok_key),
                                 }
                             )
@@ -400,7 +427,7 @@ class CentralizedLLMRouter:
                     break
 
         if errors:
-            summary = "; ".join(f"{e.provider}: {e.message}" for e in errors)
+            summary = "; ".join(f"{e.provider}: {redact_secrets(e.message)}" for e in errors)
             suffix = (
                 " (shared server fallback disabled because daily quota is reached)"
                 if quota_blocked
@@ -410,6 +437,7 @@ class CentralizedLLMRouter:
                 f"All configured LLM providers failed ({summary}){suffix}",
                 status_code=503,
                 code="generation_unavailable",
+                details={"modelFailures": failures},
             )
         if quota_blocked:
             raise AppError(

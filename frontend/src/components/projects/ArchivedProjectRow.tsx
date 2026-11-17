@@ -4,7 +4,7 @@ import { ResearchProject } from '../../types/project';
 import { getProjectErrorMessage, projectsService } from '../../services/projects.service';
 import { useToast } from '../../app/ToastContext';
 import { ActionMenu } from '../common/ActionMenu';
-import { formatProjectDate } from './ProjectCard';
+import { formatProjectDate, projectCountsLabel } from './ProjectCard';
 
 interface ArchivedProjectRowProps {
   project: ResearchProject;
@@ -42,6 +42,9 @@ export const ArchivedProjectRow: React.FC<ArchivedProjectRowProps> = ({ project,
         <div className="min-w-0">
           <h3 className="truncate text-sm font-medium text-ink-soft">{project.name}</h3>
           <p className="mt-0.5 truncate text-[13px] text-ink-muted">{project.description || 'No description'}</p>
+          {projectCountsLabel(project) && (
+            <p className="mt-1 text-xs tabular-nums text-ink-muted">{projectCountsLabel(project)}</p>
+          )}
           {project.archivedAt && (
             <p className="mt-1 text-xs text-ink-muted sm:hidden">Archived {formatProjectDate(project.archivedAt)}</p>
           )}

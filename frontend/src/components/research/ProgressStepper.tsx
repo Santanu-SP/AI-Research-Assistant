@@ -8,8 +8,8 @@ interface ProgressStepperProps {
 
 const STAGE_DETAIL: Record<ResearchProgressStage, string> = {
   planning: 'Reading the question and deciding what to look for.',
-  searching_sources: 'Looking through your documents for relevant passages.',
-  finding_documents: 'Finding the documents that mention it.',
+  searching_sources: 'Looking through your files for relevant passages.',
+  finding_documents: 'Finding the files that mention it.',
   reviewing_evidence: 'Keeping the passages that best answer the question.',
   building_synthesis: 'Writing the answer and linking each claim to its passage.',
 };
@@ -103,7 +103,7 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({ progress }) =>
         <dl className="divide-y divide-line">
           <Stat label="Sources discovered" value={progress.sourcesDiscovered} />
           <Stat label="Sources reviewed" value={progress.sourcesReviewed} />
-          <Stat label="Documents matched" value={progress.documentsFound} />
+          <Stat label="Files matched" value={progress.documentsFound} />
         </dl>
       </aside>
     </div>

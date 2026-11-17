@@ -7,6 +7,10 @@ export interface ResearchProject {
   archivedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Files in the project; sent with project lists. */
+  fileCount?: number | null;
+  /** Finished research reports in the project; sent with project lists. */
+  reportCount?: number | null;
 }
 
 export interface ResearchProjectListResponse {
