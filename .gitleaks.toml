@@ -16,3 +16,9 @@ paths = [
   "backend/tests/test_hardening.py",
   "backend/tests/test_model_usage_quota.py",
 ]
+
+[[allowlists]]
+description = "Fake test key in PR 53 commit d8ba4f16"
+condition = "AND"
+commits = ["d8ba4f16fe3c1cdd74f035809d50c036d5d7f8cf"]
+paths = ["backend/tests/test_model_failures.py"]
