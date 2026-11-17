@@ -30,6 +30,7 @@ from app.services.rag.evidence import (
 )
 from app.services.rag.generation import GenerationService, generation_service_for
 from app.services.rag.reranking import RerankerService, reranker_service_for
+from app.models.document import Document
 from app.models.research import Research
 from app.services.jobs import queue as job_queue
 from app.services.observability.telemetry import estimate_cost_usd, record_telemetry_event
@@ -309,26 +310,30 @@ def _report_payload(
     )
 
 
-def prepare_discovered_documents_if_requested(
+def _wants_discovery(payload: ResearchQueryRequest) -> bool:
+    return payload.auto_discover and not payload.document_ids
+
+
+def discover_documents(
     session: Session,
     user_id: UUID,
-    payload: ResearchQueryRequest,
+    *,
+    query: str,
+    scope: str,
+    project_id: UUID | None,
     storage,
     settings: Settings,
-) -> ResearchQueryRequest:
-    """When ``auto_discover`` is opted in with no picked documents, discover & ingest curated sources."""
-    if not payload.auto_discover or (payload.document_ids and len(payload.document_ids) > 0):
-        return payload
-
+) -> list[UUID]:
+    """Search the trusted providers, import the best matches and return their ids."""
     from app.services.discovery import service as discovery_service
 
     search_result = discovery_service.search_and_annotate(
         session,
         user_id=user_id,
-        query=payload.query,
-        scope=payload.discovery_scope,
+        query=query,
+        scope=scope,
         limit=settings.discovery_max_results,
-        project_id=payload.project_id,
+        project_id=project_id,
         settings=settings,
     )
     selected = search_result.items[: settings.discovery_auto_import_limit]
@@ -345,17 +350,91 @@ def prepare_discovered_documents_if_requested(
         storage=storage,
         settings=settings,
         user_id=user_id,
-        project_id=payload.project_id,
+        project_id=project_id,
         fetch_full_text=True,
     )
-    doc_ids = [doc.id for doc in imported.documents]
+    doc_ids = list(dict.fromkeys(doc.id for doc in imported.documents))
     if not doc_ids:
         raise AppError(
             "Found external references could not be extracted into readable evidence.",
             status_code=422,
             code="no_discoverable_sources",
         )
+    return doc_ids
+
+
+def prepare_discovered_documents_if_requested(
+    session: Session,
+    user_id: UUID,
+    payload: ResearchQueryRequest,
+    storage,
+    settings: Settings,
+) -> ResearchQueryRequest:
+    """When ``auto_discover`` is opted in with no picked documents, discover & ingest curated sources."""
+    if not _wants_discovery(payload):
+        return payload
+    doc_ids = discover_documents(
+        session,
+        user_id,
+        query=payload.query,
+        scope=payload.discovery_scope,
+        project_id=payload.project_id,
+        storage=storage,
+        settings=settings,
+    )
     return payload.model_copy(update={"document_ids": doc_ids})
+
+
+def _ensure_discovery_enabled(payload: ResearchQueryRequest, settings: Settings) -> None:
+    if _wants_discovery(payload) and not settings.discovery_enabled:
+        raise AppError(
+            "Controlled discovery is disabled in server configuration",
+            status_code=503,
+            code="discovery_disabled",
+        )
+
+
+def _discover_sources_for_run(
+    session: Session,
+    record: Research,
+    user_id: UUID,
+    settings: Settings,
+) -> None:
+    """Find, import and attach sources for a run started with auto-discovery.
+
+    Runs inside the background job so starting the research never waits on
+    the providers, PDF downloads or parsing.
+    """
+    from app.services.documents.storage import storage_for_settings
+
+    research.advance_research_progress(
+        session,
+        record.id,
+        project_status=ProjectStatus.PAPERS_DISCOVERED,
+        commit=True,
+    )
+    doc_ids = discover_documents(
+        session,
+        user_id,
+        query=record.question,
+        scope=record.discovery_scope or "all",
+        project_id=record.project_id,
+        storage=storage_for_settings(settings),
+        settings=settings,
+    )
+    documents = list(session.scalars(select(Document).where(Document.id.in_(doc_ids))))
+    order = {doc_id: index for index, doc_id in enumerate(doc_ids)}
+    documents.sort(key=lambda doc: order[doc.id])
+    record = research.get_research(session, record.id, user_id)
+    record.documents_scoped = True
+    record.attached_documents = documents
+    session.add(record)
+    research.advance_research_progress(
+        session,
+        record.id,
+        project_status=ProjectStatus.PROCESSING,
+        commit=True,
+    )
 
 
 def run_query(
@@ -403,7 +482,12 @@ def queue_query(
     payload: ResearchQueryRequest,
     settings: Settings | None = None,
 ) -> Research:
-    """Create a research run and leave the work to the background worker."""
+    """Create a research run and leave the work to the background worker.
+
+    With ``auto_discover`` and no picked documents, the worker finds and
+    imports the sources itself before answering.
+    """
+    _ensure_discovery_enabled(payload, settings or get_settings())
     duplicate = find_recent_duplicate(session, user_id, payload)
     if duplicate is not None:
         return duplicate
@@ -548,6 +632,8 @@ def _create_started_record(
             local_fallback_enabled=payload.local_fallback_enabled,
             settings=runtime_settings,
         )
+        if _wants_discovery(payload):
+            record.discovery_scope = payload.discovery_scope
         session.add(record)
         research.start_research(session, record.id)
     except Exception:
@@ -707,6 +793,9 @@ def execute_research(
     )
     runtime_settings = profile.settings
     try:
+        if record.discovery_scope and not record.documents_scoped:
+            _discover_sources_for_run(session, record, user_id, settings)
+            record = research.get_research(session, research_id, user_id)
         candidates = retrieval.retrieve(
             session,
             user_id,

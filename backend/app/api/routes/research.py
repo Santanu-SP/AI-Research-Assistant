@@ -88,27 +88,20 @@ def query_research(
 def queue_research_query(
     payload: ResearchQueryRequest,
     session: DatabaseSession,
-    storage: DocumentStorage,
     user: CurrentUser,
     request: Request,
 ) -> ResearchResponse:
     """Start a research run in the background and return immediately.
 
-    Poll ``GET /research/{id}/status`` for progress and fetch
+    With ``autoDiscover`` the background job also finds and imports the
+    sources. Poll ``GET /research/{id}/status`` for progress and fetch
     ``GET /research/{id}/report`` once it has completed.
     """
     _enforce_query_rate_limit(request, user.id)
-    prepared = rag_service.prepare_discovered_documents_if_requested(
-        session,
-        user.id,
-        payload,
-        storage,
-        request.app.state.settings,
-    )
     record = rag_service.queue_query(
         session,
         user.id,
-        prepared,
+        payload,
         request.app.state.settings,
     )
     request.app.state.job_worker.wake()

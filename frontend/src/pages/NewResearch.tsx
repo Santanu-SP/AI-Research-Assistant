@@ -82,6 +82,9 @@ export const NewResearch: React.FC = () => {
     submitting.current = true;
     setIsSubmitting(true);
     setCreateError(null);
+    // Finding sources online can take minutes, so it always runs as a
+    // background job with a progress page, whatever the effort level.
+    const discovering = attachedIds.length === 0 && autoDiscover;
     const requestExtras = {
       ...(attachedIds.length > 0
         ? { documentIds: attachedIds }
@@ -95,7 +98,7 @@ export const NewResearch: React.FC = () => {
         : {}),
     };
     try {
-      if (payload.depth === 'quick') {
+      if (payload.depth === 'quick' && !discovering) {
         const response = await researchService.queryResearch({
           query: payload.question,
           researchDepth: payload.depth,

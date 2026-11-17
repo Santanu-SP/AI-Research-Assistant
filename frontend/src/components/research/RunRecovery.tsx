@@ -27,6 +27,10 @@ const explanation = (progress: ResearchProgressResponse): string => {
       return preparing > 0
         ? 'Your files are still being prepared, so there was nothing to answer from yet. Try again once they’re ready.'
         : 'There are no ready files to answer from yet. Upload a file, then try again.';
+    case 'no_discoverable_sources':
+      return 'No trusted sources online could be found or read for this question. Try rewording it, or upload a file and try again.';
+    case 'discovery_disabled':
+      return 'Finding sources online is switched off on this server. Upload a file, then try again.';
     default:
       return 'Something went wrong while the answer was being written. Trying again usually works.';
   }

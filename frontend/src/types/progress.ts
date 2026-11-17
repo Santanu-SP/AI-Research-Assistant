@@ -12,6 +12,8 @@ export type ResearchFailureReason =
   | 'model_unavailable'
   | 'quota_reached'
   | 'no_ready_documents'
+  | 'no_discoverable_sources'
+  | 'discovery_disabled'
   | 'unexpected';
 
 export interface ResearchProgressStep {
@@ -45,6 +47,8 @@ export interface ResearchProgressResponse {
   failureType?: ModelFailureType | null;
   documentsReady?: number;
   documentsPreparing?: number;
+  /** True when the run finds its own sources online before answering. */
+  autoDiscover?: boolean;
 }
 
 export type ModelFailureType = 'quota' | 'auth' | 'timeout' | 'unavailable' | 'other';

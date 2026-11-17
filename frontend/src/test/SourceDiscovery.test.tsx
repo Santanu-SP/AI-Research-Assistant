@@ -6,12 +6,14 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../app/ToastContext';
 import { SourceDiscoveryDialog } from '../components/documents/SourceDiscoveryDialog';
+import { ProgressStepper } from '../components/research/ProgressStepper';
 import { NewResearch } from '../pages/NewResearch';
 import { byokService } from '../services/clientAi.service';
 import { discoveryService } from '../services/discovery.service';
 import { documentsService } from '../services/documents.service';
 import { researchService } from '../services/research.service';
 import { DiscoveredSourceCandidate } from '../types/discovery';
+import { ResearchProgressResponse } from '../types/progress';
 import { makeDocument, makeDocumentList } from './fixtures';
 
 const makeCandidate = (
@@ -236,5 +238,63 @@ describe('Controlled Discovery UI', () => {
       documentIds: ['doc-discovered-attached'],
     });
     expect(await screen.findByText('Progress page')).toBeInTheDocument();
+  });
+  it('runs Low effort auto-discovery as a background job instead of waiting on the request', async () => {
+    const startSpy = vi
+      .spyOn(researchService, 'startResearchJob')
+      .mockResolvedValue({ id: 'res-auto-quick' } as never);
+    const querySpy = vi.spyOn(researchService, 'queryResearch');
+
+    renderNewResearch();
+
+    fireEvent.change(await screen.findByLabelText('Research question'), {
+      target: { value: 'How does self-attention scale?' },
+    });
+    fireEvent.click(screen.getByRole('switch', { name: 'Enable trusted online discovery' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Models' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Auto Low' }));
+    fireEvent.click(screen.getByRole('button', { name: /Start research/i }));
+
+    await waitFor(() => expect(startSpy).toHaveBeenCalledTimes(1));
+    expect(startSpy.mock.calls[0][0]).toMatchObject({ researchDepth: 'quick', autoDiscover: true });
+    expect(querySpy).not.toHaveBeenCalled();
+    expect(await screen.findByText('Progress page')).toBeInTheDocument();
+  });
+
+  it('shows the finding sources step in plain words on the progress page', () => {
+    const progress = {
+      id: 'res-auto-1',
+      question: 'How does self-attention scale?',
+      status: 'researching',
+      researchDepth: 'standard',
+      currentStage: 'searching_sources',
+      currentStepIndex: 1,
+      totalSteps: 5,
+      steps: [
+        { id: 'planning', title: 'Planning research', status: 'completed' },
+        { id: 'searching_sources', title: 'Finding sources', status: 'active' },
+        { id: 'finding_documents', title: 'Reading the sources found', status: 'pending' },
+        { id: 'reviewing_evidence', title: 'Reviewing evidence', status: 'pending' },
+        { id: 'building_synthesis', title: 'Building synthesis', status: 'pending' },
+      ],
+      sourcesDiscovered: 0,
+      sourcesReviewed: 0,
+      documentsFound: 0,
+      startedAt: null,
+      stageStartedAt: null,
+      updatedAt: '2026-11-18T00:00:00Z',
+      completedAt: null,
+      failedAt: null,
+      autoDiscover: true,
+    } as ResearchProgressResponse;
+
+    render(<ProgressStepper progress={progress} />);
+
+    expect(screen.getByText('Finding sources')).toBeInTheDocument();
+    expect(
+      screen.getByText('Searching OpenAlex, Crossref, arXiv and Wikipedia for trusted sources.'),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Downloading and reading the sources it found/)).toBeInTheDocument();
+    expect(screen.queryByText('Looking through your files for relevant passages.')).not.toBeInTheDocument();
   });
 });
