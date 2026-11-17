@@ -75,6 +75,10 @@ export const documentsService = {
     return apiRequest<DocumentListResponse>(documentListPath(path, params), { signal });
   },
 
+  async getDocument(id: string, signal?: AbortSignal): Promise<Document> {
+    return apiRequest<Document>(`/documents/${encodeURIComponent(id)}`, { signal });
+  },
+
   async uploadProjectDocument(projectId: string, file: File): Promise<Document> {
     const formData = new FormData();
     formData.append('file', file);
@@ -82,6 +86,30 @@ export const documentsService = {
       `/projects/${encodeURIComponent(projectId)}/documents`,
       { method: 'POST', body: formData, timeoutMs: UPLOAD_REQUEST_TIMEOUT_MS }
     );
+    notifyDocumentsChanged({ action: 'upload', document });
+    return document;
+  },
+
+  async addUrlDocument(
+    url: string,
+    title?: string,
+    projectId?: string | null,
+  ): Promise<Document> {
+    const path = projectId
+      ? `/projects/${encodeURIComponent(projectId)}/documents/url`
+      : '/documents/url';
+    const body: { url: string; title?: string; projectId?: string } = {
+      url: url.trim(),
+    };
+    const trimmedTitle = title?.trim();
+    if (trimmedTitle) body.title = trimmedTitle;
+    if (projectId) body.projectId = projectId;
+    const document = await apiRequest<Document>(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      timeoutMs: UPLOAD_REQUEST_TIMEOUT_MS,
+    });
     notifyDocumentsChanged({ action: 'upload', document });
     return document;
   },
@@ -133,11 +161,29 @@ export const getDocumentErrorMessage = (
     if (error.status === 403) return 'You do not have permission to upload to this project.';
     if (error.status === 413) return 'File is too large to upload.';
     if (error.status === 429) return 'Too many uploads. Please wait a minute and try again.';
-    if (apiErrorCode(error) === 'document_not_retryable') {
+    const code = apiErrorCode(error);
+    if (code === 'document_not_retryable') {
       return 'This file is already being prepared.';
     }
-    if (apiErrorCode(error) === 'document_file_missing') {
+    if (code === 'document_file_missing') {
       return 'The original file is no longer available. Remove it and upload it again.';
+    }
+    if (code === 'unsupported_document_type' || code === 'document_type_mismatch') {
+      return 'This file format is not supported or does not match its extension.';
+    }
+    if (
+      code === 'invalid_source_url' ||
+      code === 'unsafe_source_url' ||
+      code === 'ssrf_blocked_url' ||
+      code === 'invalid_youtube_url'
+    ) {
+      return 'Please enter a valid public http://, https://, or YouTube URL.';
+    }
+    if (code === 'youtube_transcript_unavailable') {
+      return 'This YouTube video does not expose an accessible transcript.';
+    }
+    if (code === 'audio_transcription_key_missing' || code === 'vision_api_key_missing') {
+      return 'Server transcription/vision key is not configured for this media type.';
     }
     if (error.status === 422) {
       const data = error.data as { detail?: unknown } | null;

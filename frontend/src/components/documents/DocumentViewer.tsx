@@ -20,9 +20,12 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({ document: doc, o
   const isPdf = doc.type === 'pdf';
   const isAudio = doc.type === 'audio';
   const isVideo = doc.type === 'video';
+  const isImage = doc.type === 'image';
+  const isUrlSource = (doc.type === 'web' || doc.type === 'youtube') && Boolean(doc.sourceUrl);
   const title = doc.title || doc.name;
 
   useEffect(() => {
+    if (isUrlSource) return;
     const controller = new AbortController();
     let objectUrl: string | null = null;
     fetch(`${API_BASE_URL}/documents/${encodeURIComponent(doc.id)}/file`, {
@@ -46,7 +49,7 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({ document: doc, o
       controller.abort();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [doc.id, doc.mimeType, isPdf]);
+  }, [doc.id, doc.mimeType, isPdf, isUrlSource]);
 
   useEffect(() => {
     closeRef.current?.focus();
@@ -104,7 +107,26 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({ document: doc, o
         </header>
 
         <div className="relative min-h-0 flex-1 bg-sunken">
-          {failed ? (
+          {isUrlSource && doc.sourceUrl ? (
+            <div className="flex h-full items-center justify-center p-6 text-center">
+              <div className="max-w-lg w-full bg-panel p-6 rounded-xl border border-line shadow-xs">
+                <p className="text-xs font-medium uppercase tracking-wider text-ink-muted mb-2">
+                  {doc.type === 'youtube' ? 'YouTube Transcript Source' : 'Web Page Source'}
+                </p>
+                <p className="text-sm font-medium text-ink mb-2">{title}</p>
+                <p className="text-xs text-ink-muted break-all mb-4">{doc.sourceUrl}</p>
+                <a
+                  href={doc.sourceUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex h-9 items-center gap-2 rounded-md bg-solid px-3.5 text-[13px] font-medium text-on-solid shadow-xs hover:bg-solid-hover"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Open original URL
+                </a>
+              </div>
+            </div>
+          ) : failed ? (
             <div className="flex h-full items-center justify-center p-6 text-center">
               <div>
                 <p className="text-sm font-medium text-ink">This document couldn’t be opened.</p>
@@ -117,6 +139,10 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({ document: doc, o
             </div>
           ) : isPdf ? (
             <iframe title={title} src={url} className="h-full w-full border-0" />
+          ) : isImage ? (
+            <div className="flex h-full items-center justify-center p-6 overflow-auto">
+              <img src={url} alt={title} className="max-h-full max-w-full rounded-lg object-contain shadow-xs" />
+            </div>
           ) : isAudio ? (
             <div className="flex h-full items-center justify-center p-6 text-center">
               <div className="max-w-md w-full bg-panel p-6 rounded-xl border border-line shadow-xs">

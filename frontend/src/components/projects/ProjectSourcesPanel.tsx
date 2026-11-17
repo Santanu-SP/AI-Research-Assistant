@@ -99,7 +99,7 @@ export const ProjectSourcesPanel: React.FC<ProjectSourcesPanelProps> = ({ projec
           description={
             isArchived
               ? 'This project is archived, so documents can’t be added.'
-              : 'Upload PDF or DOCX papers. Questions in this project are answered only from these documents.'
+              : 'Upload documents, slides, spreadsheets, media, or web links. Questions in this project are answered only from these sources.'
           }
           primaryActionLabel={isArchived ? undefined : 'Upload document'}
           onPrimaryAction={isArchived ? undefined : () => setIsUploadOpen(true)}
