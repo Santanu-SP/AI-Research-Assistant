@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, Info } from 'lucide-react';
 import { ResearchDepth } from '../../types/research';
 import { LoadingOrb } from '../common/LoadingOrb';
 import { ModelControlBar } from './ModelControlBar';
@@ -16,8 +16,10 @@ interface ResearchComposerProps {
     localFallbackEnabled?: boolean;
   }) => void;
   isLoading?: boolean;
-  /** Why the question can't be sent yet, e.g. no documents picked. Shown next to the button. */
+  /** Why the question can't be sent yet, e.g. no files picked. Shown next to the button. */
   blockedReason?: string | null;
+  /** Called when someone tries to start while blocked, e.g. to point at the files panel. */
+  onBlockedAttempt?: () => void;
 }
 
 const LOADING_MESSAGES = [
@@ -31,6 +33,7 @@ export const ResearchComposer: React.FC<ResearchComposerProps> = ({
   onStartResearch,
   isLoading = false,
   blockedReason = null,
+  onBlockedAttempt,
 }) => {
   const [prompt, setPrompt] = useState(initialPrompt);
   const [depth, setDepth] = useState<ResearchDepth>('standard');
@@ -66,7 +69,11 @@ export const ResearchComposer: React.FC<ResearchComposerProps> = ({
   };
 
   const handleSubmit = () => {
-    if (!prompt.trim() || isLoading || blockedReason) return;
+    if (!prompt.trim() || isLoading) return;
+    if (blockedReason) {
+      onBlockedAttempt?.();
+      return;
+    }
     // isLoading only updates on the next render; block a second press now.
     const now = Date.now();
     if (now - lastSubmitAt.current < 1500) return;
@@ -121,9 +128,16 @@ export const ResearchComposer: React.FC<ResearchComposerProps> = ({
               {LOADING_MESSAGES[loadingMessageIndex]}
             </span>
           ) : blockedReason ? (
-            <span id="research-blocked-reason" className="text-xs text-ink-muted" aria-live="polite">
-              {blockedReason}
-            </span>
+            <button
+              type="button"
+              id="research-blocked-reason"
+              onClick={onBlockedAttempt}
+              aria-live="polite"
+              className="inline-flex max-w-[22rem] items-center gap-1.5 rounded-md border border-warning-line bg-warning-soft px-2 py-1 text-left text-xs font-medium text-warning transition-colors hover:brightness-[0.98]"
+            >
+              <Info className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              <span>{blockedReason}</span>
+            </button>
           ) : (
             <kbd className="hidden select-none rounded border border-line bg-panel px-1.5 py-0.5 font-sans text-[10.5px] text-ink-muted xl:inline">
               {shortcutLabel('Enter')}
@@ -132,9 +146,10 @@ export const ResearchComposer: React.FC<ResearchComposerProps> = ({
           <button
             type="button"
             onClick={handleSubmit}
-            disabled={!prompt.trim() || isLoading || Boolean(blockedReason)}
+            disabled={!prompt.trim() || isLoading}
+            aria-disabled={blockedReason && !isLoading ? true : undefined}
             aria-describedby={blockedReason && !isLoading ? 'research-blocked-reason' : undefined}
-            className="group flex h-8 cursor-pointer items-center gap-1.5 rounded-md bg-solid px-3.5 text-[13px] font-medium text-on-solid shadow-xs transition-colors duration-150 hover:bg-solid-hover disabled:cursor-not-allowed disabled:opacity-50"
+            className="group flex h-8 cursor-pointer items-center gap-1.5 rounded-md bg-solid px-3.5 text-[13px] font-medium text-on-solid shadow-xs transition-colors duration-150 hover:bg-solid-hover disabled:cursor-not-allowed disabled:opacity-50 aria-disabled:cursor-not-allowed aria-disabled:opacity-50 aria-disabled:hover:bg-solid"
           >
             {isLoading ? <LoadingOrb size={16} className="loading-orb--on-solid" /> : null}
             <span>{isLoading ? 'Researching…' : 'Start research'}</span>

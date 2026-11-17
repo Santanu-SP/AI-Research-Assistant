@@ -43,6 +43,7 @@ export const NewResearch: React.FC = () => {
   // Set synchronously so a double click or Ctrl+Enter pressed twice can't
   // send the same question before React re-renders the disabled button.
   const submitting = useRef(false);
+  const [filesHighlight, setFilesHighlight] = useState(0);
 
   useEffect(() => {
     setCreateError(null);
@@ -136,6 +137,7 @@ export const NewResearch: React.FC = () => {
               onStartResearch={handleStartResearch}
               isLoading={isSubmitting}
               blockedReason={blockedReason}
+              onBlockedAttempt={() => setFilesHighlight((n) => n + 1)}
             />
             {createError ? (
               <div className="mt-3">
@@ -170,6 +172,7 @@ export const NewResearch: React.FC = () => {
           <ResearchDocumentsPanel
             library={library}
             attachedIds={attachedIds}
+            highlightSignal={filesHighlight}
             onChange={(ids) => {
               setAttachedIds(ids);
               setCreateError(null);
