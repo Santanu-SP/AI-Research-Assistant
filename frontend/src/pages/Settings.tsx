@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CheckCircle2, CircleAlert, LogOut, Monitor, Moon, RefreshCw, Sun } from 'lucide-react';
+import { CheckCircle2, ChevronDown, CircleAlert, LogOut, Monitor, Moon, RefreshCw, Sun } from 'lucide-react';
 import { TopBar } from '../components/layout/TopBar';
 import { PageHeader } from '../components/common/PageHeader';
 import { PrimaryButton } from '../components/common/PrimaryButton';
@@ -45,10 +45,26 @@ const THEME_OPTIONS: { value: ThemePreference; label: string; icon: React.Elemen
   { value: 'system', label: 'System', icon: Monitor },
 ];
 
-const CHECK_LABELS: Record<string, string> = {
-  database: 'Database',
-  ollama: 'Language model',
+const CHECK_LABELS: Record<string, { title: string; ok: string; bad: string }> = {
+  database: {
+    title: 'Saving your work',
+    ok: 'Projects, files and reports can be saved.',
+    bad: 'Your work can’t be saved right now.',
+  },
+  ollama: {
+    title: 'Built-in model',
+    ok: 'The model on this server can write answers.',
+    bad: 'The model on this server isn’t running.',
+  },
+  llm_router: {
+    title: 'Models',
+    ok: 'At least one model is ready to answer.',
+    bad: 'No model is set up yet. Add an API key above.',
+  },
 };
+
+const checkLabel = (name: string) =>
+  CHECK_LABELS[name] ?? { title: name.replace(/_/g, ' '), ok: 'Working', bad: 'Not working' };
 
 const formatDate = (value?: string) =>
   value
@@ -137,7 +153,7 @@ export const SettingsPage: React.FC = () => {
 
       <main className="flex-1 px-4 pb-16 pt-14 sm:px-6 lg:px-10">
         <div className="mx-auto max-w-4xl py-8 sm:py-10">
-          <PageHeader title="Settings" description="Your account, how the app looks, your models and API keys, and whether the research services are reachable." />
+          <PageHeader title="Settings" description="Your account, how the app looks, your models and API keys, and whether everything is working." />
 
           <div className="mt-8">
             <Section id="settings-profile" title="Profile" description="The details on your account.">
@@ -211,11 +227,35 @@ export const SettingsPage: React.FC = () => {
 
             <Section
               id="settings-status"
-              title="Research services"
-              description="Research needs the database and the local language model to be running."
+              title="System status"
+              description="Whether the app can save your work and reach its models."
             >
-              <div className="overflow-hidden rounded-lg border border-line bg-panel shadow-xs">
-                <div className="divide-y divide-line">
+              <details className="status-details group overflow-hidden rounded-lg border border-line bg-panel shadow-xs">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-[13px] [&::-webkit-details-marker]:hidden">
+                  <span className="inline-flex items-center gap-2">
+                    {checking && !readiness ? (
+                      <span className="h-2.5 w-32 animate-pulse rounded bg-subtle" />
+                    ) : readiness?.status === 'ready' ? (
+                      <>
+                        <CheckCircle2 className="h-4 w-4 text-accent" />
+                        <span className="font-medium text-ink">Everything is working</span>
+                      </>
+                    ) : (
+                      <>
+                        <CircleAlert className="h-4 w-4 text-danger" />
+                        <span className="font-medium text-ink">
+                          {readiness ? 'Something needs attention' : 'Couldn’t check right now'}
+                        </span>
+                      </>
+                    )}
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-xs text-ink-muted">
+                    <span className="group-open:hidden">Show details</span>
+                    <span className="hidden group-open:inline">Hide details</span>
+                    <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
+                  </span>
+                </summary>
+                <div className="divide-y divide-line border-t border-line">
                   {checking && !readiness ? (
                     [0, 1].map((index) => (
                       <div key={index} className="flex h-[52px] items-center px-4">
@@ -225,14 +265,16 @@ export const SettingsPage: React.FC = () => {
                   ) : readinessError || !readiness ? (
                     <div className="flex items-center gap-2.5 px-4 py-3.5 text-[13px] text-ink-soft">
                       <CircleAlert className="h-4 w-4 shrink-0 text-danger" />
-                      The server didn’t respond, so the services couldn’t be checked.
+                      The server didn’t respond, so nothing could be checked.
                     </div>
                   ) : (
                     readiness.checks.map((check) => (
                       <div key={check.name} className="flex min-h-[52px] items-center justify-between gap-4 px-4 py-2.5">
                         <div className="min-w-0">
-                          <p className="text-[14px] text-ink">{CHECK_LABELS[check.name] ?? check.name}</p>
-                          {check.detail && <p className="truncate font-mono text-[11.5px] text-ink-muted">{check.detail}</p>}
+                          <p className="text-[14px] text-ink">{checkLabel(check.name).title}</p>
+                          <p className="truncate text-xs text-ink-muted" title={check.detail ?? undefined}>
+                            {check.ok ? checkLabel(check.name).ok : checkLabel(check.name).bad}
+                          </p>
                         </div>
                         <span
                           className={`inline-flex shrink-0 items-center gap-1.5 text-[13px] font-medium ${
@@ -240,22 +282,20 @@ export const SettingsPage: React.FC = () => {
                           }`}
                         >
                           {check.ok ? <CheckCircle2 className="h-4 w-4" /> : <CircleAlert className="h-4 w-4" />}
-                          {check.ok ? 'Available' : 'Unavailable'}
+                          {check.ok ? 'Working' : 'Not working'}
                         </span>
                       </div>
                     ))
                   )}
                 </div>
                 <div className="flex items-center justify-between gap-3 border-t border-line bg-subtle/50 px-4 py-2.5">
-                  <p className="text-xs text-ink-muted">
-                    {readiness ? (readiness.status === 'ready' ? 'Everything is ready.' : 'Some services need attention.') : ' '}
-                  </p>
+                  <p className="text-xs text-ink-muted">Checked when you opened this page.</p>
                   <PrimaryButton variant="ghost" size="sm" onClick={() => void checkStatus()} disabled={checking}>
                     <RefreshCw className={`h-3.5 w-3.5 ${checking ? 'animate-spin' : ''}`} />
                     Check again
                   </PrimaryButton>
                 </div>
-              </div>
+              </details>
             </Section>
 
             <Section
