@@ -16,6 +16,7 @@ import { ReadinessResponse, systemService } from '../services/system.service';
 import { byokService, ModelUsageQuotaSummary } from '../services/clientAi.service';
 import { authErrorMessage } from '../services/auth.service';
 import { shortcutLabel } from '../lib/shortcuts';
+import { ModelsAndKeysPanel } from '../components/settings/ModelsAndKeysPanel';
 
 const Section: React.FC<
   React.PropsWithChildren<{ id: string; title: string; description?: string; className?: string }>
@@ -136,7 +137,7 @@ export const SettingsPage: React.FC = () => {
 
       <main className="flex-1 px-4 pb-16 pt-14 sm:px-6 lg:px-10">
         <div className="mx-auto max-w-4xl py-8 sm:py-10">
-          <PageHeader title="Settings" description="Your account, how the app looks, and whether the research services are reachable." />
+          <PageHeader title="Settings" description="Your account, how the app looks, your models and API keys, and whether the research services are reachable." />
 
           <div className="mt-8">
             <Section id="settings-profile" title="Profile" description="The details on your account.">
@@ -173,6 +174,14 @@ export const SettingsPage: React.FC = () => {
                   );
                 })}
               </div>
+            </Section>
+
+            <Section
+              id="settings-models"
+              title="Models & API keys"
+              description="Add your own keys to use more models, and pick the model new research starts with."
+            >
+              <ModelsAndKeysPanel />
             </Section>
 
             <Section

@@ -23,6 +23,7 @@ import { CitationPanel } from '../research/CitationPanel';
 import { ModelControlBar } from '../research/ModelControlBar';
 import { PrimaryButton } from '../common/PrimaryButton';
 import { LoadingOrb } from '../common/LoadingOrb';
+import { getDefaultModel } from '../../lib/defaultModel';
 
 interface ProjectResearchPanelProps {
   project: ResearchProject;
@@ -47,8 +48,8 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
 }) => {
   const [question, setQuestion] = useState('');
   const [researchDepth, setResearchDepth] = useState<ResearchDepth>('standard');
-  const [preferredProvider, setPreferredProvider] = useState<string | null>(null);
-  const [modelOverride, setModelOverride] = useState<string | null>(null);
+  const [preferredProvider, setPreferredProvider] = useState<string | null>(() => getDefaultModel().provider);
+  const [modelOverride, setModelOverride] = useState<string | null>(() => getDefaultModel().model);
   const [localFallbackEnabled, setLocalFallbackEnabled] = useState<boolean | undefined>(undefined);
   const [researchState, setResearchState] = useState<ResearchState>('idle');
   const [elapsedSeconds, setElapsedSeconds] = useState(0);

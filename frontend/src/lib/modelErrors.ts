@@ -81,3 +81,17 @@ export const describeModelFailure = (
   const name = prettyModelName(progress.failureProvider, progress.failureModel);
   return (MESSAGES[progress.failureType] ?? MESSAGES.other)(name);
 };
+
+const SECRET_PATTERNS: RegExp[] = [
+  /AIza[0-9A-Za-z_-]{10,}/g,
+  /\b(?:sk|pk|gsk|csk|xai)[-_][0-9A-Za-z_-]{8,}/g,
+  /Bearer\s+[0-9A-Za-z._-]{8,}/gi,
+  /\b(key|token|secret)=([^&\s]{6,})/gi,
+];
+
+/** Hides anything that looks like an API key before text is shown. */
+export const redactSecrets = (text: string): string =>
+  SECRET_PATTERNS.reduce(
+    (out, pattern) => out.replace(pattern, (match, name) => (typeof name === 'string' && match.includes('=') ? `${name}=[hidden]` : '[hidden]')),
+    text,
+  );

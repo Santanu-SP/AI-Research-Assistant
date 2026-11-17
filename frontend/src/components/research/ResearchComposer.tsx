@@ -4,6 +4,7 @@ import { ResearchDepth } from '../../types/research';
 import { LoadingOrb } from '../common/LoadingOrb';
 import { ModelControlBar } from './ModelControlBar';
 import { shortcutLabel } from '../../lib/shortcuts';
+import { getDefaultModel } from '../../lib/defaultModel';
 
 interface ResearchComposerProps {
   initialPrompt?: string;
@@ -33,8 +34,8 @@ export const ResearchComposer: React.FC<ResearchComposerProps> = ({
 }) => {
   const [prompt, setPrompt] = useState(initialPrompt);
   const [depth, setDepth] = useState<ResearchDepth>('standard');
-  const [preferredProvider, setPreferredProvider] = useState<string | null>(null);
-  const [modelOverride, setModelOverride] = useState<string | null>(null);
+  const [preferredProvider, setPreferredProvider] = useState<string | null>(() => getDefaultModel().provider);
+  const [modelOverride, setModelOverride] = useState<string | null>(() => getDefaultModel().model);
   const [localFallbackEnabled, setLocalFallbackEnabled] = useState<boolean | undefined>(undefined);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
