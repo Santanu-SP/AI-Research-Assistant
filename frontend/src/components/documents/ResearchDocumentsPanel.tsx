@@ -150,8 +150,8 @@ export const ResearchDocumentsPanel: React.FC<ResearchDocumentsPanelProps> = ({
         ) : (
           <span />
         )}
-        <Link to="/documents" className="inline-flex items-center gap-1 font-medium text-ink-soft hover:text-ink">
-          All documents
+        <Link to="/library" className="inline-flex items-center gap-1 font-medium text-ink-soft hover:text-ink">
+          Open library
           <ArrowRight className="h-3 w-3" />
         </Link>
       </footer>

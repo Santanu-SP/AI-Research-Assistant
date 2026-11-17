@@ -318,7 +318,7 @@ export const ProjectUploadModal: React.FC<ProjectUploadModalProps> = ({
             description:
               existingId && onDuplicate
                 ? `“${label}” is already in your documents, so that copy will be used.`
-                : `“${label}” is already ${projectId ? 'in this project' : 'in your documents'}.`,
+                : `“${label}” is already ${projectId ? 'in this project' : 'in your library'}.`,
           });
         } else {
           const msg = getDocumentErrorMessage(err, 'Upload failed.');
@@ -355,7 +355,7 @@ export const ProjectUploadModal: React.FC<ProjectUploadModalProps> = ({
         () =>
           projectId
             ? 'This file is already in this project.'
-            : 'This file is already in your documents.'
+            : 'This file is already in your library.'
       );
     }
 
@@ -387,7 +387,7 @@ export const ProjectUploadModal: React.FC<ProjectUploadModalProps> = ({
       () =>
         projectId
           ? 'This URL is already in this project.'
-          : 'This URL is already in your documents.'
+          : 'This URL is already in your library.'
     );
     setUrlInput('');
     setUrlTitle('');

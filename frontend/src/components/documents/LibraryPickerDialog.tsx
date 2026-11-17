@@ -106,10 +106,10 @@ export const LibraryPickerDialog: React.FC<LibraryPickerDialogProps> = ({
             <input
               ref={searchRef}
               type="search"
-              aria-label="Search your documents"
+              aria-label="Search your library"
               value={term}
               onChange={(event) => setTerm(event.target.value)}
-              placeholder="Search your documents"
+              placeholder="Search your library"
               className="h-8 w-full rounded-md border border-line bg-canvas pl-8 pr-3 text-[13px] text-ink placeholder:text-ink-muted transition-colors focus:border-accent-line focus:bg-panel focus:outline-none [&::-webkit-search-cancel-button]:hidden"
             />
           </div>
@@ -123,9 +123,9 @@ export const LibraryPickerDialog: React.FC<LibraryPickerDialogProps> = ({
               Nothing uploaded yet. Use Upload to add a file.
             </p>
           ) : visible.length === 0 ? (
-            <p className="px-6 py-8 text-center text-[13px] text-ink-muted">No documents match “{term}”.</p>
+            <p className="px-6 py-8 text-center text-[13px] text-ink-muted">No files match “{term}”.</p>
           ) : (
-            <ul aria-label="Your documents" className="divide-y divide-line">
+            <ul aria-label="Your files" className="divide-y divide-line">
               {visible.map((doc) => {
                 const isPicked = picked.has(doc.id);
                 const note = stateLabel(doc);

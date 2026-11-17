@@ -30,7 +30,7 @@ export const DocumentsPanel: React.FC<DocumentsPanelProps> = ({
   projectId,
   manageHref,
   readOnly = false,
-  title = 'Documents',
+  title = 'Files',
   description,
   className = '',
 }) => {
@@ -49,10 +49,10 @@ export const DocumentsPanel: React.FC<DocumentsPanelProps> = ({
 
   const summary =
     total === 0
-      ? 'No documents yet'
+      ? 'No files yet'
       : [readyCount > 0 && `${readyCount} ready`, preparingCount > 0 && `${preparingCount} preparing`]
           .filter(Boolean)
-          .join(' · ') || `${total} document${total === 1 ? '' : 's'}`;
+          .join(' · ') || `${total} file${total === 1 ? '' : 's'}`;
 
   return (
     <section
@@ -95,7 +95,7 @@ export const DocumentsPanel: React.FC<DocumentsPanelProps> = ({
           </div>
         ) : error ? (
           <div className="px-4 py-6 text-center">
-            <p className="text-[13px] text-ink-soft">Your documents couldn’t be loaded.</p>
+            <p className="text-[13px] text-ink-soft">Your files couldn’t be loaded.</p>
             <button type="button" onClick={reload} className="mt-2 text-[13px] font-medium text-accent hover:underline">
               Try again
             </button>
