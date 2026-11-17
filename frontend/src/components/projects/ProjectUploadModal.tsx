@@ -8,6 +8,7 @@ import {
   duplicateDocumentIdFromError,
   isDocumentPending,
 } from '../../services/documents.service';
+import { ingestionStep } from '../../lib/ingestionProgress';
 import { Document } from '../../types/document';
 import { useToast } from '../../app/ToastContext';
 import { useSessionDataCache } from '../../app/SessionDataCacheContext';
@@ -27,6 +28,8 @@ interface QueuedItem {
   documentId?: string;
   status: FileItemStatus;
   errorMessage?: string;
+  /** The server's current step while the file is being prepared. */
+  stepLabel?: string;
 }
 
 interface ProjectUploadModalProps {
@@ -180,7 +183,11 @@ export const ProjectUploadModal: React.FC<ProjectUploadModalProps> = ({
         prev.map((item) => {
           if (item.status !== 'processing' || !item.documentId) return item;
           const fresh = resolvedById.get(item.documentId);
-          if (!fresh || isDocumentPending(fresh)) return item;
+          if (!fresh) return item;
+          if (isDocumentPending(fresh)) {
+            const stepLabel = ingestionStep(fresh).label;
+            return stepLabel === item.stepLabel ? item : { ...item, stepLabel };
+          }
           anyFinished = true;
           const mapped = mapServerDocumentStatus(fresh);
           return {
@@ -317,7 +324,7 @@ export const ProjectUploadModal: React.FC<ProjectUploadModalProps> = ({
             title: 'Already added',
             description:
               existingId && onDuplicate
-                ? `“${label}” is already in your documents, so that copy will be used.`
+                ? `“${label}” is already in your library, so that copy will be used.`
                 : `“${label}” is already ${projectId ? 'in this project' : 'in your library'}.`,
           });
         } else {
@@ -423,7 +430,7 @@ export const ProjectUploadModal: React.FC<ProjectUploadModalProps> = ({
               id="upload-modal-title"
               className="font-semibold text-base text-ink"
             >
-              Upload documents
+              Upload files
             </h3>
             <p className="text-xs text-ink-soft mt-0.5">
               Documents, slides, sheets, HTML, audio, video, images (up to 25 MB), or web &amp; YouTube links.
@@ -483,7 +490,7 @@ export const ProjectUploadModal: React.FC<ProjectUploadModalProps> = ({
               }}
               role="button"
               tabIndex={0}
-              aria-label="Choose research documents or media files"
+              aria-label="Choose files to upload"
               className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed px-6 py-8 text-center transition-colors duration-150 ${
                 dragOver
                   ? 'border-accent bg-accent-soft'
@@ -577,7 +584,7 @@ export const ProjectUploadModal: React.FC<ProjectUploadModalProps> = ({
                         : 'text-ink-muted'
                     }`}
                   >
-                    {STATUS_LABELS[item.status]}
+                    {item.status === 'processing' && item.stepLabel ? item.stepLabel : STATUS_LABELS[item.status]}
                   </span>
                 </div>
               ))}

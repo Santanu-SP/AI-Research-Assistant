@@ -83,7 +83,7 @@ export const ProjectHeader: React.FC<ProjectHeaderProps> = ({
           <Archive className="w-4 h-4 mt-0.5 shrink-0" />
           <p>
             <strong>This project is archived.</strong> You can view existing
-            documents and research results, but cannot upload new documents or
+            files and research results, but cannot upload new files or
             run new research.
           </p>
         </div>

@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Library, Plus } from 'lucide-react';
 import { Document } from '../../types/document';
@@ -16,6 +16,8 @@ interface ResearchDocumentsPanelProps {
   attachedIds: string[];
   onChange: (ids: string[]) => void;
   className?: string;
+  /** Bump to draw attention to the panel, e.g. after a blocked Start research. */
+  highlightSignal?: number;
 }
 
 /**
@@ -27,8 +29,26 @@ export const ResearchDocumentsPanel: React.FC<ResearchDocumentsPanelProps> = ({
   attachedIds,
   onChange,
   className = '',
+  highlightSignal = 0,
 }) => {
   const { addToast } = useToast();
+  const sectionRef = useRef<HTMLElement>(null);
+  const [highlighted, setHighlighted] = useState(false);
+
+  useEffect(() => {
+    if (!highlightSignal) return;
+    setHighlighted(false);
+    // Restart the animation on every attempt.
+    const frame = window.requestAnimationFrame(() => {
+      setHighlighted(true);
+      sectionRef.current?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+    });
+    const timer = window.setTimeout(() => setHighlighted(false), 2200);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+    };
+  }, [highlightSignal]);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [viewing, setViewing] = useState<Document | null>(null);
@@ -79,12 +99,16 @@ export const ResearchDocumentsPanel: React.FC<ResearchDocumentsPanelProps> = ({
 
   return (
     <section
-      aria-label="Documents for this research"
-      className={`flex min-h-0 flex-col overflow-hidden rounded-xl border border-line bg-panel shadow-xs ${className}`}
+      ref={sectionRef}
+      aria-label="Files for this research"
+      data-highlighted={highlighted || undefined}
+      className={`flex min-h-0 flex-col overflow-hidden rounded-xl border border-line bg-panel shadow-xs transition-colors ${
+        highlighted ? 'files-attention' : ''
+      } ${className}`}
     >
       <header className="flex items-center gap-3 border-b border-line px-4 py-3">
         <div className="min-w-0 flex-1">
-          <h2 className="text-[13px] font-semibold text-ink">Documents to search</h2>
+          <h2 className="text-[13px] font-semibold text-ink">Files to search</h2>
           <p className="mt-0.5 truncate text-xs tabular-nums text-ink-muted" aria-live="polite">
             {summary}
           </p>
@@ -122,7 +146,7 @@ export const ResearchDocumentsPanel: React.FC<ResearchDocumentsPanelProps> = ({
             </div>
           </div>
         ) : (
-          <div role="list" aria-label="Documents for this research" className="divide-y divide-line">
+          <div role="list" aria-label="Files for this research" className="divide-y divide-line">
             {attached.map((doc) => (
               <div key={doc.id} role="listitem">
                 <SourceCard

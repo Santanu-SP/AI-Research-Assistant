@@ -39,6 +39,12 @@ export interface ResearchProgressResponse {
   completedAt: string | null;
   failedAt: string | null;
   failureReason?: ResearchFailureReason | null;
+  /** For model failures: the provider and model that failed, and how. */
+  failureProvider?: string | null;
+  failureModel?: string | null;
+  failureType?: ModelFailureType | null;
   documentsReady?: number;
   documentsPreparing?: number;
 }
+
+export type ModelFailureType = 'quota' | 'auth' | 'timeout' | 'unavailable' | 'other';

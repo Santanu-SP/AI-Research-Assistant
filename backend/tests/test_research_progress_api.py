@@ -21,7 +21,7 @@ STEP_IDS = [
 STEP_TITLES = [
     "Planning research",
     "Searching sources",
-    "Finding relevant uploaded documents",
+    "Finding relevant files",
     "Reviewing evidence",
     "Building synthesis",
 ]
@@ -74,6 +74,9 @@ def test_draft_progress_response_is_factual_and_frontend_friendly(
         "completedAt",
         "failedAt",
         "failureReason",
+        "failureProvider",
+        "failureModel",
+        "failureType",
         "documentsReady",
         "documentsPreparing",
     }

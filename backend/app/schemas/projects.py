@@ -43,6 +43,9 @@ class ResearchProjectResponse(ApiSchema):
     archived_at: datetime | None
     created_at: datetime
     updated_at: datetime
+    # Filled on list responses: files in the project and finished reports.
+    file_count: int | None = Field(default=None, ge=0)
+    report_count: int | None = Field(default=None, ge=0)
 
 
 class ResearchProjectListResponse(ApiSchema):

@@ -99,7 +99,7 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({ document: doc, o
             ref={closeRef}
             type="button"
             onClick={onClose}
-            aria-label="Close document"
+            aria-label="Close file"
             className="inline-flex h-8 w-8 items-center justify-center rounded-md text-ink-muted transition-colors hover:bg-subtle hover:text-ink"
           >
             <X className="h-[18px] w-[18px]" />
@@ -129,12 +129,12 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({ document: doc, o
           ) : failed ? (
             <div className="flex h-full items-center justify-center p-6 text-center">
               <div>
-                <p className="text-sm font-medium text-ink">This document couldn’t be opened.</p>
+                <p className="text-sm font-medium text-ink">This file couldn’t be opened.</p>
                 <p className="mt-1 text-[13px] text-ink-muted">Try again in a moment.</p>
               </div>
             </div>
           ) : !url ? (
-            <div className="flex h-full items-center justify-center" aria-label="Opening document">
+            <div className="flex h-full items-center justify-center" aria-label="Opening file">
               <span className="h-5 w-5 animate-spin rounded-full border-2 border-line-strong border-t-ink-soft" />
             </div>
           ) : isPdf ? (
@@ -171,7 +171,7 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({ document: doc, o
           ) : (
             <div className="flex h-full items-center justify-center p-6 text-center">
               <div>
-                <p className="text-sm font-medium text-ink">This document format can’t be previewed directly.</p>
+                <p className="text-sm font-medium text-ink">This file type can’t be previewed here.</p>
                 <a
                   href={url}
                   download={doc.name}

@@ -323,3 +323,27 @@ def test_research_records_can_be_scoped_and_filtered_by_project(
     ).json()
     assert alpha_list["total"] == 1
     assert alpha_list["items"][0]["id"] == alpha_research.json()["id"]
+
+
+def test_deleted_research_can_be_restored(client: TestClient) -> None:
+    created = create_research(client)
+    assert client.delete(f"/api/v1/research/{created['id']}").status_code == 204
+    assert client.get(f"/api/v1/research/{created['id']}").status_code == 404
+
+    restored = client.post(f"/api/v1/research/{created['id']}/restore")
+    assert restored.status_code == 200, restored.text
+    assert restored.json()["id"] == created["id"]
+    assert restored.json()["archivedAt"] is None
+    assert client.get(f"/api/v1/research/{created['id']}").status_code == 200
+    assert client.get("/api/v1/research").json()["total"] == 1
+
+    # Restoring twice is harmless.
+    assert client.post(f"/api/v1/research/{created['id']}/restore").status_code == 200
+
+
+def test_restore_rejects_unknown_research(client: TestClient) -> None:
+    from uuid import uuid4
+
+    response = client.post(f"/api/v1/research/{uuid4()}/restore")
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "research_not_found"

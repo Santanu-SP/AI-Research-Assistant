@@ -91,7 +91,7 @@ export const CreateProjectDialog: React.FC<CreateProjectDialogProps> = ({
               New project
             </h3>
             <p className="text-xs text-ink-soft mt-0.5">
-              A workspace for your documents and research questions.
+              A workspace for your files and research questions.
             </p>
           </div>
           <button

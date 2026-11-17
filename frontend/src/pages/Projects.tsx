@@ -24,6 +24,13 @@ import {
 } from '../services/projects.service';
 import { useProject } from '../app/ProjectContext';
 
+/** Edits and restores return the project without counts; keep the ones already shown. */
+const keepCounts = (previous: ResearchProject, next: ResearchProject): ResearchProject => ({
+  ...next,
+  fileCount: next.fileCount ?? previous.fileCount,
+  reportCount: next.reportCount ?? previous.reportCount,
+});
+
 type ProjectsView = 'active' | 'archived';
 
 const VIEWS: { id: ProjectsView; label: string; icon: React.ElementType }[] = [
@@ -83,7 +90,7 @@ export const ProjectsPage: React.FC = () => {
 
   const handleProjectUpdated = (updated: ResearchProject) => {
     setProjects((prev) =>
-      prev.map((p) => (p.id === updated.id ? updated : p))
+      prev.map((p) => (p.id === updated.id ? keepCounts(p, updated) : p))
     );
   };
 
@@ -93,7 +100,7 @@ export const ProjectsPage: React.FC = () => {
   };
 
   const handleProjectRestored = (restored: ResearchProject) => {
-    setProjects((prev) => prev.map((p) => (p.id === restored.id ? restored : p)));
+    setProjects((prev) => prev.map((p) => (p.id === restored.id ? keepCounts(p, restored) : p)));
   };
 
   const handleProjectDeleted = (id: string) => {

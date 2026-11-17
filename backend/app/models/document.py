@@ -160,6 +160,10 @@ class Document(TimestampMixin, Base):
         UTCDateTime(), default=utc_now, server_default=func.now(), nullable=False
     )
     processing_error: Mapped[str | None] = mapped_column(Text)
+    # While a file is being prepared: the current step (reading, ocr,
+    # embedding, saving) and, for embedding, how far it got (0-100).
+    processing_stage: Mapped[str | None] = mapped_column(String(32))
+    processing_progress: Mapped[int | None] = mapped_column(Integer)
 
     project: Mapped["ResearchProject | None"] = relationship(
         back_populates="documents"

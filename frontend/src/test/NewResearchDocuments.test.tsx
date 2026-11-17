@@ -57,15 +57,21 @@ describe('New research documents', () => {
 
   it('starts with no documents and asks for one before sending', async () => {
     renderPage();
-    const panel = await screen.findByRole('region', { name: 'Documents for this research' });
+    const panel = await screen.findByRole('region', { name: 'Files for this research' });
     expect(await within(panel).findByRole('button', { name: /Add from library/i })).toBeInTheDocument();
     // Earlier uploads are not listed or used until picked.
     expect(screen.queryByText('Digital_Marketing.pdf')).not.toBeInTheDocument();
     expect(screen.queryByText('MCP_A2A_Master_Document.docx')).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('Research question'), { target: { value: 'What is SEO?' } });
-    expect(screen.getByText('Upload or pick a document first')).toBeInTheDocument();
-    expect(startButton()).toBeDisabled();
+    expect(screen.getByText('Add a file first: upload one or pick from your Library')).toBeInTheDocument();
+    expect(startButton()).toHaveAttribute('aria-disabled', 'true');
+
+    // Trying anyway points at the files panel instead of doing nothing.
+    const start = vi.spyOn(researchService, 'startResearchJob');
+    fireEvent.click(startButton());
+    await waitFor(() => expect(panel).toHaveAttribute('data-highlighted', 'true'));
+    expect(start).not.toHaveBeenCalled();
   });
 
   it('sends only the picked documents with the question', async () => {
@@ -77,13 +83,14 @@ describe('New research documents', () => {
     fireEvent.click(within(dialog).getByText('Digital_Marketing.pdf'));
     fireEvent.click(within(dialog).getByRole('button', { name: 'Use these' }));
 
-    const panel = screen.getByRole('region', { name: 'Documents for this research' });
+    const panel = screen.getByRole('region', { name: 'Files for this research' });
     expect(within(panel).getByText('Digital_Marketing.pdf')).toBeInTheDocument();
     expect(within(panel).queryByText('MCP_A2A_Master_Document.docx')).not.toBeInTheDocument();
     expect(within(panel).getByText('1 ready')).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('Research question'), { target: { value: 'What is SEO?' } });
     expect(startButton()).toBeEnabled();
+    expect(startButton()).not.toHaveAttribute('aria-disabled');
     fireEvent.click(startButton());
 
     await waitFor(() => expect(start).toHaveBeenCalledTimes(1));
@@ -103,7 +110,7 @@ describe('New research documents', () => {
     );
     expect(screen.queryByText('MCP_A2A_Master_Document.docx')).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Research question'), { target: { value: 'Anything?' } });
-    expect(startButton()).toBeDisabled();
+    expect(startButton()).toHaveAttribute('aria-disabled', 'true');
   });
 });
 
@@ -112,10 +119,10 @@ describe('documentsBlockedReason', () => {
     const ready = makeDocument({ id: 'a', status: 'indexed' });
     const preparing = makeDocument({ id: 'b', status: 'processing' });
     const failed = makeDocument({ id: 'c', status: 'failed' });
-    expect(documentsBlockedReason([], 0)).toBe('Upload or pick a document first');
-    expect(documentsBlockedReason([preparing], 1)).toBe('Your documents are still being prepared');
+    expect(documentsBlockedReason([], 0)).toBe('Add a file first: upload one or pick from your Library');
+    expect(documentsBlockedReason([preparing], 1)).toBe('Your files are still being prepared');
     // Just uploaded and not in the list yet.
-    expect(documentsBlockedReason([], 1)).toBe('Your documents are still being prepared');
+    expect(documentsBlockedReason([], 1)).toBe('Your files are still being prepared');
     expect(documentsBlockedReason([failed], 1)).toMatch(/could be read/);
     expect(documentsBlockedReason([ready, preparing], 2)).toBeNull();
   });

@@ -28,7 +28,7 @@ export const AuthShell: React.FC<React.PropsWithChildren<AuthShellProps>> = ({
       </div>
 
       <p className="text-xs text-ink-muted">
-        Your documents stay in your own workspace and are only searched for your questions.
+        Your files stay in your own workspace and are only searched for your questions.
       </p>
     </div>
 
