@@ -92,3 +92,51 @@ def test_projects_are_private_to_the_authenticated_user(
         json={"name": "Stolen"},
     ).status_code == 404
     assert client.delete(f"/api/v1/projects/{project['id']}").status_code == 404
+
+
+def test_archived_project_can_be_restored(client: TestClient) -> None:
+    project = create_project(client)
+    project_id = project["id"]
+
+    # Only archived projects can be restored.
+    assert client.post(f"/api/v1/projects/{project_id}/restore").status_code == 409
+
+    assert client.delete(f"/api/v1/projects/{project_id}").status_code == 204
+    restored = client.post(f"/api/v1/projects/{project_id}/restore")
+    assert restored.status_code == 200, restored.text
+    assert restored.json()["archivedAt"] is None
+    assert client.get(f"/api/v1/projects/{project_id}").status_code == 200
+
+    assert client.post(f"/api/v1/projects/{uuid4()}/restore").status_code == 404
+
+
+def test_archived_project_can_be_deleted_and_keeps_its_files(
+    client: TestClient,
+) -> None:
+    from tests.test_documents_api import PDF_MIME, make_pdf
+
+    project = create_project(client)
+    project_id = project["id"]
+    upload = client.post(
+        f"/api/v1/projects/{project_id}/documents",
+        files={"file": ("kept.pdf", make_pdf("kept evidence"), PDF_MIME)},
+    )
+    assert upload.status_code == 201, upload.text
+    document_id = upload.json()["id"]
+
+    # An active project has to be archived first.
+    assert client.delete(f"/api/v1/projects/{project_id}/permanent").status_code == 409
+
+    assert client.delete(f"/api/v1/projects/{project_id}").status_code == 204
+    deleted = client.delete(f"/api/v1/projects/{project_id}/permanent")
+    assert deleted.status_code == 204
+
+    listed = client.get(
+        "/api/v1/projects", params={"includeArchived": "true"}
+    ).json()
+    assert all(item["id"] != project_id for item in listed["items"])
+    assert client.post(f"/api/v1/projects/{project_id}/restore").status_code == 404
+
+    document = client.get(f"/api/v1/documents/{document_id}")
+    assert document.status_code == 200
+    assert document.json()["projectId"] is None

@@ -86,3 +86,25 @@ def archive_project(
 ) -> Response:
     project_service.archive_project(session, project_id, user.id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/{project_id}/restore", response_model=ResearchProjectResponse)
+def restore_project(
+    project_id: UUID,
+    session: DatabaseSession,
+    user: CurrentUser,
+) -> ResearchProjectResponse:
+    return project_service.restore_project(session, project_id, user.id)
+
+
+@router.delete(
+    "/{project_id}/permanent",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_project_permanently(
+    project_id: UUID,
+    session: DatabaseSession,
+    user: CurrentUser,
+) -> Response:
+    project_service.delete_project_permanently(session, project_id, user.id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
