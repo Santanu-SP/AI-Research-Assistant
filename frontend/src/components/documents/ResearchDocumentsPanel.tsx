@@ -114,8 +114,8 @@ export const ResearchDocumentsPanel: React.FC<ResearchDocumentsPanelProps> = ({
         ? 'Will discover trusted online sources'
         : 'None added yet'
       : [ready > 0 && `${ready} ready`, preparing > 0 && `${preparing} preparing`]
-          .filter(Boolean)
-          .join(' · ') || `${attached.length} added`;
+        .filter(Boolean)
+        .join(' · ') || `${attached.length} added`;
 
   const actionButton =
     'inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-line bg-panel px-2.5 text-[13px] font-medium text-ink shadow-xs transition-colors hover:bg-subtle';
@@ -197,16 +197,14 @@ export const ResearchDocumentsPanel: React.FC<ResearchDocumentsPanelProps> = ({
                     aria-checked={autoDiscover}
                     aria-label="Enable trusted online discovery"
                     onClick={() => onAutoDiscoverChange(!autoDiscover)}
-                    className={`relative mt-0.5 inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border transition-colors ${
-                      autoDiscover
-                        ? 'border-accent bg-solid'
-                        : 'border-line-strong bg-subtle'
-                    }`}
+                    className={`relative mt-0.5 inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border transition-colors ${autoDiscover
+                      ? 'border-accent bg-solid'
+                      : 'border-line-strong bg-subtle'
+                      }`}
                   >
                     <span
-                      className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow-xs transition-transform ${
-                        autoDiscover ? 'translate-x-4' : 'translate-x-0.5'
-                      }`}
+                      className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow-xs transition-transform ${autoDiscover ? 'translate-x-4' : 'translate-x-0.5'
+                        }`}
                     />
                   </button>
                 </div>
@@ -218,11 +216,10 @@ export const ResearchDocumentsPanel: React.FC<ResearchDocumentsPanelProps> = ({
                         key={item.id}
                         type="button"
                         onClick={() => onDiscoveryScopeChange(item.id)}
-                        className={`rounded px-2 py-0.5 text-[11px] font-medium transition-colors ${
-                          discoveryScope === item.id
-                            ? 'bg-accent-soft text-accent border border-accent-line'
-                            : 'text-ink-soft hover:bg-subtle hover:text-ink border border-transparent'
-                        }`}
+                        className={`rounded px-2 py-0.5 text-[11px] font-medium transition-colors ${discoveryScope === item.id
+                          ? 'bg-accent-soft text-accent border border-accent-line'
+                          : 'text-ink-soft hover:bg-subtle hover:text-ink border border-transparent'
+                          }`}
                       >
                         {item.label}
                       </button>

@@ -142,28 +142,28 @@ export const NewResearch: React.FC = () => {
           {/* On small screens the documents panel sits right under the composer, before the tips. */}
           <div className="contents lg:block lg:min-w-0">
             <div className="order-1 min-w-0 lg:order-none">
-            <div className="mb-6">
-              <h1 className="font-serif text-[28px] leading-tight tracking-[-0.01em] text-ink sm:text-[34px]">
-                What do you want to find out?
-              </h1>
-              <p className="mt-2 max-w-xl text-sm leading-relaxed text-ink-soft">
-                Answers come only from the documents you add for this research, and each claim
-                links to the passage it came from.
-              </p>
-            </div>
-
-            <ResearchComposer
-              key={location.key}
-              onPromptChange={setPromptDraft}
-              onStartResearch={handleStartResearch}
-              isLoading={isSubmitting}
-              blockedReason={blockedReason}
-            />
-            {createError ? (
-              <div className="mt-3">
-                <ErrorState title="Research could not be started" message={createError} />
+              <div className="mb-6">
+                <h1 className="font-serif text-[28px] leading-tight tracking-[-0.01em] text-ink sm:text-[34px]">
+                  What do you want to find out?
+                </h1>
+                <p className="mt-2 max-w-xl text-sm leading-relaxed text-ink-soft">
+                  Answers come only from the documents you add for this research, and each claim
+                  links to the passage it came from.
+                </p>
               </div>
-            ) : null}
+
+              <ResearchComposer
+                key={location.key}
+                onPromptChange={setPromptDraft}
+                onStartResearch={handleStartResearch}
+                isLoading={isSubmitting}
+                blockedReason={blockedReason}
+              />
+              {createError ? (
+                <div className="mt-3">
+                  <ErrorState title="Research could not be started" message={createError} />
+                </div>
+              ) : null}
 
             </div>
             <ul className="order-3 grid min-w-0 gap-3 sm:grid-cols-2 lg:order-none lg:mt-8">
