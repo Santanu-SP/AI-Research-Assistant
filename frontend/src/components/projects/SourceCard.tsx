@@ -1,5 +1,6 @@
 import React from 'react';
-import { FileText, Trash2, X } from 'lucide-react';
+import { FileText, Folder, Sparkles, Trash2, X } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { Document } from '../../types/document';
 import { isDocumentPending } from '../../services/documents.service';
 import { ingestionStep } from '../../lib/ingestionProgress';
@@ -17,6 +18,8 @@ interface SourceCardProps {
   isArchived?: boolean;
   /** Tighter row for side panels. */
   compact?: boolean;
+  /** Show the project and research runs that use this file. */
+  showUsage?: boolean;
 }
 
 const formatSize = (bytes: number): string => {
@@ -77,6 +80,7 @@ export const SourceCard: React.FC<SourceCardProps> = ({
   isDeleting = false,
   isArchived = false,
   compact = false,
+  showUsage = false,
 }) => {
   const displayName = document.title || document.name;
   const showFileName = !compact && document.title && document.title !== document.name;
@@ -227,7 +231,41 @@ export const SourceCard: React.FC<SourceCardProps> = ({
             )}
           </p>
         )}
+        {showUsage && <UsageTags document={document} />}
       </div>
     </div>
+  );
+};
+
+const TAG_CLASS =
+  'relative z-[1] inline-flex max-w-[14rem] items-center gap-1 rounded-md border border-line bg-subtle/70 px-1.5 py-0.5 text-[11px] text-ink-soft';
+
+/** Where a file is used: its project and the research runs limited to it. */
+const UsageTags: React.FC<{ document: Document }> = ({ document }) => {
+  const usedIn = document.usedIn ?? [];
+  const more = Math.max(0, (document.usedInCount ?? usedIn.length) - usedIn.length);
+  if (!document.projectName && usedIn.length === 0) {
+    return <p className="mt-1.5 text-[11px] text-ink-muted">Not used in any project or research yet</p>;
+  }
+  return (
+    <ul className="mt-1.5 flex flex-wrap items-center gap-1.5" aria-label="Used in">
+      {document.projectName && document.projectId && (
+        <li>
+          <Link to={`/projects/${document.projectId}`} className={`${TAG_CLASS} hover:text-ink`} title={`Project: ${document.projectName}`}>
+            <Folder className="h-3 w-3 shrink-0" aria-hidden="true" />
+            <span className="truncate">{document.projectName}</span>
+          </Link>
+        </li>
+      )}
+      {usedIn.map((run) => (
+        <li key={run.id}>
+          <Link to={`/research/${run.id}`} className={`${TAG_CLASS} hover:text-ink`} title={`Research: ${run.title}`}>
+            <Sparkles className="h-3 w-3 shrink-0 text-accent" aria-hidden="true" />
+            <span className="truncate">{run.title}</span>
+          </Link>
+        </li>
+      ))}
+      {more > 0 && <li className="text-[11px] text-ink-muted">+{more} more</li>}
+    </ul>
   );
 };

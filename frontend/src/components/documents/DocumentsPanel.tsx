@@ -19,6 +19,13 @@ interface DocumentsPanelProps {
   title?: string;
   description?: string;
   className?: string;
+  /** Search box and filters shown under the header. */
+  toolbar?: React.ReactNode;
+  /** True when a search or filter is narrowing the list. */
+  isFiltered?: boolean;
+  onClearFilters?: () => void;
+  /** Show the project and research runs that use each file. */
+  showUsage?: boolean;
 }
 
 /**
@@ -33,6 +40,10 @@ export const DocumentsPanel: React.FC<DocumentsPanelProps> = ({
   title = 'Files',
   description,
   className = '',
+  toolbar,
+  isFiltered = false,
+  onClearFilters,
+  showUsage = false,
 }) => {
   const { addToast } = useToast();
   const [isUploadOpen, setIsUploadOpen] = useState(false);
@@ -49,7 +60,9 @@ export const DocumentsPanel: React.FC<DocumentsPanelProps> = ({
 
   const summary =
     total === 0
-      ? 'No files yet'
+      ? isFiltered
+        ? 'No matches'
+        : 'No files yet'
       : [readyCount > 0 && `${readyCount} ready`, preparingCount > 0 && `${preparingCount} preparing`]
           .filter(Boolean)
           .join(' · ') || `${total} file${total === 1 ? '' : 's'}`;
@@ -78,6 +91,8 @@ export const DocumentsPanel: React.FC<DocumentsPanelProps> = ({
         )}
       </header>
 
+      {toolbar && <div className="border-b border-line px-4 py-2.5">{toolbar}</div>}
+
       {description && <p className="border-b border-line px-4 py-2.5 text-xs leading-relaxed text-ink-muted">{description}</p>}
 
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -99,6 +114,18 @@ export const DocumentsPanel: React.FC<DocumentsPanelProps> = ({
             <button type="button" onClick={reload} className="mt-2 text-[13px] font-medium text-accent hover:underline">
               Try again
             </button>
+          </div>
+        ) : documents.length === 0 && isFiltered ? (
+          <div className="px-4 py-8 text-center">
+            <p className="text-[13px] font-medium text-ink">No files match</p>
+            <p className="mx-auto mt-1 max-w-[260px] text-xs leading-relaxed text-ink-muted">
+              Try another word or file type.
+            </p>
+            {onClearFilters && (
+              <button type="button" onClick={onClearFilters} className="mt-2 text-[13px] font-medium text-accent hover:underline">
+                Clear search and filters
+              </button>
+            )}
           </div>
         ) : documents.length === 0 ? (
           <div className="px-4 py-8 text-center">
@@ -130,6 +157,7 @@ export const DocumentsPanel: React.FC<DocumentsPanelProps> = ({
                   isRetrying={actions.retryingId === doc.id}
                   isDeleting={actions.deletingId === doc.id}
                   isArchived={readOnly}
+                  showUsage={showUsage}
                 />
               </div>
             ))}
