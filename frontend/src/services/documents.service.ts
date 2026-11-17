@@ -1,4 +1,4 @@
-import { Document, DocumentListResponse } from '../types/document';
+import { Document, DocumentKind, DocumentListResponse } from '../types/document';
 import { ApiError, UPLOAD_REQUEST_TIMEOUT_MS, apiErrorCode, apiErrorMessage, apiRequest } from './api';
 
 export const DOCUMENTS_CHANGED_EVENT = 'documents:changed';
@@ -19,6 +19,7 @@ export interface ProjectDocumentListParams {
   search?: string;
   status?: string;
   type?: string;
+  kind?: DocumentKind;
   limit?: number;
   offset?: number;
 }
@@ -31,6 +32,7 @@ const documentListPath = (
   if (params?.search) query.append('search', params.search);
   if (params?.status && params.status !== 'all') query.append('status', params.status);
   if (params?.type && params.type !== 'all') query.append('type', params.type.toLowerCase());
+  if (params?.kind) query.append('kind', params.kind);
   if (params?.limit) query.append('limit', params.limit.toString());
   if (params?.offset) query.append('offset', params.offset.toString());
 

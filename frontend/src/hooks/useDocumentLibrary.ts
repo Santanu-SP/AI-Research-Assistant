@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Document, DocumentListResponse } from '../types/document';
+import { Document, DocumentKind, DocumentListResponse } from '../types/document';
 import { documentsService, getDocumentErrorMessage } from '../services/documents.service';
 import { activeIngestionKey, useBackoffPolling } from './useBackoffPolling';
 import { useSessionDataCache } from '../app/SessionDataCacheContext';
@@ -37,7 +37,12 @@ const documentsListEqual = (a: Document[], b: Document[]): boolean => {
       left.ingestionStatus !== right.ingestionStatus ||
       left.updatedAt !== right.updatedAt ||
       left.processingError !== right.processingError ||
+      left.processingStage !== right.processingStage ||
+      left.processingProgress !== right.processingProgress ||
       left.projectId !== right.projectId ||
+      left.projectName !== right.projectName ||
+      left.usedInCount !== right.usedInCount ||
+      (left.usedIn ?? []).map((u) => u.id).join() !== (right.usedIn ?? []).map((u) => u.id).join() ||
       left.size !== right.size ||
       left.chunkCount !== right.chunkCount
     ) {
@@ -47,21 +52,30 @@ const documentsListEqual = (a: Document[], b: Document[]): boolean => {
   return true;
 };
 
-const fetchScope = (scope: DocumentScope, search: string | undefined, signal?: AbortSignal) =>
+const fetchScope = (
+  scope: DocumentScope,
+  search: string | undefined,
+  kind: DocumentKind | undefined,
+  signal?: AbortSignal,
+) =>
   'projectId' in scope
-    ? documentsService.getProjectDocuments(scope.projectId, { search, limit: LIST_LIMIT }, signal)
-    : documentsService.getDocuments({ search, limit: LIST_LIMIT }, signal);
+    ? documentsService.getProjectDocuments(scope.projectId, { search, kind, limit: LIST_LIMIT }, signal)
+    : documentsService.getDocuments({ search, kind, limit: LIST_LIMIT }, signal);
 
 /**
  * Lists documents and keeps them current. While any file is still being
  * prepared it polls quietly with backoff, so a file becomes usable on its
  * own once the server has finished with it.
  */
-export function useDocumentLibrary(scope: DocumentScope | null, search?: string): DocumentLibrary {
+export function useDocumentLibrary(
+  scope: DocumentScope | null,
+  search?: string,
+  kind?: DocumentKind,
+): DocumentLibrary {
   const cache = useSessionDataCache();
   const scopeKey = scope ? ('projectId' in scope ? `p:${scope.projectId}` : 'all') : '';
   const term = search?.trim() || undefined;
-  const cacheKey = scopeKey ? `${scopeKey}::${term ?? ''}` : '';
+  const cacheKey = scopeKey ? `${scopeKey}::${term ?? ''}${kind ? `::${kind}` : ''}` : '';
   const initialCached = cacheKey && cache ? cache.getDocuments(cacheKey) : undefined;
 
   const [documents, setDocuments] = useState<Document[]>(() => initialCached?.documents ?? []);
@@ -125,7 +139,7 @@ export function useDocumentLibrary(scope: DocumentScope | null, search?: string)
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
-    fetchScope(current, term, controller.signal)
+    fetchScope(current, term, kind, controller.signal)
       .then((res: DocumentListResponse) => {
         if (controller.signal.aborted) return;
         forceReloadRef.current = false;
@@ -142,23 +156,23 @@ export function useDocumentLibrary(scope: DocumentScope | null, search?: string)
           setDocuments([]);
           setTotal(0);
         }
-        setError(getDocumentErrorMessage(err, 'Your documents could not be loaded.'));
+        setError(getDocumentErrorMessage(err, 'Your files could not be loaded.'));
       })
       .finally(() => {
         if (!controller.signal.aborted) setIsLoading(false);
       });
     return () => controller.abort();
-  }, [scopeKey, term, reloadKey, cacheKey, cache]);
+  }, [scopeKey, term, kind, reloadKey, cacheKey, cache]);
 
   const refresh = useCallback(async () => {
     const current = scopeRef.current;
     if (!current || !cacheKey) return;
-    const res = await fetchScope(current, term);
+    const res = await fetchScope(current, term, kind);
     cache?.setDocuments(cacheKey, res.items, res.total);
     loadedKeyRef.current = cacheKey;
     setDocuments((prev) => (documentsListEqual(prev, res.items) ? prev : res.items));
     setTotal(res.total);
-  }, [cache, cacheKey, term]);
+  }, [cache, cacheKey, term, kind]);
 
   const pendingKey = activeIngestionKey(documents);
   const { timedOut } = useBackoffPolling(Boolean(scope) && pendingKey !== '', refresh, `${scopeKey}:${pendingKey}`);

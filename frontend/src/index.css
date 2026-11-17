@@ -816,3 +816,19 @@
     display: none;
   }
 }
+
+/* Points at the files panel when research can't start without files. */
+.files-attention {
+  border-color: var(--app-accent);
+  animation: files-attention 0.9s ease-out 2;
+}
+@keyframes files-attention {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--app-accent) 45%, transparent); }
+  100% { box-shadow: 0 0 0 10px color-mix(in srgb, var(--app-accent) 0%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .files-attention {
+    animation: none;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-accent) 35%, transparent);
+  }
+}

@@ -92,8 +92,8 @@ export const ArchiveProjectDialog: React.FC<ArchiveProjectDialogProps> = ({
             className="text-sm text-ink-soft leading-relaxed"
           >
             <strong className="text-ink">"{project.name}"</strong> will be
-            archived. You will no longer be able to upload new documents or run
-            research within it. Existing documents and reports are preserved.
+            archived. You will no longer be able to upload new files or run
+            research within it. Existing files and reports are kept.
           </p>
 
           {error && (

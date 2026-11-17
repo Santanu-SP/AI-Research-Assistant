@@ -140,7 +140,13 @@ def test_upload_uses_centralized_status_lifecycle(
     response = upload_document(client)
 
     assert response.status_code == 201
-    assert observed == [
+    # Progress steps are saved while processing, so the same status can be
+    # committed more than once; the lifecycle itself must not change.
+    lifecycle = [
+        status for index, status in enumerate(observed)
+        if index == 0 or status != observed[index - 1]
+    ]
+    assert lifecycle == [
         DocumentStatus.UPLOADED,
         DocumentStatus.PROCESSING,
         DocumentStatus.INDEXED,
@@ -344,3 +350,26 @@ def test_foreign_and_archived_projects_reject_document_operations(
     )
     assert archived_upload.status_code == 404
     assert client.get(f"/api/v1/projects/{project_id}/documents").status_code == 404
+
+
+def test_processing_steps_are_saved_and_cleared(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    stages: list[tuple[str | None, int | None]] = []
+    original_set_stage = ingestion_service._set_stage
+
+    def recording_set_stage(session, document, stage, progress=None):
+        stages.append((stage, progress))
+        original_set_stage(session, document, stage, progress)
+
+    monkeypatch.setattr(ingestion_service, "_set_stage", recording_set_stage)
+    response = upload_document(client)
+    assert response.status_code == 201
+    assert [stage for stage, _ in stages] == ["reading", "embedding", "saving"]
+    assert stages[1] == ("embedding", 0)
+
+    body = response.json()
+    assert body["status"] == "indexed"
+    assert body["processingStage"] is None
+    assert body["processingProgress"] is None

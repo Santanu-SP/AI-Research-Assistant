@@ -63,6 +63,16 @@ export interface Document {
   pageCount?: number | null;
   uploadedAt: string;
   processingError?: string | null;
+  /** While preparing: reading, ocr, embedding or saving. */
+  processingStage?: string | null;
+  /** 0-100 within the embedding step. */
+  processingProgress?: number | null;
+  /** List responses only: the project this file belongs to. */
+  projectName?: string | null;
+  /** List responses only: research runs limited to this file (a few, newest first). */
+  usedIn?: DocumentUsage[];
+  /** List responses only: how many research runs use this file in total. */
+  usedInCount?: number;
   chunkCount?: number;
   createdAt: string;
   updatedAt: string;
@@ -74,3 +84,11 @@ export interface DocumentListResponse {
   limit: number;
   offset: number;
 }
+
+export interface DocumentUsage {
+  id: string;
+  title: string;
+}
+
+/** Library filter groups; the server maps each to its file types. */
+export type DocumentKind = 'documents' | 'images' | 'audio' | 'video' | 'links';
