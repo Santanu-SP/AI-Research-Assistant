@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Files, LayoutGrid, LogOut, Moon, PanelLeftOpen, Plus, Search, Settings, Sun } from 'lucide-react';
+import { LayoutGrid, Library, LogOut, PanelLeftOpen, Plus, Search, Settings } from 'lucide-react';
 import { useAuth } from '../../app/AuthContext';
 import { BrandMark } from '../common/BrandMark';
-import { applyTheme, getAppliedTheme } from '../../theme';
 import { shortcutLabel } from '../../lib/shortcuts';
+import { activeSection, railButtonClass as railButton } from '../../lib/navigation';
 
 interface SidebarRailProps {
   onExpand: () => void;
@@ -20,11 +20,6 @@ const initials = (name?: string) =>
     .map((part) => part[0]?.toUpperCase())
     .join('');
 
-const railButton = (active = false) =>
-  `rail-tip inline-flex h-9 w-9 items-center justify-center rounded-md transition-colors ${
-    active ? 'bg-subtle text-accent' : 'text-ink-muted hover:bg-subtle hover:text-ink'
-  }`;
-
 /** The slim column of icons shown on desktop while the sidebar is hidden. */
 export const SidebarRail: React.FC<SidebarRailProps> = ({ onExpand, onSearch }) => {
   const location = useLocation();
@@ -32,12 +27,12 @@ export const SidebarRail: React.FC<SidebarRailProps> = ({ onExpand, onSearch }) 
   const { user, logout } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  const isDark = getAppliedTheme() === 'dark';
 
-  const projectsActive = location.pathname.startsWith('/projects');
-  const settingsActive = location.pathname.startsWith('/settings');
-  const documentsActive = location.pathname.startsWith('/documents');
-  const newActive = location.pathname === '/research/new';
+  const section = activeSection(location.pathname);
+  const projectsActive = section === 'projects';
+  const settingsActive = section === 'settings';
+  const libraryActive = section === 'library';
+  const newActive = section === 'new-research';
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -87,7 +82,11 @@ export const SidebarRail: React.FC<SidebarRailProps> = ({ onExpand, onSearch }) 
           aria-label="New research"
           data-tip={`New research  ${shortcutLabel('O', { shift: true })}`}
           aria-current={newActive ? 'page' : undefined}
-          className="rail-tip inline-flex h-9 w-9 items-center justify-center rounded-md bg-solid text-on-solid shadow-xs transition-colors hover:bg-solid-hover"
+          className={`rail-tip inline-flex h-9 w-9 items-center justify-center rounded-md border shadow-xs transition-colors ${
+            newActive
+              ? 'border-accent-line bg-accent-muted text-accent'
+              : 'border-line-strong bg-panel text-accent hover:border-accent-line hover:bg-accent-soft'
+          }`}
         >
           <Plus className="h-4 w-4" />
         </Link>
@@ -110,13 +109,13 @@ export const SidebarRail: React.FC<SidebarRailProps> = ({ onExpand, onSearch }) 
           <LayoutGrid className="h-4 w-4" />
         </Link>
         <Link
-          to="/documents"
-          aria-label="Documents"
-          data-tip="Documents"
-          aria-current={documentsActive ? 'page' : undefined}
-          className={railButton(documentsActive)}
+          to="/library"
+          aria-label="Library"
+          data-tip="Library"
+          aria-current={libraryActive ? 'page' : undefined}
+          className={railButton(libraryActive)}
         >
-          <Files className="h-4 w-4" />
+          <Library className="h-4 w-4" />
         </Link>
         <Link
           to="/settings"
@@ -139,18 +138,15 @@ export const SidebarRail: React.FC<SidebarRailProps> = ({ onExpand, onSearch }) 
               <p className="truncate text-[13px] font-medium text-ink">{user?.name || 'Researcher'}</p>
               <p className="truncate text-xs text-ink-muted">{user?.email}</p>
             </div>
-            <button
-              type="button"
+            <Link
+              to="/settings"
               role="menuitem"
-              onClick={() => {
-                applyTheme(isDark ? 'light' : 'dark', true);
-                setMenuOpen(false);
-              }}
+              onClick={() => setMenuOpen(false)}
               className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] text-ink-soft hover:bg-subtle hover:text-ink"
             >
-              {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-              {isDark ? 'Light theme' : 'Dark theme'}
-            </button>
+              <Settings className="h-4 w-4" /> Settings
+            </Link>
+            <div className="my-1 border-t border-line" />
             <button
               type="button"
               role="menuitem"

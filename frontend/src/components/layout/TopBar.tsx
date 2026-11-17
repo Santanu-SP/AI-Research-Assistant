@@ -1,6 +1,5 @@
 import React from 'react';
 import { Menu, X } from 'lucide-react';
-import { ThemeToggle } from './ThemeToggle';
 import { useMobileNav } from './MobileNavContext';
 
 interface TopBarProps {
@@ -35,7 +34,6 @@ export const TopBar: React.FC<TopBarProps> = ({
 
       <div className="flex shrink-0 items-center gap-2">
         {rightActions}
-        <ThemeToggle className="hidden lg:inline-flex" />
       </div>
     </header>
   );

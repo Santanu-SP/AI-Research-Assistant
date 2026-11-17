@@ -1,12 +1,14 @@
 from uuid import UUID
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
 from app.core.time import utc_now
+from app.models.document import Document
 from app.models.project import ResearchProject
+from app.models.research import Research
 from app.schemas.projects import ResearchProjectCreate, ResearchProjectUpdate
 
 
@@ -119,4 +121,51 @@ def archive_project(session: Session, project_id: UUID, user_id: UUID) -> None:
     timestamp = utc_now()
     project.archived_at = timestamp
     project.updated_at = timestamp
+    _commit(session)
+
+
+def _get_archived_project(
+    session: Session, project_id: UUID, user_id: UUID
+) -> ResearchProject:
+    project = get_project(session, project_id, user_id, include_archived=True)
+    if project.archived_at is None:
+        raise AppError(
+            "Only archived projects can be restored or deleted",
+            status_code=409,
+            code="research_project_not_archived",
+        )
+    return project
+
+
+def restore_project(
+    session: Session, project_id: UUID, user_id: UUID
+) -> ResearchProject:
+    project = _get_archived_project(session, project_id, user_id)
+    project.archived_at = None
+    project.updated_at = utc_now()
+    _commit(session)
+    session.refresh(project)
+    return project
+
+
+def delete_project_permanently(
+    session: Session, project_id: UUID, user_id: UUID
+) -> None:
+    """Remove an archived project for good.
+
+    Its files and research are kept: they move out of the project and stay
+    in the user's library and research history.
+    """
+    project = _get_archived_project(session, project_id, user_id)
+    session.execute(
+        update(Document)
+        .where(Document.project_id == project.id)
+        .values(project_id=None)
+    )
+    session.execute(
+        update(Research)
+        .where(Research.project_id == project.id)
+        .values(project_id=None)
+    )
+    session.delete(project)
     _commit(session)

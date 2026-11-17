@@ -19,7 +19,7 @@ type WorkspaceTab = 'ask' | 'documents';
 
 const TABS: { id: WorkspaceTab; label: string; icon: typeof FileText }[] = [
   { id: 'ask', label: 'Ask', icon: MessageSquareText },
-  { id: 'documents', label: 'Documents', icon: FileText },
+  { id: 'documents', label: 'Files', icon: FileText },
 ];
 
 export const ProjectWorkspacePage: React.FC = () => {

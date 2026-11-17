@@ -51,6 +51,20 @@ export const projectsService = {
       method: 'DELETE',
     });
   },
+
+  /** Brings an archived project back to the active list. */
+  async restoreProject(id: string): Promise<ResearchProject> {
+    return apiRequest<ResearchProject>(`/projects/${encodeURIComponent(id)}/restore`, {
+      method: 'POST',
+    });
+  },
+
+  /** Removes an archived project for good. Its files stay in the library. */
+  async deleteProjectPermanently(id: string): Promise<void> {
+    await apiRequest<void>(`/projects/${encodeURIComponent(id)}/permanent`, {
+      method: 'DELETE',
+    });
+  },
 };
 
 export const getProjectErrorMessage = (
@@ -61,7 +75,13 @@ export const getProjectErrorMessage = (
 
   if (error.status === 404) return 'Project not found.';
   if (error.status === 403) return 'You do not have access to this project.';
-  if (error.status === 409) return 'A project with that name already exists.';
+  if (error.status === 409) {
+    const data = error.data as { error?: { code?: string } } | null;
+    if (data?.error?.code === 'research_project_not_archived') {
+      return 'Archive this project first.';
+    }
+    return 'A project with that name already exists.';
+  }
   if (error.status === 422) {
     const data = error.data as { detail?: unknown } | null;
     if (Array.isArray(data?.detail)) {

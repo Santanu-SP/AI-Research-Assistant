@@ -2,15 +2,13 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   ChevronsUpDown,
-  Files,
+  Library,
   LayoutGrid,
   LogOut,
-  Moon,
   PanelLeftClose,
   Plus,
   Search,
   Settings,
-  Sun,
   X,
 } from 'lucide-react';
 import { useAuth } from '../../app/AuthContext';
@@ -18,8 +16,8 @@ import { groupByDate, useResearchHistory } from '../../app/ResearchHistoryContex
 import { researchService } from '../../services/research.service';
 import { ResearchResponse } from '../../types/research';
 import { BrandMark } from '../common/BrandMark';
-import { applyTheme, getAppliedTheme } from '../../theme';
 import { shortcutLabel } from '../../lib/shortcuts';
+import { activeSection, navIconClass, navItemClass, newResearchClass } from '../../lib/navigation';
 import { useMobileNav } from './MobileNavContext';
 import { ResearchHistoryItem } from './ResearchHistoryItem';
 import { DeleteResearchDialog } from './DeleteResearchDialog';
@@ -136,18 +134,11 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
     };
   }, [profileOpen]);
 
-  const navItem = (active: boolean) =>
-    `group flex h-8 items-center gap-2.5 rounded-md px-2.5 text-[13px] transition-colors ${
-      active ? 'bg-subtle font-medium text-ink' : 'text-ink-soft hover:bg-subtle hover:text-ink'
-    }`;
-
-  const iconClass = (active: boolean) =>
-    `h-4 w-4 shrink-0 ${active ? 'text-accent' : 'text-ink-muted group-hover:text-ink-soft'}`;
-
-  const projectsActive = location.pathname.startsWith('/projects');
-  const documentsActive = location.pathname.startsWith('/documents');
-  const settingsActive = location.pathname.startsWith('/settings');
-  const isDark = getAppliedTheme() === 'dark';
+  const section = activeSection(location.pathname);
+  const newResearchActive = section === 'new-research';
+  const projectsActive = section === 'projects';
+  const libraryActive = section === 'library';
+  const settingsActive = section === 'settings';
 
   const handleDeleted = (item: ResearchResponse) => {
     setPendingDelete(null);
@@ -190,23 +181,34 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
         <Link
           to="/research/new"
           onClick={onNavigate}
-          className="flex h-9 items-center gap-2 rounded-md bg-solid px-2.5 text-[13px] font-medium text-on-solid shadow-xs transition-colors hover:bg-solid-hover"
+          aria-current={newResearchActive ? 'page' : undefined}
+          className={newResearchClass(newResearchActive)}
         >
-          <Plus className="h-4 w-4" />
+          <Plus className="h-4 w-4 text-accent" />
           <span className="flex-1">New research</span>
-          <kbd className="hidden font-sans text-[10.5px] font-medium tracking-wide text-on-solid/60 sm:inline">
+          <kbd className="hidden font-sans text-[10.5px] font-medium tracking-wide text-ink-muted sm:inline">
             {shortcutLabel('O', { shift: true })}
           </kbd>
         </Link>
 
         <nav aria-label="Main navigation" className="mt-3 flex flex-col gap-px">
-          <NavLink to="/projects" onClick={onNavigate} className={() => navItem(projectsActive)}>
-            <LayoutGrid className={iconClass(projectsActive)} />
+          <NavLink
+            to="/projects"
+            onClick={onNavigate}
+            aria-current={projectsActive ? 'page' : undefined}
+            className={() => navItemClass(projectsActive)}
+          >
+            <LayoutGrid className={navIconClass(projectsActive)} />
             <span>Projects</span>
           </NavLink>
-          <NavLink to="/documents" onClick={onNavigate} className={() => navItem(documentsActive)}>
-            <Files className={iconClass(documentsActive)} />
-            <span>Documents</span>
+          <NavLink
+            to="/library"
+            onClick={onNavigate}
+            aria-current={libraryActive ? 'page' : undefined}
+            className={() => navItemClass(libraryActive)}
+          >
+            <Library className={navIconClass(libraryActive)} />
+            <span>Library</span>
           </NavLink>
         </nav>
 
@@ -314,15 +316,6 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
             >
               <Settings className="h-4 w-4" /> Settings
             </Link>
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => applyTheme(isDark ? 'light' : 'dark', true)}
-              className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] text-ink-soft hover:bg-subtle hover:text-ink"
-            >
-              {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-              {isDark ? 'Light theme' : 'Dark theme'}
-            </button>
             <div className="my-1 border-t border-line" />
             <button
               type="button"
@@ -371,8 +364,9 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
             onClick={onNavigate}
             aria-label="Settings"
             title="Settings"
+            aria-current={settingsActive ? 'page' : undefined}
             className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md transition-colors ${
-              settingsActive ? 'bg-subtle text-accent' : 'text-ink-muted hover:bg-subtle hover:text-ink'
+              settingsActive ? 'bg-accent-muted text-accent' : 'text-ink-muted hover:bg-subtle hover:text-ink'
             }`}
           >
             <Settings className="h-4 w-4" />

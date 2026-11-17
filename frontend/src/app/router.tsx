@@ -21,7 +21,7 @@ const SettingsPage = page(() => import('../pages/Settings'), 'SettingsPage');
 const ResearchReportPage = page(() => import('../pages/ResearchReport'), 'ResearchReportPage');
 const ProjectsPage = page(() => import('../pages/Projects'), 'ProjectsPage');
 const ProjectWorkspacePage = page(() => import('../pages/ProjectWorkspace'), 'ProjectWorkspacePage');
-const DocumentsLibraryPage = page(() => import('../pages/DocumentsLibrary'), 'DocumentsLibraryPage');
+const LibraryPage = page(() => import('../pages/Library'), 'LibraryPage');
 const NotFoundPage = page(() => import('../pages/NotFound'), 'NotFoundPage');
 const GoogleAuthCompletePage = page(
   () => import('../pages/GoogleAuthComplete'),
@@ -55,7 +55,9 @@ export const AppRouter: React.FC = () => {
             <Route path="/my-research" element={<Navigate to="/research/new" replace />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/research/:id" element={<ResearchReportPage />} />
-            <Route path="/documents" element={<DocumentsLibraryPage />} />
+            <Route path="/library" element={<LibraryPage />} />
+            {/* The library used to be called Documents; keep old links working. */}
+            <Route path="/documents" element={<Navigate to="/library" replace />} />
             <Route path="*" element={<NotFoundPage />} />
           </Route>
         </Routes>
