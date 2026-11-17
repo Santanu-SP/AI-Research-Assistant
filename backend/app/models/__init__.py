@@ -4,7 +4,7 @@ from app.models.api_key import UserAPIKey, UserModelPreference
 from app.models.document import Document, DocumentChunk
 from app.models.job import BackgroundJob
 from app.models.project import ResearchProject
-from app.models.report import Citation, ReportSection, ResearchReport, Source
+from app.models.report import Citation, ReportFollowup, ReportSection, ResearchReport, Source
 from app.models.research import Research
 from app.models.telemetry import TelemetryEvent
 from app.models.usage import DailyQuotaUsage, ModelUsageDaily
@@ -17,6 +17,7 @@ __all__ = [
     "Document",
     "DocumentChunk",
     "ModelUsageDaily",
+    "ReportFollowup",
     "ReportSection",
     "Research",
     "ResearchProject",

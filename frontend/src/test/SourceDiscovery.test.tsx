@@ -11,7 +11,7 @@ import { NewResearch } from '../pages/NewResearch';
 import { byokService } from '../services/clientAi.service';
 import { discoveryService } from '../services/discovery.service';
 import { documentsService } from '../services/documents.service';
-import { researchService } from '../services/research.service';
+import { QUERY_REQUEST_TIMEOUT_MS, researchService } from '../services/research.service';
 import { DiscoveredSourceCandidate } from '../types/discovery';
 import { ResearchProgressResponse } from '../types/progress';
 import { makeDocument, makeDocumentList } from './fixtures';
@@ -239,6 +239,7 @@ describe('Controlled Discovery UI', () => {
     });
     expect(await screen.findByText('Progress page')).toBeInTheDocument();
   });
+
   it('runs Low effort auto-discovery as a background job instead of waiting on the request', async () => {
     const startSpy = vi
       .spyOn(researchService, 'startResearchJob')
@@ -296,5 +297,28 @@ describe('Controlled Discovery UI', () => {
     ).toBeInTheDocument();
     expect(screen.getByText(/Downloading and reading the sources it found/)).toBeInTheDocument();
     expect(screen.queryByText('Looking through your files for relevant passages.')).not.toBeInTheDocument();
+  });
+
+  it('uses the extended timeout when starting auto-discovery background research jobs', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 202,
+      statusText: 'Accepted',
+      json: () => Promise.resolve({ id: 'job-auto-1' }),
+      text: () => Promise.resolve(JSON.stringify({ id: 'job-auto-1' })),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await researchService.startResearchJob({
+      query: 'Lithium carbonate mechanism of action',
+      autoDiscover: true,
+      discoveryScope: 'all',
+    });
+    expect(QUERY_REQUEST_TIMEOUT_MS).toBeGreaterThanOrEqual(5 * 60_000);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toMatch(/\/research\/jobs$/);
+    expect(JSON.parse(String(init.body))).toMatchObject({ autoDiscover: true });
+    vi.unstubAllGlobals();
   });
 });

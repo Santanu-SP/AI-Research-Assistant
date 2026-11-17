@@ -40,6 +40,29 @@ class ResearchQueryRequest(ApiSchema):
         return self
 
 
+class ReportFollowupRequest(ApiSchema):
+    """Lightweight follow-up question scoped to a completed research report."""
+
+    question: str = Field(min_length=1, max_length=2000)
+    preferred_provider: str | None = Field(default=None, max_length=64)
+    model_override: str | None = Field(default=None, max_length=160)
+    local_fallback_enabled: bool | None = None
+
+    @model_validator(mode="after")
+    def validate_model_options(self) -> "ReportFollowupRequest":
+        if self.preferred_provider is not None:
+            cleaned_provider = self.preferred_provider.strip().lower()
+            self.preferred_provider = cleaned_provider or None
+        if self.model_override is not None:
+            cleaned_override = self.model_override.strip()
+            self.model_override = (
+                validate_model_name(cleaned_override, provider=self.preferred_provider)
+                if cleaned_override
+                else None
+            )
+        return self
+
+
 class ResearchRetryRequest(ApiSchema):
     """Run a failed research item again, optionally with an edited question.
 
@@ -55,6 +78,29 @@ class ResearchRetryRequest(ApiSchema):
 
     @model_validator(mode="after")
     def validate_model_options(self) -> "ResearchRetryRequest":
+        if self.preferred_provider is not None:
+            cleaned_provider = self.preferred_provider.strip().lower()
+            self.preferred_provider = cleaned_provider or None
+        if self.model_override is not None:
+            cleaned_override = self.model_override.strip()
+            self.model_override = (
+                validate_model_name(cleaned_override, provider=self.preferred_provider)
+                if cleaned_override
+                else None
+            )
+        return self
+
+
+class ReportFollowupRequest(ApiSchema):
+    """Lightweight follow-up question scoped to a completed research report."""
+
+    question: str = Field(min_length=1, max_length=2000)
+    preferred_provider: str | None = Field(default=None, max_length=64)
+    model_override: str | None = Field(default=None, max_length=160)
+    local_fallback_enabled: bool | None = None
+
+    @model_validator(mode="after")
+    def validate_model_options(self) -> "ReportFollowupRequest":
         if self.preferred_provider is not None:
             cleaned_provider = self.preferred_provider.strip().lower()
             self.preferred_provider = cleaned_provider or None

@@ -7,7 +7,7 @@ from datetime import timedelta
 import logging
 import re
 from time import monotonic
-from uuid import UUID, uuid5
+from uuid import UUID, uuid4, uuid5
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -18,8 +18,14 @@ from app.core.time import utc_now
 from app.domain.reports import SourceType
 from app.domain.research import ResearchDepth, ResearchStatus
 from app.domain.states import ProjectStatus
-from app.schemas.rag import ResearchQueryRequest, ResearchQueryResponse, ResearchRetryRequest
-from app.schemas.reports import ResearchReportCreate
+from app.schemas.rag import (
+    EvidenceItem,
+    ReportFollowupRequest,
+    ResearchQueryRequest,
+    ResearchQueryResponse,
+    ResearchRetryRequest,
+)
+from app.schemas.reports import ReportFollowupCreateResponse, ResearchReportCreate
 from app.schemas.research import ResearchCreate
 from app.services.rag import retrieval
 from app.services.rag.citations import CitationValidator, SOURCE_REFERENCE
@@ -31,14 +37,17 @@ from app.services.rag.evidence import (
 from app.services.rag.generation import GenerationService, generation_service_for
 from app.services.rag.reranking import RerankerService, reranker_service_for
 from app.models.document import Document
+from app.models.report import ReportFollowup, Source
 from app.models.research import Research
 from app.services.jobs import queue as job_queue
 from app.services.observability.telemetry import estimate_cost_usd, record_telemetry_event
 from app.services.observability.usage import (
+    CREDIT_UNITS_FOLLOWUP,
     acquire_run_quota_policy,
+    ensure_research_shared_quota,
     record_model_usage,
     release_research_shared_quota,
-    reserve_shared_quota_slot,
+    settle_research_shared_quota,
 )
 from app.services.research import reports
 from app.services.research import runs as research
@@ -578,6 +587,7 @@ def _apply_run_options(
         preferred_provider=pref_provider,
         user_byok_providers=set(user_byok_keys.keys()),
         local_enabled=bool(local_fallback),
+        research_id=record.id,
         settings=settings,
     )
     record.preferred_provider = pref_provider or None
@@ -589,9 +599,18 @@ def _apply_run_options(
     return bool(quota_reserved), quota_date
 
 
-def _release_on_error(session: Session, user_id: UUID, reserved: bool, quota_date) -> None:
+def _release_on_error(
+    session: Session,
+    user_id: UUID,
+    reserved: bool,
+    quota_date,
+    research_id: UUID | None = None,
+) -> None:
     if reserved and quota_date is not None:
         session.rollback()
+        if research_id is not None:
+            release_research_shared_quota(session, research_id, commit=True)
+            return
         from app.services.observability.usage import release_shared_quota_slot
 
         release_shared_quota_slot(session, user_id=user_id, usage_date=quota_date, commit=True)
@@ -612,6 +631,7 @@ def _create_started_record(
         )
     runtime_settings = settings or get_settings()
     reserved, quota_date = False, None
+    record = None
     try:
         record = research.create_research(
             session,
@@ -637,7 +657,7 @@ def _create_started_record(
         session.add(record)
         research.start_research(session, record.id)
     except Exception:
-        _release_on_error(session, user_id, reserved, quota_date)
+        _release_on_error(session, user_id, reserved, quota_date, record.id if record else None)
         raise
     return record
 
@@ -714,7 +734,7 @@ def retry_research(
         job_queue.enqueue(session, job_queue.RUN_RESEARCH, record.id, commit=False)
         session.commit()
     except Exception:
-        _release_on_error(session, user_id, reserved, quota_date)
+        _release_on_error(session, user_id, reserved, quota_date, record.id)
         raise
     return research.get_research(session, record.id, user_id)
 
@@ -844,24 +864,15 @@ def execute_research(
             )
             user_models = api_key_service.get_user_provider_models(session, user_id)
 
-            def _before_shared_attempt(_provider: str) -> bool:
-                fresh = session.get(Research, record.id)
-                if fresh is not None and fresh.shared_quota_reserved:
-                    return True
-                reserved_ok, reserved_day, _ = reserve_shared_quota_slot(
+            def _before_shared_attempt(attempted_provider: str) -> bool:
+                return ensure_research_shared_quota(
                     session,
+                    research_id=record.id,
                     user_id=user_id,
+                    provider=attempted_provider,
                     settings=runtime_settings,
                     commit=True,
                 )
-                if not reserved_ok:
-                    return False
-                if fresh is not None:
-                    fresh.shared_quota_reserved = True
-                    fresh.shared_quota_date = reserved_day
-                    session.add(fresh)
-                    session.commit()
-                return True
 
             gen_kwargs: dict[str, object] = {
                 "user_api_keys": user_keys or None,
@@ -894,6 +905,12 @@ def execute_research(
                 except TypeError:
                     generated = active_generator.generate(normalized_query, evidence)
 
+            validated = CitationValidator().validate(generated, evidence)
+            if not validated.citations:
+                # An answer that cites none of the evidence is not grounded;
+                # report insufficient evidence instead of an unsupported reply.
+                insufficient = True
+
             last_resp = getattr(active_generator, "last_response", None)
             if last_resp is not None:
                 used_byok = bool(getattr(last_resp, "used_byok", False))
@@ -914,12 +931,18 @@ def execute_research(
                     else ("local" if last_resp.provider == "ollama" else "shared")
                 )
                 was_reserved = bool(record.shared_quota_reserved)
-                if usage_source in ("byok", "local") and was_reserved:
-                    release_research_shared_quota(session, record.id, commit=False)
-                elif usage_source == "shared" and was_reserved:
-                    record.shared_quota_reserved = False
-                    record.shared_quota_date = None
-                    session.add(record)
+                if insufficient or usage_source in ("byok", "local"):
+                    if was_reserved:
+                        release_research_shared_quota(session, record.id, commit=False)
+                elif usage_source == "shared":
+                    settle_research_shared_quota(
+                        session,
+                        research_id=record.id,
+                        user_id=user_id,
+                        actual_provider=last_resp.provider,
+                        settings=runtime_settings,
+                        commit=False,
+                    )
 
                 cost_usd = estimate_cost_usd(
                     last_resp.provider,
@@ -935,7 +958,7 @@ def execute_research(
                     input_tokens=prompt_tokens,
                     output_tokens=completion_tokens,
                     estimated_cost_usd=cost_usd,
-                    increment_shared_quota=(usage_source == "shared" and not was_reserved),
+                    increment_shared_quota=False,
                     commit=False,
                 )
                 if runtime_settings.telemetry_enabled:
@@ -960,11 +983,6 @@ def execute_research(
                         settings=runtime_settings,
                         commit=False,
                     )
-            validated = CitationValidator().validate(generated, evidence)
-            if not validated.citations:
-                # An answer that cites none of the evidence is not grounded;
-                # report insufficient evidence instead of an unsupported reply.
-                insufficient = True
         if insufficient:
             release_research_shared_quota(session, record.id, commit=False)
             answer = INSUFFICIENT_EVIDENCE_ANSWER
@@ -1024,4 +1042,473 @@ def execute_research(
             "The grounded research request could not be completed",
             status_code=500,
             code="research_pipeline_failed",
+        ) from exc
+
+
+def _compact_memory_text(value: str | None, limit: int) -> str:
+    cleaned = " ".join((value or "").split()).strip()
+    if len(cleaned) <= limit:
+        return cleaned
+    return f"{cleaned[: max(1, limit - 1)].rstrip()}…"
+
+
+def _build_compact_report_memory(
+    record: Research,
+    report_title: str,
+    report_summary: str,
+    prior_followups: list[ReportFollowup],
+) -> str:
+    """Build a strictly bounded report memory (~<=1.4k chars) for low-token follow-ups."""
+    lines = [
+        f"Original question: {_compact_memory_text(record.question, 200)}",
+        f"Report title: {_compact_memory_text(report_title, 140)}",
+        f"Report summary: {_compact_memory_text(report_summary, 620)}",
+    ]
+    for index, turn in enumerate(prior_followups[-2:], start=1):
+        lines.append(f"Earlier follow-up {index}: {_compact_memory_text(turn.question, 140)}")
+        lines.append(f"Earlier answer {index}: {_compact_memory_text(turn.answer, 240)}")
+    return "\n".join(lines)
+
+
+def _source_to_evidence_item(
+    source: Source,
+    *,
+    research_id: UUID,
+    project_id: UUID | None,
+) -> EvidenceItem | None:
+    excerpt = (source.relevant_excerpt or "").strip()
+    if not excerpt:
+        return None
+    return EvidenceItem(
+        source_id=f"S{source.number}",
+        node_id=None,
+        document_id=source.document_id or uuid5(research_id, f"source-doc-{source.number}"),
+        project_id=project_id,
+        source_type=source.source_type,
+        content_level=None,
+        chunk_id=source.chunk_id or uuid5(research_id, f"source-chunk-{source.number}"),
+        paper_title=source.title,
+        authors=list(source.authors or []),
+        doi=source.doi,
+        url=source.url,
+        publisher=source.publisher,
+        year=source.year,
+        page=source.page,
+        page_end=None,
+        section=source.section,
+        section_path=None,
+        text=excerpt,
+        rerank_score=float(source.rerank_score or 0.5),
+    )
+
+
+def _build_followup_evidence(
+    session: Session,
+    *,
+    record: Research,
+    user_id: UUID,
+    question: str,
+    existing_sources: list[Source],
+    settings: Settings,
+    reranker: RerankerService | None,
+) -> list[EvidenceItem]:
+    """Retrieve focused chunks from this report's sources and preserve existing [S#] labels."""
+    followup_settings = settings.model_copy(
+        update={
+            "vector_top_k": min(settings.vector_top_k, 10),
+            "keyword_top_k": min(settings.keyword_top_k, 10),
+            "hybrid_candidate_k": min(settings.hybrid_candidate_k, 10),
+            "reranker_provider": "lexical",
+            "final_context_k": min(settings.final_context_k, 4),
+        }
+    )
+    doc_scope = scoped_document_ids(record)
+    if doc_scope is None and record.project_id is None:
+        source_doc_ids = list({s.document_id for s in existing_sources if s.document_id is not None})
+        doc_scope = source_doc_ids or None
+
+    retrieval_query = (
+        f"{question} {record.question[:120]}"
+        if len(question.split()) <= 8
+        else question
+    )
+    candidates = retrieval.retrieve(
+        session,
+        user_id,
+        retrieval_query,
+        followup_settings,
+        project_id=record.project_id,
+        document_ids=doc_scope,
+    )
+    ranked = (
+        (reranker or reranker_service_for(followup_settings)).rerank(retrieval_query, candidates)
+        if candidates
+        else []
+    )
+    fresh_evidence = build_evidence(ranked, followup_settings, "quick")
+
+    source_by_chunk = {s.chunk_id: s for s in existing_sources if s.chunk_id is not None}
+    next_number = max((s.number for s in existing_sources), default=0) + 1
+    selected: list[EvidenceItem] = []
+    seen_ids: set[str] = set()
+    seen_chunks: set[UUID] = set()
+
+    for item in fresh_evidence:
+        if item.chunk_id in source_by_chunk:
+            existing_src = source_by_chunk[item.chunk_id]
+            sid = f"S{existing_src.number}"
+            if sid in seen_ids:
+                continue
+            seen_ids.add(sid)
+            seen_chunks.add(item.chunk_id)
+            selected.append(item.model_copy(update={"source_id": sid}))
+            continue
+        sid = f"S{next_number}"
+        next_number += 1
+        seen_ids.add(sid)
+        seen_chunks.add(item.chunk_id)
+        selected.append(item.model_copy(update={"source_id": sid}))
+
+    # Include compact excerpts from the report's existing sources as fallback context so
+    # conversational follow-ups ("summarize point 2") stay grounded even without keyword overlap.
+    for src in existing_sources:
+        if len(selected) >= 5:
+            break
+        sid = f"S{src.number}"
+        if sid in seen_ids or (src.chunk_id is not None and src.chunk_id in seen_chunks):
+            continue
+        converted = _source_to_evidence_item(
+            src,
+            research_id=record.id,
+            project_id=record.project_id,
+        )
+        if converted is not None:
+            seen_ids.add(sid)
+            selected.append(converted)
+
+    return selected
+
+
+def ask_report_followup(
+    session: Session,
+    *,
+    user_id: UUID,
+    research_id: UUID,
+    payload: ReportFollowupRequest,
+    settings: Settings | None = None,
+    reranker: RerankerService | None = None,
+    generator: GenerationService | None = None,
+) -> ReportFollowupCreateResponse:
+    """Answer a lightweight follow-up on a composed report using tiny memory and 0.25x credit."""
+    from app.services.auth import api_keys as api_key_service
+
+    runtime_settings = settings or get_settings()
+    record = research.get_research(session, research_id, user_id)
+    composed_report = reports._load_report(session, research_id)
+    if composed_report is None:
+        raise AppError(
+            "Research report is not ready",
+            status_code=404,
+            code="research_report_not_ready",
+        )
+
+    normalized_question = payload.question.strip()
+    if not normalized_question:
+        raise AppError(
+            "A follow-up question is required",
+            status_code=422,
+            code="followup_question_required",
+        )
+
+    existing_sources = reports.list_report_sources(session, research_id)
+    prior_followups = list(composed_report.followups)
+    evidence = _build_followup_evidence(
+        session,
+        record=record,
+        user_id=user_id,
+        question=normalized_question,
+        existing_sources=existing_sources,
+        settings=runtime_settings,
+        reranker=reranker,
+    )
+
+    pref_provider = (
+        payload.preferred_provider.strip().lower()
+        if payload.preferred_provider
+        else record.preferred_provider
+    )
+    model_override = (
+        payload.model_override.strip()
+        if payload.model_override
+        else record.model_override
+    )
+    local_fallback = _first_set(
+        payload.local_fallback_enabled,
+        api_key_service.get_local_fallback_pref(session, user_id),
+        record.local_fallback_enabled,
+    )
+    user_keys = api_key_service.get_decrypted_user_api_keys(session, user_id, runtime_settings)
+    user_models = api_key_service.get_user_provider_models(session, user_id)
+
+    followup_id = uuid4()
+    allow_shared, quota_reserved, _, _ = acquire_run_quota_policy(
+        session,
+        user_id=user_id,
+        preferred_provider=pref_provider,
+        user_byok_providers=set(user_keys.keys()),
+        local_enabled=bool(local_fallback),
+        research_id=followup_id,
+        units=CREDIT_UNITS_FOLLOWUP,
+        settings=runtime_settings,
+    )
+
+    compact_memory = _build_compact_report_memory(
+        record,
+        composed_report.title,
+        composed_report.summary,
+        prior_followups,
+    )
+    compact_runtime_settings = runtime_settings.model_copy(
+        update={
+            "generation_max_new_tokens": min(runtime_settings.generation_max_new_tokens, 384),
+        }
+    )
+
+    insufficient = not evidence_is_sufficient(
+        evidence,
+        minimum_count=runtime_settings.minimum_evidence_count,
+        minimum_relevance=runtime_settings.reranker_min_score,
+    )
+
+    actual_provider: str | None = None
+    actual_model: str | None = None
+    credit_cost = 0.0
+    try:
+        validated_citation_nums: list[int] = []
+        if not insufficient:
+            active_generator = generator or generation_service_for(compact_runtime_settings)
+
+            def _before_shared_attempt(attempted_provider: str) -> bool:
+                return ensure_research_shared_quota(
+                    session,
+                    research_id=followup_id,
+                    user_id=user_id,
+                    provider=attempted_provider,
+                    units=CREDIT_UNITS_FOLLOWUP,
+                    settings=runtime_settings,
+                    commit=True,
+                )
+
+            gen_kwargs: dict[str, object] = {
+                "report_memory": compact_memory,
+                "user_api_keys": user_keys or None,
+                "preferred_provider": pref_provider or None,
+                "model_override": model_override or None,
+                "local_fallback_enabled": (
+                    bool(local_fallback) if local_fallback is not None else None
+                ),
+                "allow_shared_providers": bool(allow_shared),
+                "before_shared_attempt": _before_shared_attempt,
+                "provider_timeout_seconds": min(runtime_settings.llm_quick_timeout_seconds, 20.0),
+                "primary_timeout_seconds": runtime_settings.gemini_primary_timeout_seconds,
+                "allow_sticky_fallback": True,
+            }
+            if user_models:
+                gen_kwargs["user_provider_models"] = user_models
+
+            try:
+                generated = active_generator.generate(
+                    normalized_question,
+                    evidence,
+                    **gen_kwargs,
+                )
+            except TypeError:
+                try:
+                    fallback_kwargs = {k: v for k, v in gen_kwargs.items() if k != "report_memory"}
+                    generated = active_generator.generate(
+                        normalized_question,
+                        evidence,
+                        **fallback_kwargs,
+                    )
+                except TypeError:
+                    generated = active_generator.generate(normalized_question, evidence)
+
+            validated = CitationValidator().validate(generated, evidence)
+            if not validated.citations:
+                insufficient = True
+            else:
+                answer = validated.answer.strip()
+                validated_citation_nums = list(
+                    dict.fromkeys(int(c.citation_id[1:]) for c in validated.citations)
+                )
+
+            last_resp = getattr(active_generator, "last_response", None)
+            if last_resp is not None:
+                actual_provider = last_resp.provider
+                actual_model = last_resp.model
+                used_byok = bool(getattr(last_resp, "used_byok", False))
+                usage_obj = getattr(last_resp, "usage", None)
+                prompt_tokens = int(getattr(usage_obj, "prompt_tokens", 0) or 0)
+                completion_tokens = int(getattr(usage_obj, "completion_tokens", 0) or 0)
+                total_tokens = int(
+                    getattr(usage_obj, "total_tokens", 0) or (prompt_tokens + completion_tokens)
+                )
+                if used_byok:
+                    api_key_service.record_key_usage(
+                        session,
+                        user_id,
+                        last_resp.provider,
+                        tokens=total_tokens,
+                    )
+                usage_source = (
+                    "byok"
+                    if used_byok
+                    else ("local" if last_resp.provider == "ollama" else "shared")
+                )
+                if insufficient or usage_source in ("byok", "local"):
+                    if quota_reserved:
+                        release_research_shared_quota(
+                            session,
+                            followup_id,
+                            user_id=user_id,
+                            commit=False,
+                        )
+                    credit_cost = 0.0
+                else:
+                    settle_research_shared_quota(
+                        session,
+                        research_id=followup_id,
+                        user_id=user_id,
+                        actual_provider=last_resp.provider,
+                        units=CREDIT_UNITS_FOLLOWUP,
+                        settings=runtime_settings,
+                        commit=False,
+                    )
+                    credit_cost = 0.25
+
+                cost_usd = estimate_cost_usd(
+                    last_resp.provider,
+                    prompt_tokens,
+                    completion_tokens,
+                )
+                record_model_usage(
+                    session,
+                    user_id=user_id,
+                    provider=last_resp.provider,
+                    model_name=last_resp.model,
+                    usage_source=usage_source,
+                    input_tokens=prompt_tokens,
+                    output_tokens=completion_tokens,
+                    estimated_cost_usd=cost_usd,
+                    increment_shared_quota=False,
+                    commit=False,
+                )
+                if runtime_settings.telemetry_enabled:
+                    record_telemetry_event(
+                        session,
+                        event_type="llm_generation",
+                        operation="report_followup",
+                        provider=last_resp.provider,
+                        model=last_resp.model,
+                        status="success",
+                        latency_ms=getattr(last_resp, "latency_ms", None),
+                        prompt_tokens=prompt_tokens,
+                        completion_tokens=completion_tokens,
+                        total_tokens=total_tokens,
+                        user_id=user_id,
+                        metadata={
+                            "used_byok": used_byok,
+                            "is_local": last_resp.provider == "ollama",
+                            "research_id": str(research_id),
+                            "followup_id": str(followup_id),
+                        },
+                        settings=runtime_settings,
+                        commit=False,
+                    )
+
+            if not insufficient:
+                existing_numbers = {s.number for s in existing_sources}
+                evidence_by_id = {item.source_id: item for item in evidence}
+                for cit in validated.citations:
+                    source_num = int(cit.citation_id[1:])
+                    if source_num in existing_numbers:
+                        continue
+                    item = evidence_by_id[cit.citation_id]
+                    raw_authors = [
+                        name.strip()[:200]
+                        for name in (cit.authors or [])[:50]
+                        if isinstance(name, str) and name.strip()
+                    ]
+                    raw_year = getattr(item, "year", None)
+                    safe_year = raw_year if isinstance(raw_year, int) and 1000 <= raw_year <= 9999 else None
+                    raw_url = getattr(cit, "url", None) or (
+                        f"https://doi.org/{cit.doi}" if cit.doi else None
+                    )
+                    new_src = Source(
+                        id=uuid5(research_id, cit.citation_id),
+                        research_id=research_id,
+                        number=source_num,
+                        title=_truncate_str(cit.paper_title, 500),
+                        publisher=_truncate_str(getattr(item, "publisher", None), 200),
+                        authors=raw_authors,
+                        year=safe_year,
+                        url=_truncate_str(raw_url, 2048),
+                        source_type=_report_source_type(item),
+                        relevant_excerpt=cit.excerpt,
+                        doi=_truncate_str(cit.doi, 255),
+                        document_id=cit.document_id,
+                        chunk_id=cit.chunk_id,
+                        page=cit.page,
+                        section=_truncate_str(cit.section, 500),
+                        rerank_score=item.rerank_score,
+                    )
+                    session.add(new_src)
+                    existing_numbers.add(source_num)
+
+        if insufficient:
+            if quota_reserved:
+                release_research_shared_quota(
+                    session,
+                    followup_id,
+                    user_id=user_id,
+                    commit=False,
+                )
+            credit_cost = 0.0
+            answer = INSUFFICIENT_EVIDENCE_ANSWER
+            validated_citation_nums = []
+
+        next_position = max((turn.position for turn in prior_followups), default=-1) + 1
+        followup_row = ReportFollowup(
+            id=followup_id,
+            report_id=composed_report.id,
+            question=normalized_question,
+            answer=answer,
+            citation_numbers=validated_citation_nums,
+            position=next_position,
+            provider=actual_provider,
+            model=actual_model,
+            insufficient_evidence=insufficient,
+        )
+        session.add(followup_row)
+        session.commit()
+        session.refresh(followup_row)
+        updated_sources = reports.list_report_sources(session, research_id)
+        return ReportFollowupCreateResponse(
+            followup=reports.serialize_followup(followup_row),
+            sources=[reports.serialize_source(s) for s in updated_sources],
+            credit_cost=credit_cost,
+        )
+    except AppError:
+        session.rollback()
+        if quota_reserved:
+            release_research_shared_quota(session, followup_id, user_id=user_id, commit=True)
+        raise
+    except Exception as exc:
+        session.rollback()
+        if quota_reserved:
+            release_research_shared_quota(session, followup_id, user_id=user_id, commit=True)
+        raise AppError(
+            "The follow-up answer could not be generated right now",
+            status_code=500,
+            code="report_followup_failed",
         ) from exc

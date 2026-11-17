@@ -48,27 +48,42 @@ def _install_retrieval_fakes(monkeypatch) -> None:
     monkeypatch.setattr(rag_service, "reranker_service_for", lambda *_args, **_kwargs: _FakeReranker())
 
 
-def test_user_model_usage_and_fair_share_daily_cap_scaling(
+def test_fixed_per_user_model_credits_independent_of_users_and_dual_windows(
     client: TestClient,
     test_app: FastAPI,
     db_session_factory: sessionmaker[Session],
     monkeypatch,
 ) -> None:
+    """Every user keeps fixed per-model 3-hour and 2-day credits unaffected by user count."""
+    from datetime import datetime, timezone
+
+    from app.services.observability.usage import get_user_model_usage_and_quota
+
     settings = test_app.state.settings
-    settings.llm_daily_system_request_pool = 6
+    settings.gemini_api_key = "server-gemini-key"
+    settings.groq_api_key = "server-groq-key"
+    settings.mistral_api_key = "server-mistral-key"
+    settings.llm_router_providers = ["gemini", "groq", "mistral"]
+    settings.llm_credits_3h_per_model = 2
+    settings.llm_credits_2d_per_model = 4
+    settings.llm_credits_short_window_hours = 3
+    settings.llm_credits_long_window_days = 2
     _install_retrieval_fakes(monkeypatch)
 
     me = client.get("/api/v1/auth/me").json()
     user_1_id = UUID(me["id"])
 
-    # With 1 enrolled user and pool=6, daily cap for User 1 is 6.
     initial_usage = client.get("/api/v1/auth/api-keys/usage").json()
-    assert initial_usage["enrolledUsers"] == 1
-    assert initial_usage["systemPoolTotal"] == 6
-    assert initial_usage["userDailyRequestCap"] == 6
-    assert initial_usage["userRequestsRemainingToday"] == 6
+    assert initial_usage["overallRemainingPct"] == 100
+    assert initial_usage["shortWindowHours"] == 3
+    assert initial_usage["longWindowDays"] == 2
+    assert initial_usage["shortCreditsPerModel"] == 2
+    assert initial_usage["longCreditsPerModel"] == 4
+    by_prov_1 = {item["provider"]: item for item in initial_usage["providerCredits"]}
+    assert by_prov_1["gemini"]["remainingPct"] == 100
+    assert by_prov_1["groq"]["remainingPct"] == 100
 
-    # Enroll User 2 -> fair share immediately divides pool (6 // 2 = 3 per user).
+    # Enrolling additional users NEVER changes User 1's fixed per-model credit limits.
     with TestClient(test_app, headers=FRONTEND_HEADERS) as client_2:
         reg_2 = client_2.post(
             "/api/v1/auth/register",
@@ -85,9 +100,9 @@ def test_user_model_usage_and_fair_share_daily_cap_scaling(
         ).status_code == 200
         user_2_id = UUID(reg_2.json()["id"])
 
-        # User 1 consumes 4 shared requests; 2 global requests left!
+        # User 1 exhausts Gemini's 3-hour window (2 requests), yet User 2 STILL has 100% Gemini!
         with db_session_factory() as db:
-            for _ in range(4):
+            for _ in range(2):
                 record_model_usage(
                     db,
                     user_id=user_1_id,
@@ -97,17 +112,21 @@ def test_user_model_usage_and_fair_share_daily_cap_scaling(
                     input_tokens=100,
                     output_tokens=40,
                     increment_shared_quota=True,
+                    settings=settings,
                 )
 
-        # User 2's fair share would be 3, but only 2 shared requests remain in pool -> cap becomes 2!
-        u2_usage = client_2.get("/api/v1/auth/api-keys/usage").json()
-        assert u2_usage["enrolledUsers"] == 2
-        assert u2_usage["systemPoolUsedToday"] == 4
-        assert u2_usage["systemPoolRemaining"] == 2
-        assert u2_usage["userDailyRequestCap"] == 2
-        assert u2_usage["userRequestsRemainingToday"] == 2
+        u1_usage = client.get("/api/v1/auth/api-keys/usage").json()
+        u1_by_prov = {item["provider"]: item for item in u1_usage["providerCredits"]}
+        assert u1_by_prov["gemini"]["remainingPct"] == 0
+        assert u1_by_prov["groq"]["remainingPct"] == 100
+        assert u1_by_prov["mistral"]["remainingPct"] == 100
+        assert u1_usage["overallRemainingPct"] == 67
 
-        # Run 2 real queries through /research/query with a mocked generator recording provider+model usage.
+        u2_initial = client_2.get("/api/v1/auth/api-keys/usage").json()
+        u2_initial_by_prov = {item["provider"]: item for item in u2_initial["providerCredits"]}
+        assert u2_initial_by_prov["gemini"]["remainingPct"] == 100
+        assert u2_initial_by_prov["groq"]["remainingPct"] == 100
+
         class StubGenerator:
             def __init__(self, provider: str, model: str, *, used_byok: bool = False) -> None:
                 self.provider = provider
@@ -125,27 +144,62 @@ def test_user_model_usage_and_fair_share_daily_cap_scaling(
                 )
                 return self.last_response.content
 
+        # User 2 runs 2 Gemini requests: 100% -> 50% -> 0% on Gemini, while Groq stays 100%!
         monkeypatch.setattr(
             rag_service,
             "generation_service_for",
-            lambda *_args, **_kwargs: StubGenerator("gemini", "gemini-2.5-flash"),
+            lambda *_args, **_kwargs: StubGenerator("gemini", "gemini-3.8-flash"),
         )
         for idx in range(2):
             ok = client_2.post(
                 "/api/v1/research/query",
-                json={"query": f"Explain self-attention {idx}", "researchDepth": "quick"},
+                json={
+                    "query": f"Explain self-attention {idx}",
+                    "researchDepth": "quick",
+                    "preferredProvider": "gemini",
+                },
             )
             assert ok.status_code == 201, ok.text
 
-        # After 2 shared requests, remaining == 0 -> next shared request returns 429 daily_model_quota_exceeded.
-        blocked = client_2.post(
+        # Direct Gemini is now blocked at 0% (429), whereas Groq is completely independent at 100%!
+        blocked_gemini = client_2.post(
             "/api/v1/research/query",
-            json={"query": "Third shared request should be capped", "researchDepth": "quick"},
+            json={
+                "query": "Third Gemini request blocked",
+                "researchDepth": "quick",
+                "preferredProvider": "gemini",
+            },
         )
-        assert blocked.status_code == 429
-        assert blocked.json()["error"]["code"] == "daily_model_quota_exceeded"
+        assert blocked_gemini.status_code == 429
+        assert blocked_gemini.json()["error"]["code"] == "daily_model_quota_exceeded"
 
-        # Local Ollama bypasses shared daily cap even when pool is exhausted.
+        monkeypatch.setattr(
+            rag_service,
+            "generation_service_for",
+            lambda *_args, **_kwargs: StubGenerator("groq", "llama-3.3-70b-versatile"),
+        )
+        groq_ok = client_2.post(
+            "/api/v1/research/query",
+            json={
+                "query": "Switch to Groq while Gemini is 0%",
+                "researchDepth": "quick",
+                "preferredProvider": "groq",
+            },
+        )
+        assert groq_ok.status_code == 201, groq_ok.text
+
+        # Exhaust remaining Groq slot too -> both shared models now 0%.
+        groq_ok_2 = client_2.post(
+            "/api/v1/research/query",
+            json={
+                "query": "Second Groq request",
+                "researchDepth": "quick",
+                "preferredProvider": "groq",
+            },
+        )
+        assert groq_ok_2.status_code == 201, groq_ok_2.text
+
+        # Local Ollama and BYOK are Unlimited even when all shared models are 0%.
         monkeypatch.setattr(
             rag_service,
             "generation_service_for",
@@ -161,7 +215,6 @@ def test_user_model_usage_and_fair_share_daily_cap_scaling(
         )
         assert local_ok.status_code == 201, local_ok.text
 
-        # Explicit BYOK provider ALSO bypasses shared daily cap.
         assert client_2.put(
             "/api/v1/auth/api-keys/openai",
             json={"apiKey": "sk-" + "user2-test-key"},
@@ -181,22 +234,57 @@ def test_user_model_usage_and_fair_share_daily_cap_scaling(
         )
         assert byok_ok.status_code == 201, byok_ok.text
 
-        # Verify /auth/api-keys/usage and /auth/api-keys/models-status reflect all models used accurately.
         final_usage = client_2.get("/api/v1/auth/api-keys/usage").json()
-        assert final_usage["sharedRequestsUsedToday"] == 2
-        assert final_usage["localRequestsToday"] == 1
+        by_prov = {item["provider"]: item for item in final_usage["providerCredits"]}
+        assert by_prov["gemini"]["remainingPct"] == 0
+        assert by_prov["groq"]["remainingPct"] == 0
+        assert by_prov["openai"]["unlimited"] is True
+        assert by_prov["openai"]["remainingPct"] == 100
         assert final_usage["byokRequestsToday"] == 1
-        assert final_usage["totalRequestsToday"] == 4
-        assert final_usage["totalTokensToday"] == 800
-        assert final_usage["userRequestsRemainingToday"] == 0
-        models_used = {(m["provider"], m["modelName"]): m for m in final_usage["models"]}
-        assert models_used[("gemini", "gemini-2.5-flash")]["requestsToday"] == 2
-        assert models_used[("ollama", "llama3.2:3b")]["requestsToday"] == 1
-        assert models_used[("openai", "gpt-4o-mini")]["requestsToday"] == 1
+        assert final_usage["localRequestsToday"] == 1
 
-        status_res = client_2.get("/api/v1/auth/api-keys/models-status")
-        assert status_res.status_code == 200
-        assert status_res.json()["usage"]["sharedRequestsUsedToday"] == 2
+        # Verify 3-hour renewal replenishes short bucket while 2-day pool keeps count until 2-day reset.
+        t0 = datetime(2026, 11, 18, 1, 0, tzinfo=timezone.utc)
+        t1_3h = datetime(2026, 11, 18, 3, 5, tzinfo=timezone.utc)
+        t2_3h_again = datetime(2026, 11, 18, 6, 5, tzinfo=timezone.utc)
+        t3_2d_reset = datetime(2026, 11, 20, 0, 5, tzinfo=timezone.utc)
+
+        with db_session_factory() as db:
+            # Spend 2/2 in t0 (uses 2/2 of 3h, 2/4 of 2d -> 0% effective now).
+            for _ in range(2):
+                ok, _, _ = reserve_shared_quota_slot(
+                    db, user_id=user_2_id, provider="mistral", settings=settings, now=t0
+                )
+                assert ok is True
+            ok_blocked, _, _ = reserve_shared_quota_slot(
+                db, user_id=user_2_id, provider="mistral", settings=settings, now=t0
+            )
+            assert ok_blocked is False
+
+            # At +3h (t1): 3h window renewed (2 left -> 100%), 2-day window has 2/4 left (50%) -> 50% effective!
+            snap_t1 = get_user_model_usage_and_quota(db, user_2_id, settings, now=t1_3h)
+            mistral_t1 = next(i for i in snap_t1["provider_credits"] if i["provider"] == "mistral")
+            assert mistral_t1["short_window_pct"] == 100
+            assert mistral_t1["long_window_pct"] == 50
+            assert mistral_t1["remaining_pct"] == 50
+
+            # Spend 2 more at t1 -> 4/4 spent in 2-day window -> now blocked even after another 3h reset (t2)!
+            for _ in range(2):
+                ok, _, _ = reserve_shared_quota_slot(
+                    db, user_id=user_2_id, provider="mistral", settings=settings, now=t1_3h
+                )
+                assert ok is True
+            ok_2d_blocked, _, _ = reserve_shared_quota_slot(
+                db, user_id=user_2_id, provider="mistral", settings=settings, now=t2_3h_again
+            )
+            assert ok_2d_blocked is False
+
+            # After 2 days (t3): both windows renew to 100%!
+            snap_t3 = get_user_model_usage_and_quota(db, user_2_id, settings, now=t3_2d_reset)
+            mistral_t3 = next(i for i in snap_t3["provider_credits"] if i["provider"] == "mistral")
+            assert mistral_t3["short_window_pct"] == 100
+            assert mistral_t3["long_window_pct"] == 100
+            assert mistral_t3["remaining_pct"] == 100
 
 
 def _init_app_db(app) -> None:
@@ -219,10 +307,12 @@ def test_over_limit_fake_byok_key_cannot_fall_through_to_shared_providers(
     from app.services.rag.generation import GenerationService
 
     settings = Settings(
+        _env_file=None,
         database_url=f"sqlite:///{tmp_path / 'fake_byok_bypass.db'}",
         app_environment="test",
         worker_enabled=False,
-        llm_daily_system_request_pool=1,
+        llm_credits_3h_per_model=1,
+        llm_credits_2d_per_model=1,
         gemini_api_key="server-shared-gemini-key",
         rate_limit_enabled=False,
     )
@@ -352,6 +442,7 @@ def test_preferences_and_queued_run_options_persist_across_sessions(tmp_path, mo
     from app.services.rag import query as rag_query
 
     settings = Settings(
+        _env_file=None,
         database_url=f"sqlite:///{tmp_path / 'persist_prefs.db'}",
         app_environment="test",
         worker_enabled=False,
@@ -468,11 +559,13 @@ def test_quota_and_usage_work_without_telemetry_and_ignore_dormant_users(
     from app.schemas.rag import EvidenceItem
 
     settings = Settings(
+        _env_file=None,
         database_url=f"sqlite:///{tmp_path / 'no_telemetry_quota.db'}",
         app_environment="test",
         worker_enabled=False,
         telemetry_enabled=False,
-        llm_daily_system_request_pool=2,
+        llm_credits_3h_per_model=2,
+        llm_credits_2d_per_model=2,
         rate_limit_enabled=False,
     )
     app = create_app(settings)
@@ -506,8 +599,9 @@ def test_quota_and_usage_work_without_telemetry_and_ignore_dormant_users(
             db.commit()
 
         usage = client.get("/api/v1/auth/api-keys/usage").json()
-        assert usage["enrolledUsers"] == 1
-        assert usage["userDailyRequestCap"] == 2
+        assert usage["shortCreditsPerModel"] == 2
+        assert usage["longCreditsPerModel"] == 2
+        assert usage["overallRemainingPct"] == 100
 
         class StubGen:
             def __init__(self) -> None:
@@ -542,7 +636,7 @@ def test_quota_and_usage_work_without_telemetry_and_ignore_dormant_users(
         assert blocked.json()["error"]["code"] == "daily_model_quota_exceeded"
 
         final_usage = client.get("/api/v1/auth/api-keys/usage").json()
-        assert final_usage["sharedRequestsUsedToday"] == 2
+        assert final_usage["overallRemainingPct"] == 0
         assert final_usage["totalTokensToday"] == 150
         with app.state.db_session_factory() as db:
             telemetry_rows = db.execute(select(TelemetryEvent)).scalars().all()
@@ -550,8 +644,9 @@ def test_quota_and_usage_work_without_telemetry_and_ignore_dormant_users(
 
 
 def test_concurrent_quota_reservations_never_exceed_cap(tmp_path) -> None:
-    """Concurrent requests arriving simultaneously cannot exceed the daily quota cap."""
+    """Concurrent requests arriving simultaneously cannot exceed the fixed 3-hour / 2-day cap."""
     from concurrent.futures import ThreadPoolExecutor
+    from datetime import datetime, timezone
 
     from sqlalchemy import select
 
@@ -560,13 +655,15 @@ def test_concurrent_quota_reservations_never_exceed_cap(tmp_path) -> None:
     from app.db.session import create_db_engine, create_session_factory
     from app.models.usage import DailyQuotaUsage
     from app.models.user import User
-    from app.services.observability.usage import GLOBAL_QUOTA_SCOPE, release_shared_quota_slot
+    from app.services.observability.usage import release_shared_quota_slot
 
     settings = Settings(
+        _env_file=None,
         database_url=f"sqlite:///{tmp_path / 'concurrent_quota.db'}",
         app_environment="test",
         worker_enabled=False,
-        llm_daily_system_request_pool=3,
+        llm_credits_3h_per_model=3,
+        llm_credits_2d_per_model=10,
     )
     engine = create_db_engine(settings.database_url)
     Base.metadata.create_all(engine)
@@ -578,12 +675,16 @@ def test_concurrent_quota_reservations_never_exceed_cap(tmp_path) -> None:
         db.commit()
         user_id = user.id
 
+    fixed_now = datetime(2026, 11, 18, 4, 15, tzinfo=timezone.utc)
+
     def attempt_reserve(_: int) -> bool:
         with session_factory() as thread_db:
             ok, _, _ = reserve_shared_quota_slot(
                 thread_db,
                 user_id=user_id,
+                provider="gemini",
                 settings=settings,
+                now=fixed_now,
                 commit=True,
             )
             return ok
@@ -600,22 +701,119 @@ def test_concurrent_quota_reservations_never_exceed_cap(tmp_path) -> None:
                 row.scope_key: row.shared_requests_used
                 for row in db.execute(select(DailyQuotaUsage)).scalars().all()
             }
-            assert rows[GLOBAL_QUOTA_SCOPE] == 3
-            assert rows[str(user_id)] == 3
+            assert rows[f"3hq:03:gemini:{user_id.hex}"] == 12
+            assert rows[f"2dq:gemini:{user_id.hex}"] == 12
 
-            # Releasing unused slot decrements cleanly and never goes negative
-            from datetime import datetime, timezone
-
-            today = datetime.now(timezone.utc).date()
-            release_shared_quota_slot(db, user_id=user_id, usage_date=today)
+            # Releasing unused slot decrements both 3h & 2d buckets cleanly and never goes negative
+            release_shared_quota_slot(
+                db,
+                user_id=user_id,
+                usage_date=fixed_now.date(),
+                provider="gemini",
+                short_hour=3,
+                now=fixed_now,
+            )
             rows_after = {
                 row.scope_key: row.shared_requests_used
                 for row in db.execute(select(DailyQuotaUsage)).scalars().all()
             }
-            assert rows_after[GLOBAL_QUOTA_SCOPE] == 2
-            assert rows_after[str(user_id)] == 2
+            assert rows_after[f"3hq:03:gemini:{user_id.hex}"] == 8
+            assert rows_after[f"2dq:gemini:{user_id.hex}"] == 8
     finally:
         engine.dispose()
+
+
+def test_ungrounded_run_refunds_credit_and_fallback_transfers_attribution(
+    client: TestClient,
+    test_app: FastAPI,
+    monkeypatch,
+) -> None:
+    """Insufficient-evidence runs refund credits and failover charges only the answering model."""
+    from app.providers.base import LLMProviderAdapter, LLMRequest, RateLimitError
+    from app.providers.router import CentralizedLLMRouter
+    from app.services.rag.generation import GenerationService
+
+    settings = test_app.state.settings
+    settings.gemini_api_key = "server-gemini-key"
+    settings.groq_api_key = "server-groq-key"
+    settings.mistral_api_key = "server-mistral-key"
+    settings.llm_router_providers = ["gemini", "groq", "mistral"]
+    settings.llm_credits_3h_per_model = 4
+    settings.llm_credits_2d_per_model = 10
+    _install_retrieval_fakes(monkeypatch)
+
+    class UngroundedGenerator:
+        def __init__(self) -> None:
+            self.last_response: LLMResponse | None = None
+
+        def generate(self, *_args, **_kwargs) -> str:
+            self.last_response = LLMResponse(
+                provider="gemini",
+                model="gemini-3.8-flash",
+                content="Answer without any bracketed source reference.",
+                usage=TokenUsage(20, 10, 30),
+            )
+            return self.last_response.content
+
+    monkeypatch.setattr(
+        rag_service,
+        "generation_service_for",
+        lambda *_a, **_kw: UngroundedGenerator(),
+    )
+    ungrounded = client.post(
+        "/api/v1/research/query",
+        json={"query": "Ungrounded question", "researchDepth": "quick", "preferredProvider": "gemini"},
+    )
+    assert ungrounded.status_code == 201
+    assert ungrounded.json()["insufficientEvidence"] is True
+
+    # Because no citations passed validation, the reserved Gemini credit was refunded (100% left!).
+    after_refund = client.get("/api/v1/auth/api-keys/usage").json()
+    prov_refund = {i["provider"]: i for i in after_refund["providerCredits"]}
+    assert prov_refund["gemini"]["remainingPct"] == 100
+
+    # When Auto picks Gemini first, Gemini rate-limits, and Groq answers: Gemini stays 100%, Groq drops to 75%!
+    class FailingGemini(LLMProviderAdapter):
+        provider_name = "gemini"
+        default_model = "gemini-3.8-flash"
+
+        def is_configured(self, api_key_override: str | None = None) -> bool:
+            return True
+
+        def generate(self, request: LLMRequest) -> LLMResponse:
+            raise RateLimitError("gemini", "429 busy")
+
+    class HealthyGroq(LLMProviderAdapter):
+        provider_name = "groq"
+        default_model = "llama-3.3-70b-versatile"
+
+        def is_configured(self, api_key_override: str | None = None) -> bool:
+            return True
+
+        def generate(self, request: LLMRequest) -> LLMResponse:
+            return LLMResponse(
+                provider="groq",
+                model="llama-3.3-70b-versatile",
+                content="Answered via failover [S1].",
+                usage=TokenUsage(40, 20, 60),
+            )
+
+    monkeypatch.setattr(
+        rag_service,
+        "generation_service_for",
+        lambda *_a, **_kw: GenerationService(
+            router=CentralizedLLMRouter([FailingGemini(), HealthyGroq()], max_transient_retries=0)
+        ),
+    )
+    failover = client.post(
+        "/api/v1/research/query",
+        json={"query": "Failover question", "researchDepth": "quick"},
+    )
+    assert failover.status_code == 201, failover.text
+    after_failover = client.get("/api/v1/auth/api-keys/usage").json()
+    prov_after = {i["provider"]: i for i in after_failover["providerCredits"]}
+    assert prov_after["gemini"]["remainingPct"] == 100
+    assert prov_after["groq"]["remainingPct"] == 75
 
 
 def test_model_name_validation_and_gemini_url_safety(tmp_path) -> None:

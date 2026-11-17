@@ -57,7 +57,35 @@ export interface ResearchReportResponse {
   updatedAt: string;
 }
 
+export interface ReportFollowupResponse {
+  id: string;
+  reportId: string;
+  question: string;
+  answer: string;
+  citationIds: number[];
+  position: number;
+  provider?: string | null;
+  model?: string | null;
+  insufficientEvidence: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ReportFollowupRequest {
+  question: string;
+  preferredProvider?: string | null;
+  modelOverride?: string | null;
+  localFallbackEnabled?: boolean | null;
+}
+
+export interface ReportFollowupCreateResponse {
+  followup: ReportFollowupResponse;
+  sources: SourceResponse[];
+  creditCost: number;
+}
+
 export interface ComposedReportResponse {
   report: ResearchReportResponse;
   sources: SourceResponse[];
+  followups?: ReportFollowupResponse[];
 }

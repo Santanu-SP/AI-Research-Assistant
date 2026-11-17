@@ -206,6 +206,11 @@ class Settings(BaseSettings):
     llm_daily_token_quota_per_provider: int = Field(default=250_000, ge=1000)
     llm_daily_requests_per_provider: int = Field(default=100, ge=1, le=100_000)
     llm_daily_system_request_pool: int | None = Field(default=None, ge=1)
+    # Fixed per-user model credits (completely independent of total or active user count).
+    llm_credits_3h_per_model: int = Field(default=20, ge=1, le=100_000)
+    llm_credits_2d_per_model: int = Field(default=100, ge=1, le=100_000)
+    llm_credits_short_window_hours: int = Field(default=3, ge=1, le=24)
+    llm_credits_long_window_days: int = Field(default=2, ge=1, le=30)
 
     generation_max_new_tokens: int = Field(default=768, ge=64, le=4096)
     generation_temperature: float = Field(default=0.1, ge=0.0, le=1.0)

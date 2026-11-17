@@ -72,7 +72,7 @@ def answer_format_hint(question: str) -> str:
     )
 
 
-_EVIDENCE_TAG = re.compile(r"</?\s*evidence\b[^>]*>", re.IGNORECASE)
+_EVIDENCE_TAG = re.compile(r"</?\s*(?:evidence|report_memory)\b[^>]*>", re.IGNORECASE)
 
 
 def _neutralize(text: str) -> str:
@@ -84,7 +84,12 @@ def _attribute(value: str) -> str:
     return _neutralize(value).replace('"', "'").replace("\n", " ")
 
 
-def build_grounding_prompt(question: str, evidence: list[EvidenceItem]) -> str:
+def build_grounding_prompt(
+    question: str,
+    evidence: list[EvidenceItem],
+    *,
+    report_memory: str | None = None,
+) -> str:
     blocks = []
     for item in evidence:
         attributes = [f'id="{item.source_id}"']
@@ -112,9 +117,19 @@ def build_grounding_prompt(question: str, evidence: list[EvidenceItem]) -> str:
             f"<evidence {' '.join(attributes)}>\n{_neutralize(item.text)}\n</evidence>"
         )
 
+    memory_block = ""
+    if report_memory and report_memory.strip():
+        memory_block = (
+            "Prior report memory (context only to interpret follow-up references; "
+            "still cite <evidence> IDs for every factual claim):\n"
+            "<report_memory>\n"
+            f"{_neutralize(report_memory.strip())}\n"
+            "</report_memory>\n\n"
+        )
+
     return f"""{GROUNDING_RULES}
 
-Question:
+{memory_block}Question:
 <question>
 {_neutralize(question)}
 </question>
@@ -225,6 +240,7 @@ class GenerationService:
         question: str,
         evidence: list[EvidenceItem],
         *,
+        report_memory: str | None = None,
         user_api_keys: dict[str, str] | None = None,
         user_provider_models: dict[str, str] | None = None,
         preferred_provider: str | None = None,
@@ -236,7 +252,7 @@ class GenerationService:
         primary_timeout_seconds: float | None = None,
         allow_sticky_fallback: bool | None = None,
     ) -> str:
-        prompt = build_grounding_prompt(question, evidence)
+        prompt = build_grounding_prompt(question, evidence, report_memory=report_memory)
         if (
             self.router is not None
             or user_api_keys

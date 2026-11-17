@@ -19,6 +19,12 @@ import { apiErrorMessage } from '../../services/api';
 import { useSessionDataCache } from '../../app/SessionDataCacheContext';
 import { ResearchDepth } from '../../types/research';
 import { SUGGESTED_MODELS_BY_PROVIDER } from '../../lib/modelCatalog';
+import {
+  creditToneClasses,
+  formatResetCountdown,
+  getProviderCredit,
+  resolveTopBarCreditBadge,
+} from '../../lib/modelCredits';
 
 const MODELS_STATUS_CACHE_TTL_MS = 60_000;
 
@@ -167,12 +173,6 @@ const detectProviderPrefix = (rawKey: string): string | null => {
 const depthDisplayLabel = (depth: ResearchDepth): string => {
   const match = DEPTH_OPTIONS.find((item) => item.value === depth);
   return match ? match.label : 'Medium';
-};
-
-const formatCompactTokens = (tokens: number): string => {
-  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`;
-  if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(1)}k`;
-  return String(tokens);
 };
 
 interface PopoverLayout {
@@ -518,6 +518,9 @@ export const ModelControlBar: React.FC<ModelControlBarProps> = ({
 
   const detectedProvider = keyProvider === 'auto' ? detectProviderPrefix(apiKeyInput) : null;
   const usage = status?.usage ?? null;
+  const topCreditBadge = usage
+    ? resolveTopBarCreditBadge(usage, preferredProvider, providers)
+    : null;
   const selectedProviderItem =
     preferredProvider !== null
       ? providers.find((item) => item.id === preferredProvider) ?? null
@@ -572,20 +575,12 @@ export const ModelControlBar: React.FC<ModelControlBarProps> = ({
           <span className="rounded bg-subtle px-1.5 py-0.5 text-[10.5px] font-medium text-ink-soft">
             {depthDisplayLabel(depth)}
           </span>
-          {usage ? (
+          {topCreditBadge ? (
             <span
-              className={`hidden rounded px-1.5 py-0.5 text-[10px] font-medium sm:inline ${
-                usage.userRequestsRemainingToday <= 0
-                  ? 'bg-danger/15 text-danger'
-                  : usage.userDailyRequestCap > 0
-                      && usage.userRequestsRemainingToday
-                        <= Math.max(2, Math.ceil(usage.userDailyRequestCap * 0.15))
-                    ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
-                    : 'bg-subtle text-ink-muted'
-              }`}
-              title={`Shared server daily quota: ${usage.sharedRequestsUsedToday} used of ${usage.userDailyRequestCap} requests today (${usage.userRequestsRemainingToday} left) across ${usage.enrolledUsers} active users. Own API key and Local Ollama are unlimited.`}
+              className={`hidden rounded px-1.5 py-0.5 text-[10px] font-medium tabular-nums sm:inline ${topCreditBadge.tone.badgeClass}`}
+              title={topCreditBadge.title}
             >
-              {usage.userRequestsRemainingToday} requests left
+              {topCreditBadge.label}
             </span>
           ) : null}
           {localStatus.available ? (
@@ -689,12 +684,17 @@ export const ModelControlBar: React.FC<ModelControlBarProps> = ({
                 <div className="min-h-0 flex-1 space-y-0.5 pr-0.5 md:overflow-y-auto md:overscroll-contain">
                   {providers.map((item) => {
                     const isSelected = preferredProvider === item.id;
+                    const providerCredit = getProviderCredit(usage, item.id);
+                    const isReady = item.configured || (item.isLocal && item.available);
+                    const isUnlimited = item.isLocal || item.configuredByok || providerCredit?.unlimited;
+                    const creditPct = providerCredit?.remainingPct ?? 100;
+                    const creditTone = creditToneClasses(creditPct, Boolean(isUnlimited));
                     const badgeText = item.isLocal
                       ? item.available
                         ? item.defaultModel
                         : 'Not available'
                       : item.configuredByok
-                        ? 'BYOK'
+                        ? 'Own key'
                         : item.configuredServer
                           ? 'Ready'
                           : 'Needs key';
@@ -717,12 +717,12 @@ export const ModelControlBar: React.FC<ModelControlBarProps> = ({
                           <span className="w-3.5 shrink-0">
                             {isSelected ? <Check className="h-3.5 w-3.5 text-accent" /> : null}
                           </span>
-                          <div className="min-w-0">
+                          <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-1.5">
                               <span className="truncate font-medium text-ink">{item.label}</span>
                               <span
                                 className={`shrink-0 rounded px-1 py-0 text-[10px] ${
-                                  item.configured || (item.isLocal && item.available)
+                                  isReady
                                     ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
                                     : 'bg-subtle text-ink-muted'
                                 }`}
@@ -730,13 +730,41 @@ export const ModelControlBar: React.FC<ModelControlBarProps> = ({
                                 {badgeText}
                               </span>
                             </div>
-                            {!item.isLocal ? (
-                              <span className="block truncate text-[10px] text-ink-muted">
-                                {isSelected && effectiveSelectedModel
-                                  ? effectiveSelectedModel
-                                  : item.defaultModel}
-                              </span>
-                            ) : null}
+                            <div className="flex items-center justify-between gap-2">
+                              {!item.isLocal ? (
+                                <span className="min-w-0 truncate text-[10px] text-ink-muted">
+                                  {isSelected && effectiveSelectedModel
+                                    ? effectiveSelectedModel
+                                    : item.defaultModel}
+                                </span>
+                              ) : (
+                                <span className="text-[10px] text-ink-muted">
+                                  {item.available ? 'Local runtime' : 'Offline'}
+                                </span>
+                              )}
+                              {isReady && usage ? (
+                                isUnlimited ? (
+                                  <span className="shrink-0 text-[10px] font-medium text-emerald-700 dark:text-emerald-300">
+                                    Unlimited
+                                  </span>
+                                ) : providerCredit ? (
+                                  <span
+                                    className="flex shrink-0 items-center gap-1.5"
+                                    title={`${item.label}: ${creditPct}% credits remaining (3h: ${providerCredit.shortWindowPct}%, 2d: ${providerCredit.longWindowPct}%)`}
+                                  >
+                                    <span className="h-1 w-10 overflow-hidden rounded-full bg-subtle">
+                                      <span
+                                        className={`block h-full rounded-full ${creditTone.barClass}`}
+                                        style={{ width: `${creditPct}%` }}
+                                      />
+                                    </span>
+                                    <span className={`text-[10px] font-medium tabular-nums ${creditTone.textClass}`}>
+                                      {creditPct}%
+                                    </span>
+                                  </span>
+                                ) : null
+                              ) : null}
+                            </div>
                           </div>
                         </button>
 
@@ -915,93 +943,89 @@ export const ModelControlBar: React.FC<ModelControlBarProps> = ({
                   {statusError ? <p className="mt-1 text-[10.5px] text-danger">{statusError}</p> : null}
                 </div>
 
-                {/* User usage & dynamic daily cap */}
+                {/* Model-wise AI credits (fixed per account, dual renewal windows) */}
                 {usage ? (
-                  <div className="rounded-md border border-line bg-panel p-2.5" aria-label="Model usage and daily cap">
+                  <div className="rounded-md border border-line bg-panel p-2.5" aria-label="AI credits by model">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-[11px] font-medium text-ink">Daily server quota & usage</span>
-                      <span className="text-[10px] text-ink-muted">Resets 00:00 UTC</span>
+                      <span className="text-[11px] font-medium text-ink">AI credits</span>
+                      <span className="text-[10px] text-ink-muted">Fixed per account</span>
                     </div>
-                    <div className="mt-1.5 flex items-baseline justify-between gap-2 text-[10.5px]">
-                      <span className="text-ink-muted">Shared requests used today</span>
-                      <span className="font-medium tabular-nums text-ink">
-                        {usage.sharedRequestsUsedToday} / {usage.userDailyRequestCap} requests ({usage.userRequestsRemainingToday} left)
+                    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-ink-muted">
+                      <span>
+                        {usage.shortWindowHours ?? 3}h reset in{' '}
+                        <strong className="font-medium text-ink-soft">
+                          {formatResetCountdown(usage.shortResetsAt ?? usage.resetsAt)}
+                        </strong>
+                      </span>
+                      <span>·</span>
+                      <span>
+                        {usage.longWindowDays ?? 2}-day reset in{' '}
+                        <strong className="font-medium text-ink-soft">
+                          {formatResetCountdown(usage.longResetsAt ?? usage.resetsAt)}
+                        </strong>
                       </span>
                     </div>
-                    <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-subtle">
-                      <div
-                        className={`h-full rounded-full transition-all ${
-                          usage.userRequestsRemainingToday <= 0
-                            ? 'bg-danger'
-                            : 'bg-accent'
-                        }`}
-                        style={{
-                          width: `${
-                            usage.userDailyRequestCap > 0
-                              ? Math.min(
-                                  100,
-                                  Math.round(
-                                    (usage.sharedRequestsUsedToday / usage.userDailyRequestCap) * 100
-                                  )
-                                )
-                              : 100
-                          }%`,
-                        }}
-                      />
-                    </div>
-                    <dl className="mt-2 space-y-0.5 text-[10px] leading-snug text-ink-muted">
-                      <div className="flex items-center justify-between gap-2">
-                        <dt>Global server API pool remaining</dt>
-                        <dd className="tabular-nums text-ink-soft">
-                          {usage.systemPoolRemaining} of {usage.systemPoolTotal} requests
-                        </dd>
-                      </div>
-                      <div className="flex items-center justify-between gap-2">
-                        <dt>Fair share across active accounts</dt>
-                        <dd className="tabular-nums text-ink-soft">
-                          {usage.enrolledUsers} active {usage.enrolledUsers === 1 ? 'user' : 'users'}
-                        </dd>
-                      </div>
-                      <div className="flex items-center justify-between gap-2">
-                        <dt>Your total today (all models)</dt>
-                        <dd className="tabular-nums text-ink-soft">
-                          {usage.totalRequestsToday} requests · {formatCompactTokens(usage.totalTokensToday)} tokens
-                        </dd>
-                      </div>
-                      <div className="flex items-center justify-between gap-2">
-                        <dt>Own API key &amp; local (uncapped)</dt>
-                        <dd className="tabular-nums text-ink-soft">
-                          {usage.byokRequestsToday} BYOK · {usage.localRequestsToday} Local
-                        </dd>
-                      </div>
-                    </dl>
-                    {usage.models.length > 0 ? (
-                      <div className="mt-2 space-y-1 border-t border-line pt-1.5">
-                        <div className="flex items-center justify-between text-[10px] text-ink-muted">
-                          <span className="font-medium">Models you used</span>
-                          <span>today · total · tokens</span>
-                        </div>
-                        <div className="max-h-20 space-y-0.5 overflow-y-auto pr-0.5">
-                          {usage.models.map((item) => (
-                            <div
-                              key={`${item.provider}:${item.modelName}`}
-                              className="flex items-center justify-between gap-2 text-[10px]"
-                            >
-                              <span className="min-w-0 truncate text-ink-soft">
-                                {item.provider} / {item.modelName}
-                              </span>
-                              <span className="shrink-0 tabular-nums text-ink-muted">
-                                {item.requestsToday} today · {item.totalRequests} total · {formatCompactTokens(item.totalTokens)} tokens
-                              </span>
+
+                    {(() => {
+                      const credits = usage.providerCredits ?? [];
+                      const sharedCredits = credits.filter((item) => item.mode === 'shared');
+                      const unlimitedCredits = credits.filter((item) => item.unlimited);
+                      return (
+                        <>
+                          {sharedCredits.length > 0 ? (
+                            <div className="mt-2 space-y-2">
+                              {sharedCredits.map((credit) => {
+                                const tone = creditToneClasses(credit.remainingPct, false);
+                                return (
+                                  <div key={credit.provider} className="space-y-1">
+                                    <div className="flex items-baseline justify-between gap-2 text-[10.5px]">
+                                      <span className="min-w-0 truncate font-medium text-ink">
+                                        {credit.modelName ? `${credit.label} · ${credit.modelName}` : credit.label}
+                                      </span>
+                                      <span className={`shrink-0 font-semibold tabular-nums ${tone.textClass}`}>
+                                        {credit.remainingPct}%
+                                      </span>
+                                    </div>
+                                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-subtle">
+                                      <div
+                                        className={`h-full rounded-full transition-all ${tone.barClass}`}
+                                        style={{ width: `${credit.remainingPct}%` }}
+                                      />
+                                    </div>
+                                    <div className="flex items-center justify-between text-[9.5px] text-ink-muted">
+                                      <span>{usage.shortWindowHours ?? 3}h cycle: {credit.shortWindowPct}%</span>
+                                      <span>{usage.longWindowDays ?? 2}-day cycle: {credit.longWindowPct}%</span>
+                                    </div>
+                                  </div>
+                                );
+                              })}
                             </div>
-                          ))}
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="mt-1.5 border-t border-line pt-1.5 text-[10px] text-ink-muted">
-                        No model requests recorded on your account yet.
-                      </p>
-                    )}
+                          ) : (
+                            <p className="mt-2 text-[10.5px] text-ink-muted">
+                              All active models run with unlimited access (own API key or Local Ollama).
+                            </p>
+                          )}
+
+                          {unlimitedCredits.length > 0 ? (
+                            <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-line pt-1.5 text-[10px]">
+                              <span className="text-ink-muted">Unlimited:</span>
+                              {unlimitedCredits.map((credit) => (
+                                <span
+                                  key={credit.provider}
+                                  className="rounded bg-emerald-500/15 px-1.5 py-0.5 font-medium text-emerald-700 dark:text-emerald-300"
+                                >
+                                  {credit.label} ({credit.mode === 'local' ? 'Local' : 'Own key'})
+                                </span>
+                              ))}
+                            </div>
+                          ) : null}
+                        </>
+                      );
+                    })()}
+
+                    <p className="mt-2 border-t border-line pt-1.5 text-[10px] leading-snug text-ink-muted">
+                      Every user gets the same fixed credits. Own API keys and Local Ollama are unlimited.
+                    </p>
                   </div>
                 ) : null}
               </div>

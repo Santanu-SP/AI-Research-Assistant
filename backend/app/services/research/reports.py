@@ -5,10 +5,11 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.errors import AppError
-from app.models.report import Citation, ReportSection, ResearchReport, Source
+from app.models.report import Citation, ReportFollowup, ReportSection, ResearchReport, Source
 from app.schemas.reports import (
     CitationResponse,
     ComposedReportResponse,
+    ReportFollowupResponse,
     ReportSectionResponse,
     ResearchReportCreate,
     ResearchReportResponse,
@@ -157,7 +158,59 @@ def _load_report(session: Session, research_id: UUID) -> ResearchReport | None:
             selectinload(ResearchReport.sections)
             .selectinload(ReportSection.citations)
             .selectinload(Citation.source),
+            selectinload(ResearchReport.followups),
         )
+    )
+
+
+def serialize_source(source: Source) -> SourceResponse:
+    return SourceResponse(
+        id=source.id,
+        number=source.number,
+        title=source.title,
+        publisher=source.publisher,
+        authors=source.authors,
+        year=source.year,
+        url=source.url,
+        source_type=source.source_type,
+        relevant_excerpt=source.relevant_excerpt,
+        citation_count=len(source.citations),
+        doi=source.doi,
+        bibtex=source.bibtex,
+        document_id=source.document_id,
+        chunk_id=source.chunk_id,
+        page=source.page,
+        section=source.section,
+        rerank_score=source.rerank_score,
+        created_at=source.created_at,
+        updated_at=source.updated_at,
+    )
+
+
+def serialize_followup(followup: ReportFollowup) -> ReportFollowupResponse:
+    return ReportFollowupResponse(
+        id=followup.id,
+        report_id=followup.report_id,
+        question=followup.question,
+        answer=followup.answer,
+        citation_ids=list(followup.citation_numbers or []),
+        position=followup.position,
+        provider=followup.provider,
+        model=followup.model,
+        insufficient_evidence=followup.insufficient_evidence,
+        created_at=followup.created_at,
+        updated_at=followup.updated_at,
+    )
+
+
+def list_report_sources(session: Session, research_id: UUID) -> list[Source]:
+    return list(
+        session.scalars(
+            select(Source)
+            .where(Source.research_id == research_id)
+            .options(selectinload(Source.citations))
+            .order_by(Source.number)
+        ).all()
     )
 
 
@@ -175,14 +228,7 @@ def get_composed_report(
             code="research_report_not_ready",
         )
 
-    sources = list(
-        session.scalars(
-            select(Source)
-            .where(Source.research_id == research_id)
-            .options(selectinload(Source.citations))
-            .order_by(Source.number)
-        ).all()
-    )
+    sources = list_report_sources(session, research_id)
     section_responses: list[ReportSectionResponse] = []
     for section in report.sections:
         citations = [
@@ -208,30 +254,8 @@ def get_composed_report(
             )
         )
 
-    source_responses = [
-        SourceResponse(
-            id=source.id,
-            number=source.number,
-            title=source.title,
-            publisher=source.publisher,
-            authors=source.authors,
-            year=source.year,
-            url=source.url,
-            source_type=source.source_type,
-            relevant_excerpt=source.relevant_excerpt,
-            citation_count=len(source.citations),
-            doi=source.doi,
-            bibtex=source.bibtex,
-            document_id=source.document_id,
-            chunk_id=source.chunk_id,
-            page=source.page,
-            section=source.section,
-            rerank_score=source.rerank_score,
-            created_at=source.created_at,
-            updated_at=source.updated_at,
-        )
-        for source in sources
-    ]
+    source_responses = [serialize_source(source) for source in sources]
+    followup_responses = [serialize_followup(item) for item in report.followups]
     return ComposedReportResponse(
         report=ResearchReportResponse(
             id=report.id,
@@ -248,4 +272,5 @@ def get_composed_report(
             updated_at=report.updated_at,
         ),
         sources=source_responses,
+        followups=followup_responses,
     )

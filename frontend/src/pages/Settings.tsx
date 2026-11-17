@@ -16,6 +16,7 @@ import { ReadinessResponse, systemService } from '../services/system.service';
 import { byokService, ModelUsageQuotaSummary } from '../services/clientAi.service';
 import { authErrorMessage } from '../services/auth.service';
 import { shortcutLabel } from '../lib/shortcuts';
+import { creditToneClasses, formatResetCountdown } from '../lib/modelCredits';
 import { ModelsAndKeysPanel } from '../components/settings/ModelsAndKeysPanel';
 
 const Section: React.FC<
@@ -300,8 +301,8 @@ export const SettingsPage: React.FC = () => {
 
             <Section
               id="settings-model-usage"
-              title="Model usage & daily quota"
-              description="Shared daily cap scales fairly with active users and remaining server AI API requests."
+              title="AI credits & renewal"
+              description="Every account gets fixed per-model credits that never change when users join or leave. Burst credits renew every 3 hours and your full pool renews every 2 days."
             >
               <div className="overflow-hidden rounded-lg border border-line bg-panel shadow-xs">
                 {usageLoading && !usageSummary ? (
@@ -312,111 +313,136 @@ export const SettingsPage: React.FC = () => {
                 ) : usageError || !usageSummary ? (
                   <div className="flex items-center gap-2.5 px-4 py-3.5 text-[13px] text-ink-soft">
                     <CircleAlert className="h-4 w-4 shrink-0 text-danger" />
-                    Could not load model usage right now.
+                    Could not load AI credit status right now.
                   </div>
                 ) : (
                   <div className="divide-y divide-line">
-                    <div className="p-4">
-                      <div className="flex flex-wrap items-center justify-between gap-2 text-[13px]">
-                        <span className="font-medium text-ink">
-                          Shared server requests used today
-                        </span>
-                        <span className="font-medium tabular-nums text-ink">
-                          {usageSummary.sharedRequestsUsedToday} / {usageSummary.userDailyRequestCap} requests
-                          {' '}
-                          <span className="text-ink-muted">
-                            ({usageSummary.userRequestsRemainingToday} left for you today)
-                          </span>
-                        </span>
-                      </div>
-                      <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-subtle">
-                        <div
-                          className={`h-full rounded-full transition-all ${
-                            usageSummary.userRequestsRemainingToday <= 0 ? 'bg-danger' : 'bg-accent'
-                          }`}
-                          style={{
-                            width: `${
-                              usageSummary.userDailyRequestCap > 0
-                                ? Math.min(
-                                    100,
-                                    Math.round(
-                                      (usageSummary.sharedRequestsUsedToday /
-                                        usageSummary.userDailyRequestCap) *
-                                        100
-                                    )
-                                  )
-                                : 100
-                            }%`,
-                          }}
-                        />
-                      </div>
-                      <p className="mt-2 text-xs text-ink-muted">
-                        Divided across {formatCount(usageSummary.enrolledUsers)} active{' '}
-                        {usageSummary.enrolledUsers === 1 ? 'user' : 'users'} · Global server API pool:{' '}
-                        {formatCount(usageSummary.systemPoolRemaining)} of{' '}
-                        {formatCount(usageSummary.systemPoolTotal)} requests remaining today.
-                      </p>
+                    <div className="space-y-3.5 p-4">
+                      {(() => {
+                        const credits = usageSummary.providerCredits ?? [];
+                        const sharedCredits = credits.filter((item) => item.mode === 'shared');
+                        const unlimitedCredits = credits.filter((item) => item.unlimited);
+                        const shortHours = usageSummary.shortWindowHours ?? 3;
+                        const longDays = usageSummary.longWindowDays ?? 2;
+
+                        return (
+                          <>
+                            {sharedCredits.length > 0 ? (
+                              <div className="space-y-3">
+                                {sharedCredits.map((credit) => {
+                                  const tone = creditToneClasses(credit.remainingPct, false);
+                                  return (
+                                    <div key={credit.provider} className="space-y-1.5">
+                                      <div className="flex flex-wrap items-baseline justify-between gap-2 text-[13px]">
+                                        <span className="font-medium text-ink">
+                                          {credit.label}
+                                          {credit.modelName ? (
+                                            <span className="ml-1.5 text-xs font-normal text-ink-muted">
+                                              {credit.modelName}
+                                            </span>
+                                          ) : null}
+                                        </span>
+                                        <span className={`font-semibold tabular-nums ${tone.textClass}`}>
+                                          {credit.remainingPct}% remaining
+                                        </span>
+                                      </div>
+                                      <div className="h-2 w-full overflow-hidden rounded-full bg-subtle">
+                                        <div
+                                          className={`h-full rounded-full transition-all ${tone.barClass}`}
+                                          style={{ width: `${credit.remainingPct}%` }}
+                                        />
+                                      </div>
+                                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-ink-muted">
+                                        <span>
+                                          {shortHours}-hour credits: {credit.shortWindowPct}% (resets in{' '}
+                                          {formatResetCountdown(credit.shortResetsAt)})
+                                        </span>
+                                        <span>
+                                          {longDays}-day pool: {credit.longWindowPct}% (resets in{' '}
+                                          {formatResetCountdown(credit.longResetsAt)})
+                                        </span>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <p className="text-[13px] text-ink-muted">
+                                Unlimited access active with your own API key or Local Ollama (0 server credits used).
+                              </p>
+                            )}
+
+                            {unlimitedCredits.length > 0 ? (
+                              <div className="flex flex-wrap items-center gap-2 border-t border-line pt-3 text-xs">
+                                <span className="text-ink-muted">Unlimited models:</span>
+                                {unlimitedCredits.map((credit) => (
+                                  <span
+                                    key={credit.provider}
+                                    className="rounded-md bg-emerald-500/15 px-2 py-0.5 font-medium text-emerald-700 dark:text-emerald-300"
+                                  >
+                                    {credit.label} ({credit.mode === 'local' ? 'Local' : 'Own key'})
+                                  </span>
+                                ))}
+                              </div>
+                            ) : null}
+                          </>
+                        );
+                      })()}
                     </div>
 
-                    <dl className="divide-y divide-line">
-                      <Row
-                        label="Your total today (all models)"
-                        value={`${formatCount(usageSummary.totalRequestsToday)} requests · ${formatCount(
-                          usageSummary.totalTokensToday
-                        )} tokens`}
-                      />
-                      <Row
-                        label="Own API key (BYOK) & local today"
-                        value={`${formatCount(usageSummary.byokRequestsToday)} BYOK · ${formatCount(
-                          usageSummary.localRequestsToday
-                        )} Local (unlimited, not counted against shared cap)`}
-                      />
-                      <Row
-                        label="Total usage (all time)"
-                        value={`${formatCount(usageSummary.totalRequestsAllTime)} requests · ${formatCount(
-                          usageSummary.totalTokensAllTime
-                        )} tokens`}
-                      />
-                    </dl>
-
-                    {usageSummary.models.length > 0 ? (
-                      <div className="p-4">
-                        <div className="flex items-center justify-between text-xs text-ink-muted">
-                          <h3 className="font-medium">Models used</h3>
-                          <span>today · all-time · tokens</span>
-                        </div>
-                        <ul className="mt-2 divide-y divide-line rounded-md border border-line bg-subtle/30">
-                          {usageSummary.models.map((item) => (
-                            <li
-                              key={`${item.provider}:${item.modelName}`}
-                              className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-[13px]"
-                            >
-                              <div className="min-w-0">
-                                <span className="font-medium text-ink">{item.modelName}</span>
-                                <span className="ml-2 rounded bg-panel px-1.5 py-0.5 text-[11px] uppercase text-ink-muted">
-                                  {item.provider}
-                                </span>
-                              </div>
-                              <span className="text-xs tabular-nums text-ink-soft">
-                                {formatCount(item.requestsToday)} reqs today ·{' '}
-                                {formatCount(item.totalRequests)} total ·{' '}
-                                {formatCount(item.totalTokens)} tokens
-                              </span>
-                            </li>
-                          ))}
-                        </ul>
+                    <details className="group">
+                      <summary className="flex cursor-pointer items-center justify-between px-4 py-2.5 text-xs font-medium text-ink-muted hover:text-ink">
+                        <span>Detailed activity counters</span>
+                        <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
+                      </summary>
+                      <div className="border-t border-line">
+                        <dl className="divide-y divide-line">
+                          <Row
+                            label="Your runs today (all models)"
+                            value={`${formatCount(usageSummary.totalRequestsToday)} runs · ${formatCount(
+                              usageSummary.byokRequestsToday
+                            )} own key · ${formatCount(usageSummary.localRequestsToday)} Local`}
+                          />
+                          <Row
+                            label="All-time completed runs"
+                            value={`${formatCount(usageSummary.totalRequestsAllTime)} runs · ${formatCount(
+                              usageSummary.totalTokensAllTime
+                            )} tokens`}
+                          />
+                        </dl>
+                        {usageSummary.models.length > 0 ? (
+                          <div className="border-t border-line p-4">
+                            <ul className="divide-y divide-line rounded-md border border-line bg-subtle/30">
+                              {usageSummary.models.map((item) => (
+                                <li
+                                  key={`${item.provider}:${item.modelName}`}
+                                  className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-xs"
+                                >
+                                  <span className="font-medium text-ink">
+                                    {item.provider} / {item.modelName}
+                                  </span>
+                                  <span className="tabular-nums text-ink-soft">
+                                    {formatCount(item.requestsToday)} today · {formatCount(item.totalRequests)} total
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        ) : null}
                       </div>
-                    ) : (
-                      <p className="px-4 py-3 text-xs text-ink-muted">
-                        No model requests recorded on this account yet.
-                      </p>
-                    )}
+                    </details>
                   </div>
                 )}
 
-                <div className="flex items-center justify-between gap-3 border-t border-line bg-subtle/50 px-4 py-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line bg-subtle/50 px-4 py-2.5">
                   <p className="text-xs text-ink-muted">
-                    Resets daily at 00:00 UTC.
+                    {usageSummary
+                      ? `Next ${usageSummary.shortWindowHours ?? 3}h renewal in ${formatResetCountdown(
+                          usageSummary.shortResetsAt ?? usageSummary.resetsAt
+                        )} · Next ${usageSummary.longWindowDays ?? 2}-day renewal in ${formatResetCountdown(
+                          usageSummary.longResetsAt ?? usageSummary.resetsAt
+                        )}`
+                      : 'Fixed credits renew every 3 hours and every 2 days.'}
                   </p>
                   <PrimaryButton
                     variant="ghost"
@@ -425,7 +451,7 @@ export const SettingsPage: React.FC = () => {
                     disabled={usageLoading}
                   >
                     <RefreshCw className={`h-3.5 w-3.5 ${usageLoading ? 'animate-spin' : ''}`} />
-                    Refresh usage
+                    Refresh credits
                   </PrimaryButton>
                 </div>
               </div>
