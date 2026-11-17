@@ -12,6 +12,14 @@ interface ProjectCardProps {
   onArchived: (id: string) => void;
 }
 
+/** "3 files · 1 report", or null when the list did not include counts. */
+export const projectCountsLabel = (project: ResearchProject): string | null => {
+  if (typeof project.fileCount !== 'number' || typeof project.reportCount !== 'number') return null;
+  const files = `${project.fileCount} ${project.fileCount === 1 ? 'file' : 'files'}`;
+  const reports = `${project.reportCount} ${project.reportCount === 1 ? 'report' : 'reports'}`;
+  return `${files} · ${reports}`;
+};
+
 export const formatProjectDate = (iso: string): string =>
   new Intl.DateTimeFormat(undefined, {
     month: 'short',
@@ -31,6 +39,7 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
 }) => {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isArchiveOpen, setIsArchiveOpen] = useState(false);
+  const counts = projectCountsLabel(project);
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.target !== e.currentTarget) return;
     if (e.key === 'Enter' || e.key === ' ') {
@@ -60,6 +69,7 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
             <p className="mt-0.5 truncate text-[13px] text-ink-muted">
               {project.description || 'No description'}
             </p>
+            {counts && <p className="mt-1 text-xs tabular-nums text-ink-soft">{counts}</p>}
             <p className="mt-1 text-xs text-ink-muted sm:hidden">
               Updated {formatProjectDate(project.updatedAt)}
             </p>
