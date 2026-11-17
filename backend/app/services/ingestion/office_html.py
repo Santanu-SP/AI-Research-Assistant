@@ -14,6 +14,16 @@ from app.services.ingestion.pipeline import DocumentIngestionError, stable_node_
 from app.services.ingestion.web import chunk_web_sections, extract_clean_html_sections
 
 
+def _iter_slide_shapes(shapes):
+    """Yield every shape on a slide, recursively unfolding grouped shapes."""
+    for shape in shapes:
+        child_shapes = getattr(shape, "shapes", None)
+        if child_shapes is not None:
+            yield from _iter_slide_shapes(child_shapes)
+        else:
+            yield shape
+
+
 def parse_pptx_document(
     path: Path,
     *,
@@ -43,7 +53,7 @@ def parse_pptx_document(
 
         text_blocks: list[str] = []
         figure_refs: list[str] = []
-        for shape_idx, shape in enumerate(slide.shapes):
+        for shape_idx, shape in enumerate(_iter_slide_shapes(slide.shapes)):
             if getattr(shape, "has_table", False):
                 rows = []
                 for row in shape.table.rows:

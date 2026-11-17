@@ -100,27 +100,32 @@ class VideoIngestionAdapter:
         pattern = str(frames_dir / "frame_%03d.png")
         # Scene-change filter or 1 frame every 15s, capped strictly at max_frames
         vf_expr = f"select='eq(n\\,0)+gt(scene\\,{self.scene_threshold})',scale='min(1280,iw)':-2"
-        cmd = [
+        base_cmd = [
             self.ffmpeg_binary,
             "-y",
             "-i",
             str(video_path),
             "-vf",
             vf_expr,
-            "-vsync",
-            "vfr",
-            "-frames:v",
-            str(self.max_frames),
-            pattern,
         ]
+        tail_cmd = ["-frames:v", str(self.max_frames), pattern]
         try:
-            subprocess.run(
-                cmd,
+            # FFmpeg 5.1+ / 8+ replaced -vsync with -fps_mode; fall back cleanly on older builds.
+            result = subprocess.run(
+                [*base_cmd, "-fps_mode", "vfr", *tail_cmd],
                 capture_output=True,
                 text=True,
                 timeout=self.timeout_seconds,
                 check=False,
             )
+            if result.returncode != 0 and "fps_mode" in (result.stderr or ""):
+                subprocess.run(
+                    [*base_cmd, "-vsync", "vfr", *tail_cmd],
+                    capture_output=True,
+                    text=True,
+                    timeout=self.timeout_seconds,
+                    check=False,
+                )
         except (FileNotFoundError, subprocess.TimeoutExpired):
             return []
 
@@ -130,6 +135,38 @@ class VideoIngestionAdapter:
             ExtractedKeyframe(path=frame_path, timestamp_seconds=float(index * 15))
             for index, frame_path in enumerate(files)
         ]
+
+    def _compress_audio_if_needed(self, audio_path: Path, output_dir: Path) -> Path:
+        """Down-encode oversized WAV audio to compact mono MP3 so longer videos fit Whisper limits."""
+        if not audio_path.is_file() or audio_path.stat().st_size <= 24 * 1024 * 1024:
+            return audio_path
+        mp3_path = output_dir / "extracted_audio.mp3"
+        cmd = [
+            self.ffmpeg_binary,
+            "-y",
+            "-i",
+            str(audio_path),
+            "-ac",
+            "1",
+            "-ar",
+            "16000",
+            "-b:a",
+            "32k",
+            str(mp3_path),
+        ]
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=self.timeout_seconds,
+                check=False,
+            )
+            if result.returncode == 0 and mp3_path.is_file() and mp3_path.stat().st_size > 0:
+                return mp3_path
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass
+        return audio_path
 
     def parse(
         self,
@@ -146,31 +183,39 @@ class VideoIngestionAdapter:
             frames_dir = tmp_dir / "frames"
             frames_dir.mkdir(parents=True, exist_ok=True)
 
-            self.extract_audio(path, audio_path)
-            audio_parsed = self.transcriber.parse(
-                audio_path,
-                document_id=document_id,
-                ingestion_version=ingestion_version,
-                original_name=title,
-            )
             nodes: list[ParsedNode] = []
-            for idx, node in enumerate(audio_parsed.nodes):
-                meta = dict(node.metadata)
-                meta["original_video"] = path.name
-                meta["modality"] = "audio_transcript"
-                nodes.append(
-                    ParsedNode(
-                        node_id=stable_node_id(document_id, idx, node.text),
-                        text=node.text,
-                        chunk_index=idx,
-                        page=node.page,
-                        page_end=node.page_end,
-                        section=node.section,
-                        section_path=node.section_path,
-                        token_count=node.token_count,
-                        metadata=meta,
-                    )
+            audio_error: DocumentIngestionError | None = None
+            try:
+                extracted = self.extract_audio(path, audio_path)
+                compact_audio = self._compress_audio_if_needed(extracted, tmp_dir)
+                audio_parsed = self.transcriber.parse(
+                    compact_audio,
+                    document_id=document_id,
+                    ingestion_version=ingestion_version,
+                    original_name=title,
                 )
+                for idx, node in enumerate(audio_parsed.nodes):
+                    meta = dict(node.metadata)
+                    meta["original_video"] = path.name
+                    meta["modality"] = "audio_transcript"
+                    nodes.append(
+                        ParsedNode(
+                            node_id=stable_node_id(document_id, idx, node.text),
+                            text=node.text,
+                            chunk_index=idx,
+                            page=node.page,
+                            page_end=node.page_end,
+                            section=node.section,
+                            section_path=node.section_path,
+                            token_count=node.token_count,
+                            metadata=meta,
+                        )
+                    )
+            except DocumentIngestionError as exc:
+                if exc.code not in {"video_audio_extraction_failed", "empty_audio_transcript"}:
+                    raise
+                audio_error = exc
+                logger.info("Video %s has no usable spoken audio (%s); inspecting keyframes", path.name, exc.code)
 
             analyzed_frames = 0
             if self.vision_analyzer is not None and self.vision_analyzer.api_key:
@@ -212,6 +257,15 @@ class VideoIngestionAdapter:
                             },
                         )
                     )
+
+            if not nodes:
+                if audio_error is not None:
+                    raise audio_error
+                raise DocumentIngestionError(
+                    "The video contains neither spoken speech nor readable visual frames",
+                    code="document_processing_failed",
+                    status_code=422,
+                )
 
         return ParsedDocument(
             document_id=document_id,

@@ -16,6 +16,32 @@ from app.domain.documents import DocumentType, SourceType
 UPLOAD_CHUNK_SIZE = 1024 * 1024
 MAX_ORIGINAL_FILENAME_LENGTH = 255
 
+GENERIC_UPLOAD_MIME_TYPES = frozenset({"", "application/octet-stream", "binary/octet-stream"})
+
+CANONICAL_DOCUMENT_MIME_TYPES: dict[str, str] = {
+    ".pdf": "application/pdf",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".html": "text/html",
+    ".htm": "text/html",
+    ".mp3": "audio/mpeg",
+    ".wav": "audio/wav",
+    ".m4a": "audio/mp4",
+    ".ogg": "audio/ogg",
+    ".flac": "audio/flac",
+    ".mp4": "video/mp4",
+    ".mov": "video/quicktime",
+    ".mkv": "video/x-matroska",
+    ".webm": "video/webm",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+    ".tiff": "image/tiff",
+    ".tif": "image/tiff",
+}
+
 SUPPORTED_DOCUMENT_TYPES: dict[str, tuple[DocumentType, frozenset[str]]] = {
     ".pdf": (DocumentType.PDF, frozenset({"application/pdf"})),
     ".docx": (
@@ -52,19 +78,19 @@ SUPPORTED_DOCUMENT_TYPES: dict[str, tuple[DocumentType, frozenset[str]]] = {
     ),
     ".mp3": (
         DocumentType.AUDIO,
-        frozenset({"audio/mpeg", "audio/mp3"}),
+        frozenset({"audio/mpeg", "audio/mp3", "audio/x-mpeg", "audio/x-mp3"}),
     ),
     ".wav": (
         DocumentType.AUDIO,
-        frozenset({"audio/wav", "audio/x-wav", "audio/wave"}),
+        frozenset({"audio/wav", "audio/x-wav", "audio/wave", "audio/vnd.wave"}),
     ),
     ".m4a": (
         DocumentType.AUDIO,
-        frozenset({"audio/mp4", "audio/x-m4a", "audio/m4a"}),
+        frozenset({"audio/mp4", "audio/x-m4a", "audio/m4a", "audio/aac", "audio/x-aac", "video/mp4"}),
     ),
     ".ogg": (
         DocumentType.AUDIO,
-        frozenset({"audio/ogg", "application/ogg"}),
+        frozenset({"audio/ogg", "application/ogg", "audio/vorbis", "video/ogg"}),
     ),
     ".flac": (
         DocumentType.AUDIO,
@@ -72,15 +98,15 @@ SUPPORTED_DOCUMENT_TYPES: dict[str, tuple[DocumentType, frozenset[str]]] = {
     ),
     ".mp4": (
         DocumentType.VIDEO,
-        frozenset({"video/mp4"}),
+        frozenset({"video/mp4", "application/mp4", "video/x-m4v"}),
     ),
     ".mov": (
         DocumentType.VIDEO,
-        frozenset({"video/quicktime"}),
+        frozenset({"video/quicktime", "video/x-quicktime"}),
     ),
     ".mkv": (
         DocumentType.VIDEO,
-        frozenset({"video/x-matroska"}),
+        frozenset({"video/x-matroska", "video/matroska"}),
     ),
     ".webm": (
         DocumentType.VIDEO,
@@ -189,7 +215,11 @@ class LocalDocumentStorage:
 
         file_type, allowed_mime_types = supported
         mime_type = (upload.content_type or "").split(";", 1)[0].strip().lower()
-        if mime_type not in allowed_mime_types:
+        if mime_type in GENERIC_UPLOAD_MIME_TYPES:
+            # Browsers omit or default MIME types for formats like .mkv, .flac, or .m4a;
+            # stored file bytes are still strictly verified before saving finishes.
+            mime_type = CANONICAL_DOCUMENT_MIME_TYPES[extension]
+        elif mime_type not in allowed_mime_types:
             raise AppError(
                 "The uploaded file type does not match its filename extension",
                 status_code=400,

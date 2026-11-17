@@ -19,6 +19,64 @@ from app.services.ingestion.pipeline import DocumentIngestionError, stable_node_
 VIDEO_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{11}$")
 CAPTION_TRACKS_PATTERN = re.compile(r'"captionTracks":\s*(\[.*?\])')
 TITLE_PATTERN = re.compile(r"<title>(.*?)</title>", re.IGNORECASE | re.DOTALL)
+INNERTUBE_PLAYER_URL = "https://www.youtube.com/youtubei/v1/player"
+INNERTUBE_CLIENT_CONTEXT = {
+    "context": {
+        "client": {
+            "clientName": "ANDROID",
+            "clientVersion": "20.10.38",
+        }
+    }
+}
+INNERTUBE_USER_AGENT = "com.google.android.youtube/20.10.38 (Linux; U; Android 11) gzip"
+
+
+def _pick_caption_track(tracks: list[dict[str, Any]]) -> dict[str, Any] | None:
+    usable = [track for track in tracks if isinstance(track, dict) and track.get("baseUrl")]
+    if not usable:
+        return None
+    for track in usable:
+        lang = str(track.get("languageCode") or "").lower()
+        if lang.startswith("en") and track.get("kind") != "asr":
+            return track
+    for track in usable:
+        if str(track.get("languageCode") or "").lower().startswith("en"):
+            return track
+    for track in usable:
+        if track.get("kind") != "asr":
+            return track
+    return usable[0]
+
+
+def _parse_caption_xml(xml_text: str) -> list[TranscriptSegment]:
+    if not xml_text or not xml_text.strip():
+        return []
+    root = ET.fromstring(xml_text)
+    segments: list[TranscriptSegment] = []
+    for elem in root.findall(".//text"):
+        text_val = unescape("".join(elem.itertext())).strip()
+        if not text_val:
+            continue
+        start_val = float(elem.attrib.get("start", "0") or 0.0)
+        dur_val = float(elem.attrib.get("dur", "0") or 0.0)
+        segments.append(TranscriptSegment(text=text_val, start=start_val, duration=dur_val))
+    if segments:
+        return segments
+    # TimedText format="3" (returned by Innertube ANDROID tracks) stores <p t="ms" d="ms">.
+    for elem in root.findall(".//p"):
+        text_val = unescape("".join(elem.itertext())).strip()
+        if not text_val:
+            continue
+        start_ms = float(elem.attrib.get("t", "0") or 0.0)
+        dur_ms = float(elem.attrib.get("d", "0") or 0.0)
+        segments.append(
+            TranscriptSegment(
+                text=text_val,
+                start=start_ms / 1000.0,
+                duration=dur_ms / 1000.0,
+            )
+        )
+    return segments
 
 
 @dataclass(frozen=True)
@@ -201,7 +259,36 @@ class YouTubeIngestionAdapter:
                 status_code=422,
             ) from exc
 
-        # 2. Built-in HTTP timedtext / watch page caption extraction
+        # 2. Innertube ANDROID player API (desktop timedtext baseUrls often return 0 bytes without pot)
+        try:
+            player_resp = self._client.post(
+                INNERTUBE_PLAYER_URL,
+                json={**INNERTUBE_CLIENT_CONTEXT, "videoId": video_id},
+                headers={"User-Agent": INNERTUBE_USER_AGENT},
+            )
+            if player_resp.status_code == 200:
+                player_data = player_resp.json()
+                tracks = (
+                    (player_data.get("captions") or {})
+                    .get("playerCaptionsTracklistRenderer", {})
+                    .get("captionTracks")
+                    or []
+                )
+                chosen = _pick_caption_track(tracks)
+                title = (
+                    (player_data.get("videoDetails") or {}).get("title")
+                    or f"YouTube Video ({video_id})"
+                )
+                if chosen:
+                    xml_resp = self._client.get(str(chosen["baseUrl"]))
+                    if xml_resp.status_code == 200:
+                        segments = _parse_caption_xml(xml_resp.text)
+                        if segments:
+                            return segments, title
+        except Exception:
+            pass
+
+        # 3. Fallback to watch-page timedtext caption extraction
         try:
             watch_resp = self._client.get(
                 f"https://www.youtube.com/watch?v={video_id}",
@@ -225,31 +312,21 @@ class YouTubeIngestionAdapter:
                     status_code=422,
                 )
             tracks = json.loads(tracks_match.group(1))
-            if not tracks:
+            chosen = _pick_caption_track(tracks)
+            if not chosen:
                 raise DocumentIngestionError(
                     "No accessible transcript is available for this YouTube video",
                     code="youtube_transcript_unavailable",
                     status_code=422,
                 )
-            base_url = tracks[0].get("baseUrl")
-            if not base_url:
+            xml_resp = self._client.get(str(chosen["baseUrl"]))
+            xml_resp.raise_for_status()
+            segments = _parse_caption_xml(xml_resp.text)
+            if not segments:
                 raise DocumentIngestionError(
-                    "Transcript track URL missing for YouTube video",
+                    "No accessible transcript is available for this YouTube video",
                     code="youtube_transcript_unavailable",
                     status_code=422,
-                )
-            xml_resp = self._client.get(base_url)
-            xml_resp.raise_for_status()
-            root = ET.fromstring(xml_resp.text)
-            segments: list[TranscriptSegment] = []
-            for elem in root.findall(".//text"):
-                text_val = unescape(elem.text or "").strip()
-                if not text_val:
-                    continue
-                start_val = float(elem.attrib.get("start", "0") or 0.0)
-                dur_val = float(elem.attrib.get("dur", "0") or 0.0)
-                segments.append(
-                    TranscriptSegment(text=text_val, start=start_val, duration=dur_val)
                 )
             return segments, title
         except DocumentIngestionError:
