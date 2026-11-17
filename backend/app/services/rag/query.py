@@ -221,6 +221,27 @@ def _plain_answer(answer: str) -> str:
     return re.sub(r" {2,}", " ", without_reference_spacing).strip()
 
 
+def _report_source_type(item) -> SourceType:
+    doc_source = getattr(item, "source_type", None)
+    publisher = (getattr(item, "publisher", None) or "").lower()
+    if "arxiv" in publisher:
+        return SourceType.PREPRINT
+    if doc_source is not None:
+        raw = str(getattr(doc_source, "value", doc_source)).lower()
+        if raw in {"openalex", "crossref", "doi"}:
+            return SourceType.PEER_REVIEWED
+        if raw == "web_page":
+            return SourceType.INSTITUTIONAL
+    return SourceType.TECHNICAL_REPORT
+
+
+def _truncate_str(value: str | None, limit: int) -> str | None:
+    if not value:
+        return None
+    cleaned = value.strip()
+    return cleaned[:limit] or None
+
+
 def _report_payload(
     *,
     research_id: UUID,
@@ -236,21 +257,32 @@ def _report_payload(
         source_number = int(citation.citation_id[1:])
         source_uuid = uuid5(research_id, citation.citation_id)
         item = evidence_by_id[citation.citation_id]
+        raw_authors = [
+            name.strip()[:200]
+            for name in (citation.authors or [])[:50]
+            if isinstance(name, str) and name.strip()
+        ]
+        raw_year = getattr(item, "year", None)
+        safe_year = raw_year if isinstance(raw_year, int) and 1000 <= raw_year <= 9999 else None
+        raw_url = getattr(citation, "url", None) or (
+            f"https://doi.org/{citation.doi}" if citation.doi else None
+        )
         source_payloads.append(
             {
                 "id": source_uuid,
                 "number": source_number,
-                "title": citation.paper_title,
-                "publisher": None,
-                "authors": citation.authors or [],
-                "year": None,
-                "sourceType": SourceType.TECHNICAL_REPORT,
+                "title": _truncate_str(citation.paper_title, 500),
+                "publisher": _truncate_str(getattr(item, "publisher", None), 200),
+                "authors": raw_authors,
+                "year": safe_year,
+                "url": _truncate_str(raw_url, 2048),
+                "sourceType": _report_source_type(item),
                 "relevantExcerpt": citation.excerpt,
-                "doi": citation.doi,
+                "doi": _truncate_str(citation.doi, 255),
                 "documentId": citation.document_id,
                 "chunkId": citation.chunk_id,
                 "page": citation.page,
-                "section": citation.section,
+                "section": _truncate_str(citation.section, 500),
                 "rerankScore": item.rerank_score,
             }
         )
@@ -275,6 +307,55 @@ def _report_payload(
             }
         ],
     )
+
+
+def prepare_discovered_documents_if_requested(
+    session: Session,
+    user_id: UUID,
+    payload: ResearchQueryRequest,
+    storage,
+    settings: Settings,
+) -> ResearchQueryRequest:
+    """When ``auto_discover`` is opted in with no picked documents, discover & ingest curated sources."""
+    if not payload.auto_discover or (payload.document_ids and len(payload.document_ids) > 0):
+        return payload
+
+    from app.services.discovery import service as discovery_service
+
+    search_result = discovery_service.search_and_annotate(
+        session,
+        user_id=user_id,
+        query=payload.query,
+        scope=payload.discovery_scope,
+        limit=settings.discovery_max_results,
+        project_id=payload.project_id,
+        settings=settings,
+    )
+    selected = search_result.items[: settings.discovery_auto_import_limit]
+    if not selected:
+        raise AppError(
+            "No trustworthy external sources were found for this question.",
+            status_code=422,
+            code="no_discoverable_sources",
+        )
+
+    imported = discovery_service.import_discovered_sources(
+        session,
+        selected,
+        storage=storage,
+        settings=settings,
+        user_id=user_id,
+        project_id=payload.project_id,
+        fetch_full_text=True,
+    )
+    doc_ids = [doc.id for doc in imported.documents]
+    if not doc_ids:
+        raise AppError(
+            "Found external references could not be extracted into readable evidence.",
+            status_code=422,
+            code="no_discoverable_sources",
+        )
+    return payload.model_copy(update={"document_ids": doc_ids})
 
 
 def run_query(

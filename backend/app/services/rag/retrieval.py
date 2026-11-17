@@ -431,6 +431,9 @@ def retrieve(
     result: list[RetrievalCandidate] = []
     for item in candidates:
         document = item.chunk.document
+        canonical_meta = document.canonical_metadata or {}
+        raw_publisher = canonical_meta.get("publisher") if isinstance(canonical_meta, dict) else None
+        publisher = str(raw_publisher).strip() if raw_publisher else None
         score = _hybrid_score(item.chunk.id, vector_ranks, keyword_ranks, rrf_k=rrf_k)
         result.append(
             RetrievalCandidate(
@@ -443,6 +446,9 @@ def retrieve(
                 paper_title=document.title or document.name,
                 authors=document.authors,
                 doi=document.doi,
+                url=document.source_url,
+                publisher=publisher,
+                year=document.publication_year,
                 page=item.chunk.page,
                 page_end=item.chunk.page_end,
                 section=item.chunk.section,
