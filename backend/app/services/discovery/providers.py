@@ -28,6 +28,59 @@ logger = logging.getLogger(__name__)
 _TAG_RE = re.compile(r"<[^>]+>")
 _TOKEN_RE = re.compile(r"[a-z0-9]{2,}")
 _ARXIV_NS = {"atom": "http://www.w3.org/2005/Atom", "arxiv": "http://arxiv.org/schemas/atom"}
+_CONVERSATIONAL_OPENER_RE = re.compile(
+    r"^(?:can you |could you |please )?"
+    r"(?:tell me about|tell me|explain to me|explain|what is|what are|"
+    r"how does|how do|how is|how are|why does|why do|define|summarize|summarise|"
+    r"overview of|describe)\b[:\s]*",
+    re.IGNORECASE,
+)
+_CONVERSATIONAL_TRAILER_RE = re.compile(
+    r"\b(?:how (?:it|they) works?|in (?:simple|plain|layman) terms?|"
+    r"terms?|in detail|step by step|with examples?)\b[?.!\s]*",
+    re.IGNORECASE,
+)
+_QUERY_STOPWORDS: frozenset[str] = frozenset(
+    {
+        "about", "all", "also", "an", "and", "are", "as", "at", "be", "between",
+        "by", "can", "could", "define", "describe", "detail", "details", "did",
+        "do", "does", "example", "examples", "explain", "for", "from", "give",
+        "how", "in", "into", "is", "it", "its", "many", "may", "me", "more",
+        "most", "of", "on", "or", "overview", "please", "role", "show", "simple",
+        "step", "summarize", "summarise", "tell", "term", "terms", "that", "the",
+        "their", "them", "these", "they", "this", "those", "to", "use", "used",
+        "usage", "using", "was", "were", "what", "when", "where", "which", "who",
+        "why", "with", "work", "works",
+    }
+)
+_WIKI_QUALIFIERS: frozenset[str] = frozenset(
+    {"biological", "chemical", "clinical", "engineering", "general", "medical", "mechanism", "mechanisms", "physical"}
+)
+
+
+def _core_query_tokens(text: str) -> list[str]:
+    return [
+        tok
+        for tok in _TOKEN_RE.findall(text.lower())
+        if tok not in _QUERY_STOPWORDS
+    ]
+
+
+def distill_search_query(raw_query: str) -> str:
+    """Reduce conversational questions into sharp search terms for academic APIs."""
+    cleaned = " ".join(raw_query.split()).strip()
+    if not cleaned:
+        return ""
+    stripped = _CONVERSATIONAL_OPENER_RE.sub("", cleaned)
+    stripped = _CONVERSATIONAL_TRAILER_RE.sub(" ", stripped)
+    stripped = " ".join(stripped.split()).strip(" ?.,!;:")
+    words = _TOKEN_RE.findall(cleaned.lower())
+    was_question = len(words) > 5 or stripped.lower() != cleaned.rstrip(" ?.!").lower()
+    if was_question:
+        core = _core_query_tokens(stripped or cleaned)
+        if len(core) >= 2:
+            return " ".join(core[:6])
+    return stripped or cleaned
 
 TRUSTED_WEB_DOMAINS: frozenset[str] = frozenset(
     {
@@ -507,18 +560,60 @@ def _provider_priority(provider: DiscoveryProviderName) -> int:
     return {"openalex": 4, "crossref": 3, "arxiv": 2, "wikipedia": 1}.get(provider, 0)
 
 
-def _score_candidate(candidate: DiscoveredSourceCandidate, query_terms: set[str]) -> float:
+def _score_candidate(
+    candidate: DiscoveredSourceCandidate,
+    core_terms: set[str],
+    subject_terms: set[str],
+    subject_phrase: str,
+) -> float:
     tier_score = {
         "peer-reviewed": 4.0,
         "preprint": 3.0,
         "official-documentation": 2.5,
         "institutional": 2.0,
     }.get(candidate.trust_tier, 1.0)
-    full_text_bonus = 2.0 if candidate.open_access_pdf_url or candidate.content_level == ContentLevel.WEB_PAGE else 0.0
-    haystack_terms = set(_TOKEN_RE.findall(f"{candidate.title} {candidate.abstract or ''}".lower()))
-    overlap = (len(query_terms & haystack_terms) / len(query_terms)) * 5.0 if query_terms else 0.0
+    full_text_bonus = (
+        2.0
+        if candidate.open_access_pdf_url or candidate.content_level == ContentLevel.WEB_PAGE
+        else 0.0
+    )
+    title_lower = candidate.title.lower()
+    title_tokens = set(_TOKEN_RE.findall(title_lower))
+    abstract_tokens = set(_TOKEN_RE.findall((candidate.abstract or "").lower()))
+    all_tokens = title_tokens | abstract_tokens
+
+    active_subject = subject_terms or core_terms
+    subject_title_hits = len(active_subject & title_tokens) if active_subject else 0
+    subject_any_hits = len(active_subject & all_tokens) if active_subject else 0
+    core_any_hits = len(core_terms & all_tokens) if core_terms else 0
+
+    phrase_bonus = 3.0 if subject_phrase and subject_phrase in title_lower else 0.0
+    title_overlap = (subject_title_hits / len(active_subject)) * 7.0 if active_subject else 0.0
+    core_overlap = (core_any_hits / len(core_terms)) * 6.0 if core_terms else 0.0
+    off_topic_penalty = (
+        -12.0
+        if active_subject and subject_any_hits == 0
+        else (-3.0 if len(active_subject) >= 2 and subject_any_hits < len(active_subject) else 0.0)
+    )
+
+    wiki_topic_bonus = 0.0
+    if candidate.provider == "wikipedia" and active_subject:
+        if subject_title_hits == len(active_subject):
+            wiki_topic_bonus = 5.5
+        elif subject_title_hits >= 1 and subject_any_hits == len(active_subject):
+            wiki_topic_bonus = 4.5
+
     citation_bonus = math.log1p(max(0, candidate.citation_count or 0)) * 0.45
-    return tier_score + full_text_bonus + overlap + citation_bonus
+    return (
+        tier_score
+        + full_text_bonus
+        + phrase_bonus
+        + title_overlap
+        + core_overlap
+        + off_topic_penalty
+        + wiki_topic_bonus
+        + citation_bonus
+    )
 
 
 @dataclass(frozen=True)
@@ -539,24 +634,29 @@ def search_curated_sources(
     if not cleaned:
         return ProviderSearchOutcome(items=[], provider_errors=[])
 
-    timeout = settings.discovery_timeout_seconds if settings else 12.0
+    distilled = distill_search_query(cleaned)
+    core_list = _core_query_tokens(distilled)
+    subject_list = [tok for tok in core_list if tok not in _WIKI_QUALIFIERS]
+    wiki_query = " ".join(subject_list[:4]) if len(subject_list) >= 2 else distilled
+
+    timeout = min(float(settings.discovery_timeout_seconds if settings else 8.0), 8.0)
     mailto = settings.discovery_mailto if settings else None
     per_provider = min(max(limit, 3), 8)
 
     tasks: dict[DiscoveryProviderName, Any] = {}
     if scope in {"all", "scholarly"}:
         tasks["openalex"] = lambda: search_openalex(
-            cleaned, limit=per_provider, timeout_seconds=timeout, mailto=mailto, client=client
+            distilled, limit=per_provider, timeout_seconds=timeout, mailto=mailto, client=client
         )
         tasks["crossref"] = lambda: search_crossref(
-            cleaned, limit=per_provider, timeout_seconds=timeout, mailto=mailto, client=client
+            distilled, limit=per_provider, timeout_seconds=timeout, mailto=mailto, client=client
         )
         tasks["arxiv"] = lambda: search_arxiv(
-            cleaned, limit=min(per_provider, 5), timeout_seconds=timeout, client=client
+            distilled, limit=min(per_provider, 5), timeout_seconds=timeout, client=client
         )
     if scope in {"all", "web"}:
         tasks["wikipedia"] = lambda: search_wikipedia(
-            cleaned, limit=min(per_provider, 4), timeout_seconds=timeout, client=client
+            wiki_query, limit=min(per_provider, 4), timeout_seconds=timeout, client=client
         )
 
     raw_items: list[DiscoveredSourceCandidate] = []
@@ -604,6 +704,11 @@ def search_curated_sources(
             if tkey:
                 by_title[tkey] = merged
 
-    query_terms = set(_TOKEN_RE.findall(cleaned.lower()))
-    deduped.sort(key=lambda item: _score_candidate(item, query_terms), reverse=True)
+    core_terms = set(core_list) or set(_TOKEN_RE.findall(cleaned.lower()))
+    subject_terms = set(subject_list)
+    subject_phrase = wiki_query.lower() if len(subject_list) >= 2 else ""
+    deduped.sort(
+        key=lambda item: _score_candidate(item, core_terms, subject_terms, subject_phrase),
+        reverse=True,
+    )
     return ProviderSearchOutcome(items=deduped[:limit], provider_errors=errors)

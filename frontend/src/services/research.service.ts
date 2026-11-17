@@ -81,6 +81,7 @@ export const startResearchJob = async (
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
+      timeoutMs: payload.autoDiscover ? QUERY_REQUEST_TIMEOUT_MS : undefined,
     });
   } finally {
     notifyUsageUpdated();

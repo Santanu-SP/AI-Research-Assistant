@@ -587,3 +587,62 @@ def test_auto_discover_job_is_refused_up_front_when_discovery_is_off(client: Tes
     )
     assert response.status_code == 503
     assert response.json()["error"]["code"] == "discovery_disabled"
+
+
+def test_query_distillation_relevance_scoring_and_wikipedia_sections() -> None:
+    assert (
+        discovery_providers.distill_search_query(
+            "tell me about lithium carbonate usage in medical terms, how it works?"
+        )
+        == "lithium carbonate medical"
+    )
+    assert (
+        discovery_providers.distill_search_query("attention is all you need")
+        == "attention is all you need"
+    )
+
+    from app.schemas.discovery import DiscoveredSourceCandidate
+
+    off_topic = DiscoveredSourceCandidate(
+        candidate_id="oa-offtopic",
+        provider="openalex",
+        trust_tier="peer-reviewed",
+        source_type=SourceType.OPENALEX,
+        content_level=ContentLevel.FULL_TEXT,
+        title="Self-Tracking for Health and the Quantified Self",
+        abstract="Digital health tracking applications in general care.",
+        url="https://example.org/offtopic",
+        citation_count=50000,
+    )
+    wiki_medical = DiscoveredSourceCandidate(
+        candidate_id="wiki-lithium",
+        provider="wikipedia",
+        trust_tier="institutional",
+        source_type=SourceType.WEB_PAGE,
+        content_level=ContentLevel.WEB_PAGE,
+        title="Lithium carbonate",
+        abstract="Lithium carbonate is used medically as a mood stabilizer in bipolar disorder.",
+        url="https://en.wikipedia.org/wiki/Lithium_carbonate",
+    )
+    core_terms = {"lithium", "carbonate", "medical"}
+    subject_terms = {"lithium", "carbonate"}
+    assert discovery_providers._score_candidate(
+        wiki_medical, core_terms, subject_terms, "lithium carbonate"
+    ) > discovery_providers._score_candidate(
+        off_topic, core_terms, subject_terms, "lithium carbonate"
+    )
+
+    parsed_wiki = discovery_service._parse_wikipedia_extract(
+        wiki_medical,
+        "Lead intro paragraph explaining mood stabilization.\n\n"
+        "== Medical uses ==\nLithium carbonate treats acute mania and bipolar disorder.\n\n"
+        "== References ==\n1. Citation should be skipped.",
+        document_id=UUID("11111111-1111-1111-1111-111111111111"),
+        ingestion_version="v1",
+        chunk_size=1000,
+        overlap=100,
+    )
+    assert parsed_wiki is not None
+    headings = [node.section for node in parsed_wiki.nodes]
+    assert "Medical uses" in headings
+    assert "References" not in headings
