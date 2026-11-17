@@ -5,12 +5,10 @@ import {
   Library,
   LayoutGrid,
   LogOut,
-  Moon,
   PanelLeftClose,
   Plus,
   Search,
   Settings,
-  Sun,
   X,
 } from 'lucide-react';
 import { useAuth } from '../../app/AuthContext';
@@ -18,7 +16,6 @@ import { groupByDate, useResearchHistory } from '../../app/ResearchHistoryContex
 import { researchService } from '../../services/research.service';
 import { ResearchResponse } from '../../types/research';
 import { BrandMark } from '../common/BrandMark';
-import { applyTheme, getAppliedTheme } from '../../theme';
 import { shortcutLabel } from '../../lib/shortcuts';
 import { useMobileNav } from './MobileNavContext';
 import { ResearchHistoryItem } from './ResearchHistoryItem';
@@ -147,7 +144,6 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
   const projectsActive = location.pathname.startsWith('/projects');
   const libraryActive = location.pathname.startsWith('/library');
   const settingsActive = location.pathname.startsWith('/settings');
-  const isDark = getAppliedTheme() === 'dark';
 
   const handleDeleted = (item: ResearchResponse) => {
     setPendingDelete(null);
@@ -314,15 +310,6 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
             >
               <Settings className="h-4 w-4" /> Settings
             </Link>
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => applyTheme(isDark ? 'light' : 'dark', true)}
-              className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] text-ink-soft hover:bg-subtle hover:text-ink"
-            >
-              {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-              {isDark ? 'Light theme' : 'Dark theme'}
-            </button>
             <div className="my-1 border-t border-line" />
             <button
               type="button"

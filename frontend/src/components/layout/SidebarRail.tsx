@@ -1,9 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutGrid, Library, LogOut, Moon, PanelLeftOpen, Plus, Search, Settings, Sun } from 'lucide-react';
+import { LayoutGrid, Library, LogOut, PanelLeftOpen, Plus, Search, Settings } from 'lucide-react';
 import { useAuth } from '../../app/AuthContext';
 import { BrandMark } from '../common/BrandMark';
-import { applyTheme, getAppliedTheme } from '../../theme';
 import { shortcutLabel } from '../../lib/shortcuts';
 
 interface SidebarRailProps {
@@ -32,7 +31,6 @@ export const SidebarRail: React.FC<SidebarRailProps> = ({ onExpand, onSearch }) 
   const { user, logout } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  const isDark = getAppliedTheme() === 'dark';
 
   const projectsActive = location.pathname.startsWith('/projects');
   const settingsActive = location.pathname.startsWith('/settings');
@@ -139,18 +137,15 @@ export const SidebarRail: React.FC<SidebarRailProps> = ({ onExpand, onSearch }) 
               <p className="truncate text-[13px] font-medium text-ink">{user?.name || 'Researcher'}</p>
               <p className="truncate text-xs text-ink-muted">{user?.email}</p>
             </div>
-            <button
-              type="button"
+            <Link
+              to="/settings"
               role="menuitem"
-              onClick={() => {
-                applyTheme(isDark ? 'light' : 'dark', true);
-                setMenuOpen(false);
-              }}
+              onClick={() => setMenuOpen(false)}
               className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] text-ink-soft hover:bg-subtle hover:text-ink"
             >
-              {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-              {isDark ? 'Light theme' : 'Dark theme'}
-            </button>
+              <Settings className="h-4 w-4" /> Settings
+            </Link>
+            <div className="my-1 border-t border-line" />
             <button
               type="button"
               role="menuitem"

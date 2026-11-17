@@ -348,17 +348,6 @@
   }
 }
 
-.theme-toggle {
-  background-color: transparent;
-  border-color: transparent;
-  color: var(--app-ink-soft);
-}
-
-.theme-toggle:hover {
-  background-color: var(--app-subtle);
-  color: var(--app-ink);
-}
-
 /* Radial loading field: dots swell inward and release outward in a soft loop. */
 .loading-orb {
   --loading-orb-cell: calc(var(--loading-orb-size) / 6);
