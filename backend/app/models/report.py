@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     Enum,
     ForeignKey,
@@ -15,6 +16,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     Uuid,
+    false,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -73,6 +75,12 @@ class ResearchReport(TimestampMixin, Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
         order_by="ReportSection.position",
+    )
+    followups: Mapped[list[ReportFollowup]] = relationship(
+        back_populates="report",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="ReportFollowup.position",
     )
 
 
@@ -180,3 +188,35 @@ class Citation(TimestampMixin, Base):
 
     section: Mapped[ReportSection] = relationship(back_populates="citations")
     source: Mapped[Source] = relationship(back_populates="citations")
+
+
+class ReportFollowup(TimestampMixin, Base):
+    """A lightweight grounded follow-up Q&A turn attached to a composed research report."""
+
+    __tablename__ = "report_followups"
+    __table_args__ = (
+        CheckConstraint("position >= 0", name="ck_report_followups_position_nonnegative"),
+        UniqueConstraint("report_id", "position", name="uq_report_followups_report_position"),
+    )
+
+    id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid4
+    )
+    report_id: Mapped[UUID] = mapped_column(
+        ForeignKey("research_reports.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    answer: Mapped[str] = mapped_column(Text, nullable=False)
+    citation_numbers: Mapped[list[int]] = mapped_column(
+        JSON, nullable=False, default=list
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    provider: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    model: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    insufficient_evidence: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=false(), nullable=False
+    )
+
+    report: Mapped[ResearchReport] = relationship(back_populates="followups")

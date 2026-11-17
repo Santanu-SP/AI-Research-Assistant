@@ -15,8 +15,13 @@ from app.schemas.research import (
     ResearchResponse,
     ResearchUpdate,
 )
-from app.schemas.rag import ResearchQueryRequest, ResearchQueryResponse, ResearchRetryRequest
-from app.schemas.reports import ComposedReportResponse
+from app.schemas.rag import (
+    ReportFollowupRequest,
+    ResearchQueryRequest,
+    ResearchQueryResponse,
+    ResearchRetryRequest,
+)
+from app.schemas.reports import ComposedReportResponse, ReportFollowupCreateResponse
 from app.schemas.retrieval import RetrievalRequest, RetrievalResponse
 from app.services.documents.storage import DocumentStorageBackend, get_document_storage
 from app.services.research import runs as research_service
@@ -201,6 +206,29 @@ def get_research_report(
     user: CurrentUser,
 ) -> ComposedReportResponse:
     return reports_service.get_composed_report(session, research_id, user.id)
+
+
+@router.post(
+    "/{research_id}/followups",
+    response_model=ReportFollowupCreateResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def ask_research_report_followup(
+    research_id: UUID,
+    payload: ReportFollowupRequest,
+    session: DatabaseSession,
+    user: CurrentUser,
+    request: Request,
+) -> ReportFollowupCreateResponse:
+    """Answer a lightweight grounded follow-up using compact report memory (0.25x credit)."""
+    _enforce_query_rate_limit(request, user.id)
+    return rag_service.ask_report_followup(
+        session,
+        user_id=user.id,
+        research_id=research_id,
+        payload=payload,
+        settings=request.app.state.settings,
+    )
 
 
 @router.get("/{research_id}", response_model=ResearchResponse)

@@ -149,6 +149,27 @@ class ResearchReportResponse(ApiSchema):
     updated_at: datetime
 
 
+class ReportFollowupResponse(ApiSchema):
+    id: UUID
+    report_id: UUID
+    question: str
+    answer: str
+    citation_ids: list[int] = Field(default_factory=list)
+    position: int = Field(ge=0)
+    provider: str | None = None
+    model: str | None = None
+    insufficient_evidence: bool = False
+    created_at: datetime
+    updated_at: datetime
+
+
+class ReportFollowupCreateResponse(ApiSchema):
+    followup: ReportFollowupResponse
+    sources: list[SourceResponse] = Field(default_factory=list)
+    credit_cost: float = Field(default=0.25, ge=0.0)
+
+
 class ComposedReportResponse(ApiSchema):
     report: ResearchReportResponse
     sources: list[SourceResponse]
+    followups: list[ReportFollowupResponse] = Field(default_factory=list)
