@@ -21,7 +21,7 @@ STEP_IDS = [
 STEP_TITLES = [
     "Planning research",
     "Searching sources",
-    "Finding relevant uploaded documents",
+    "Finding relevant files",
     "Reviewing evidence",
     "Building synthesis",
 ]

@@ -31,7 +31,7 @@ PROGRESS_STAGES: tuple[tuple[ResearchProgressStage, str], ...] = (
     (ResearchProgressStage.SEARCHING_SOURCES, "Searching sources"),
     (
         ResearchProgressStage.FINDING_DOCUMENTS,
-        "Finding relevant uploaded documents",
+        "Finding relevant files",
     ),
     (ResearchProgressStage.REVIEWING_EVIDENCE, "Reviewing evidence"),
     (ResearchProgressStage.BUILDING_SYNTHESIS, "Building synthesis"),
