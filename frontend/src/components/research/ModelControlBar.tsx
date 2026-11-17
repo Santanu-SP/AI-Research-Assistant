@@ -32,6 +32,8 @@ export interface ModelControlBarProps {
   onLocalFallbackChange: (enabled: boolean) => void;
   disabled?: boolean;
   menuPlacement?: 'up' | 'down';
+  /** Open the model list right away, e.g. from a "Switch model" button. */
+  openModelsOnMount?: boolean;
 }
 
 const DEPTH_OPTIONS: ReadonlyArray<{
@@ -235,6 +237,7 @@ export const ModelControlBar: React.FC<ModelControlBarProps> = ({
   onLocalFallbackChange,
   disabled = false,
   menuPlacement = 'up',
+  openModelsOnMount = false,
 }) => {
   const cache = useSessionDataCache();
   const [modelsOpen, setModelsOpen] = useState(false);
@@ -362,6 +365,20 @@ export const ModelControlBar: React.FC<ModelControlBarProps> = ({
       window.removeEventListener('resize', handleResize);
     };
   }, [modelsOpen, keyOpen, menuPlacement]);
+
+  const openModels = useCallback(() => {
+    setModelsLayout(computePopoverLayout(modelsButtonRef.current, menuPlacement, 540, 660));
+    setKeyOpen(false);
+    void refreshModelsStatus();
+    setModelsOpen(true);
+  }, [menuPlacement, refreshModelsStatus]);
+
+  const openedOnMount = useRef(false);
+  useEffect(() => {
+    if (!openModelsOnMount || openedOnMount.current) return;
+    openedOnMount.current = true;
+    openModels();
+  }, [openModelsOnMount, openModels]);
 
   const providers = status?.providers?.length ? status.providers : FALLBACK_PROVIDER_CATALOG;
   const localStatus: LocalModelStatus = status?.local ?? {
@@ -546,15 +563,8 @@ export const ModelControlBar: React.FC<ModelControlBarProps> = ({
           type="button"
           disabled={disabled}
           onClick={() => {
-            const next = !modelsOpen;
-            if (next) {
-              setModelsLayout(
-                computePopoverLayout(modelsButtonRef.current, menuPlacement, 540, 660)
-              );
-              setKeyOpen(false);
-              void refreshModelsStatus();
-            }
-            setModelsOpen(next);
+            if (modelsOpen) setModelsOpen(false);
+            else openModels();
           }}
           aria-expanded={modelsOpen}
           aria-haspopup="menu"
