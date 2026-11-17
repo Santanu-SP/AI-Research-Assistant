@@ -80,4 +80,9 @@ describe('RunRecovery', () => {
       '/projects/project-1?tab=documents',
     );
   });
+  it('explains when no trusted sources could be found online', () => {
+    renderRecovery(failed({ failureReason: 'no_discoverable_sources', projectId: null }));
+    expect(screen.getByText(/No trusted sources online could be found or read/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument();
+  });
 });

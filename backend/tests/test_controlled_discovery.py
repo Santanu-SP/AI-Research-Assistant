@@ -18,6 +18,7 @@ from app.models.report import Source
 from app.models.research import Research
 from app.services.discovery import providers as discovery_providers
 from app.services.discovery import service as discovery_service
+from app.schemas.discovery import DiscoverySearchResponse
 from app.services.documents.storage import LocalDocumentStorage
 from app.services.ingestion import pipeline as ingestion_service
 from app.services.rag import query as rag_service
@@ -486,3 +487,103 @@ def test_auto_discover_opt_in_end_to_end_and_default_guard(
     assert sources[0].year == 2017
     assert sources[0].doi == "10.5555/3295222.3295349"
     assert sources[0].url is not None
+
+
+def test_auto_discover_job_returns_at_once_and_discovers_in_the_background(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch,
+) -> None:
+    settings = client.app.state.settings
+    settings.embedding_enabled = True
+    settings.allow_sqlite_retrieval_fallback = True
+    embeddings = DeterministicEmbeddingService()
+    monkeypatch.setattr("app.services.ingestion.pipeline.embedding_service_for", lambda _s: embeddings)
+    monkeypatch.setattr("app.services.rag.retrieval.embedding_service_for", lambda _s: embeddings)
+    monkeypatch.setattr(rag_service, "reranker_service_for", lambda _s: KeywordAwareReranker())
+    generator = _CitedGenerator()
+    monkeypatch.setattr(rag_service, "generation_service_for", lambda _s: generator)
+
+    pdf_bytes = make_pdf(
+        "1 INTRODUCTION\nSelf-attention replaces recurrence in Transformer models and improves parallelization.",
+        title="Attention Is All You Need",
+    )
+    requested_urls: list[str] = []
+    transport = _build_mock_transport(pdf_bytes=pdf_bytes, requested_urls=requested_urls)
+    real_client = httpx.Client
+    monkeypatch.setattr(
+        httpx,
+        "Client",
+        lambda *args, **kwargs: real_client(transport=transport),
+    )
+
+    queued = client.post(
+        "/api/v1/research/jobs",
+        json={
+            "query": "How does self-attention work in Transformer models?",
+            "autoDiscover": True,
+            "discoveryScope": "scholarly",
+        },
+    )
+    assert queued.status_code == 202, queued.text
+    research_id = queued.json()["id"]
+    # Nothing is searched or downloaded while the request is open.
+    assert requested_urls == []
+    assert generator.calls == 0
+    record = db_session.get(Research, UUID(research_id))
+    assert record is not None
+    assert record.discovery_scope == "scholarly"
+    assert record.documents_scoped is False
+
+    progress = client.get(f"/api/v1/research/{research_id}/status").json()
+    assert progress["status"] == "researching"
+    assert progress["autoDiscover"] is True
+    titles = [step["title"] for step in progress["steps"]]
+    assert "Finding sources" in titles
+
+    assert client.app.state.job_worker.run_until_empty() == 1
+    assert requested_urls
+    assert generator.calls == 1
+    progress = client.get(f"/api/v1/research/{research_id}/status").json()
+    assert progress["status"] == "completed"
+
+    db_session.expire_all()
+    record = db_session.get(Research, UUID(research_id))
+    assert record.documents_scoped is True
+    assert len(record.document_ids) >= 1
+    report = client.get(f"/api/v1/research/{research_id}/report").json()
+    assert report["report"]["sourceCount"] >= 1
+
+
+def test_auto_discover_job_that_finds_nothing_fails_on_the_progress_page(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    def no_results(_session, *, query, scope, **_kwargs):
+        return DiscoverySearchResponse(query=query, scope=scope, items=[])
+
+    monkeypatch.setattr(discovery_service, "search_and_annotate", no_results)
+
+    queued = client.post(
+        "/api/v1/research/jobs",
+        json={"query": "Something nobody has written about?", "autoDiscover": True},
+    )
+    assert queued.status_code == 202, queued.text
+    research_id = queued.json()["id"]
+
+    client.app.state.job_worker.run_until_empty()
+    progress = client.get(f"/api/v1/research/{research_id}/status").json()
+    assert progress["status"] == "failed"
+    assert progress["failureReason"] == "no_discoverable_sources"
+    failed_steps = [step for step in progress["steps"] if step["status"] == "failed"]
+    assert [step["id"] for step in failed_steps] == ["searching_sources"]
+
+
+def test_auto_discover_job_is_refused_up_front_when_discovery_is_off(client: TestClient) -> None:
+    client.app.state.settings.discovery_enabled = False
+    response = client.post(
+        "/api/v1/research/jobs",
+        json={"query": "How does self-attention work?", "autoDiscover": True},
+    )
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "discovery_disabled"

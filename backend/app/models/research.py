@@ -207,6 +207,10 @@ class Research(TimestampMixin, Base):
         server_default=false(),
         nullable=False,
     )
+    # Set when the run should find its own sources online before answering
+    # ("all", "scholarly" or "web"). The background job searches, imports and
+    # attaches them, so starting the run returns right away.
+    discovery_scope: Mapped[str | None] = mapped_column(String(16), nullable=True)
     attached_documents: Mapped[list["Document"]] = relationship(
         secondary=research_documents,
         lazy="selectin",

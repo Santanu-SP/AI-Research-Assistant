@@ -79,6 +79,7 @@ def test_draft_progress_response_is_factual_and_frontend_friendly(
         "failureType",
         "documentsReady",
         "documentsPreparing",
+        "autoDiscover",
     }
     assert body["projectId"] is None
     assert body["id"] == str(research_id)
@@ -98,6 +99,7 @@ def test_draft_progress_response_is_factual_and_frontend_friendly(
     assert body["completedAt"] is None
     assert body["failedAt"] is None
     assert body["failureReason"] is None
+    assert body["autoDiscover"] is False
     assert_utc_timestamp(body["updatedAt"])
 
 

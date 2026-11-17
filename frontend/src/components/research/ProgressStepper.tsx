@@ -14,7 +14,15 @@ const STAGE_DETAIL: Record<ResearchProgressStage, string> = {
   building_synthesis: 'Writing the answer and linking each claim to its passage.',
 };
 
+// Runs that find their own sources online describe those two steps differently.
+const DISCOVERY_STAGE_DETAIL: Partial<Record<ResearchProgressStage, string>> = {
+  searching_sources: 'Searching OpenAlex, Crossref, arXiv and Wikipedia for trusted sources.',
+  finding_documents: 'Downloading and reading the sources it found. This can take a few minutes.',
+};
+
 export const ProgressStepper: React.FC<ProgressStepperProps> = ({ progress }) => {
+  const stageDetail = (stage: ResearchProgressStage) =>
+    (progress.autoDiscover ? DISCOVERY_STAGE_DETAIL[stage] : undefined) ?? STAGE_DETAIL[stage] ?? '';
   const done = progress.steps.filter((step) => step.status === 'completed').length;
   const percent = progress.totalSteps > 0 ? Math.round((done / progress.totalSteps) * 100) : 0;
 
@@ -89,7 +97,7 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({ progress }) =>
                     )}
                   </p>
                   <p className={`mt-1 text-[13px] leading-snug ${isActive ? 'text-ink-soft' : 'text-ink-muted'}`}>
-                    {STAGE_DETAIL[step.id] ?? ''}
+                    {stageDetail(step.id)}
                   </p>
                 </div>
               </li>

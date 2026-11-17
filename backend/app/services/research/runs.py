@@ -36,6 +36,11 @@ PROGRESS_STAGES: tuple[tuple[ResearchProgressStage, str], ...] = (
     (ResearchProgressStage.REVIEWING_EVIDENCE, "Reviewing evidence"),
     (ResearchProgressStage.BUILDING_SYNTHESIS, "Building synthesis"),
 )
+# Runs that find their own sources online use these titles instead.
+DISCOVERY_STAGE_TITLES: dict[ResearchProgressStage, str] = {
+    ResearchProgressStage.SEARCHING_SOURCES: "Finding sources",
+    ResearchProgressStage.FINDING_DOCUMENTS: "Reading the sources found",
+}
 PROJECT_STATUS_STAGE_MAP: dict[ProjectStatus, ResearchProgressStage] = {
     ProjectStatus.PAPERS_DISCOVERED: ResearchProgressStage.SEARCHING_SOURCES,
     ProjectStatus.PAPERS_SELECTED: ResearchProgressStage.FINDING_DOCUMENTS,
@@ -268,11 +273,12 @@ def _build_progress_steps(research: Research) -> list[ResearchProgressStep]:
     active = research.status == ResearchStatus.RESEARCHING
 
     steps = []
+    titles = DISCOVERY_STAGE_TITLES if research.discovery_scope else {}
     for index, (stage, title) in enumerate(PROGRESS_STAGES):
         steps.append(
             ResearchProgressStep(
                 id=stage,
-                title=title,
+                title=titles.get(stage, title),
                 status=_step_status(
                     index,
                     current_index,
@@ -321,6 +327,7 @@ def get_research_progress(
         failure_type=_safe_failure_type(research.failure_type) if failure_reason else None,
         documents_ready=documents_ready,
         documents_preparing=documents_preparing,
+        auto_discover=bool(research.discovery_scope),
     )
 
 
@@ -354,6 +361,8 @@ _FAILURE_REASONS = {
     "generation_timeout": "model_unavailable",
     "generation_empty_response": "model_unavailable",
     "daily_model_quota_exceeded": "quota_reached",
+    "no_discoverable_sources": "no_discoverable_sources",
+    "discovery_disabled": "discovery_disabled",
 }
 
 _FAILURE_TYPES = {"quota", "auth", "timeout", "unavailable", "other"}
