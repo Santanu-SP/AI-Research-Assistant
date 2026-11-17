@@ -7,9 +7,19 @@ import { SafeMarkdown } from '../components/common/SafeMarkdown';
 import { SourcesPanel } from '../components/sources/SourcesPanel';
 import { CenteredLoadingState } from '../components/common/LoadingState';
 import { ErrorState } from '../components/common/ErrorState';
+import { PrimaryButton } from '../components/common/PrimaryButton';
+import { ModelControlBar } from '../components/research/ModelControlBar';
 import { reportService } from '../services/report.service';
-import { ResearchReportResponse, SourceResponse } from '../types/report';
-import { ApiError } from '../services/api';
+import {
+  ReportFollowupResponse,
+  ResearchReportResponse,
+  SourceResponse,
+} from '../types/report';
+import { ResearchDepth } from '../types/research';
+import { getDefaultModel } from '../lib/defaultModel';
+import { shortcutLabel } from '../lib/shortcuts';
+import { prettyModelName, redactSecrets } from '../lib/modelErrors';
+import { ApiError, apiErrorMessage } from '../services/api';
 import {
   BookOpen,
   Check,
@@ -17,6 +27,9 @@ import {
   Clock,
   Download,
   Link2,
+  MessageSquarePlus,
+  Send,
+  Sparkles,
 } from 'lucide-react';
 
 const INLINE_CITATION = /\[S\d+\]/;
@@ -24,6 +37,7 @@ const INLINE_CITATION = /\[S\d+\]/;
 const buildReportMarkdown = (
   report: ResearchReportResponse,
   sources: SourceResponse[],
+  followups: ReportFollowupResponse[] = [],
 ): string => {
   let markdown = `# ${report.title}\n\n`;
   markdown += `${report.dossierRef} | ${report.readingTimeMinutes} min read\n\n`;
@@ -38,6 +52,12 @@ const buildReportMarkdown = (
       markdown += `> "${section.quote}"\n\n`;
     }
   });
+  if (followups.length > 0) {
+    markdown += `## Follow-up Questions\n\n`;
+    followups.forEach((turn) => {
+      markdown += `### ${turn.question}\n${turn.answer}\n\n`;
+    });
+  }
   markdown += `## References\n`;
   sources.forEach((source) => {
     const metadata = [
@@ -57,6 +77,14 @@ export const ResearchReportPage: React.FC = () => {
   const navigate = useNavigate();
   const [report, setReport] = useState<ResearchReportResponse | null>(null);
   const [sources, setSources] = useState<SourceResponse[]>([]);
+  const [followups, setFollowups] = useState<ReportFollowupResponse[]>([]);
+  const [followupQuestion, setFollowupQuestion] = useState('');
+  const [followupSubmitting, setFollowupSubmitting] = useState(false);
+  const [followupError, setFollowupError] = useState<string | null>(null);
+  const [researchDepth, setResearchDepth] = useState<ResearchDepth>('quick');
+  const [preferredProvider, setPreferredProvider] = useState<string | null>(() => getDefaultModel().provider);
+  const [modelOverride, setModelOverride] = useState<string | null>(() => getDefaultModel().model);
+  const [localFallbackEnabled, setLocalFallbackEnabled] = useState<boolean | undefined>(undefined);
   const [selectedSourceNumber, setSelectedSourceNumber] = useState<number>(1);
   const [isMobileSourcesOpen, setIsMobileSourcesOpen] = useState(false);
   const [copiedShare, setCopiedShare] = useState(false);
@@ -70,6 +98,7 @@ export const ResearchReportPage: React.FC = () => {
       .then((data) => {
         setReport(data.report);
         setSources(data.sources);
+        setFollowups(data.followups ?? []);
         if (data.sources.length > 0) {
           setSelectedSourceNumber(data.sources[0].number);
         }
@@ -98,7 +127,7 @@ export const ResearchReportPage: React.FC = () => {
 
   const handleExport = () => {
     if (!report) return;
-    const markdown = buildReportMarkdown(report, sources);
+    const markdown = buildReportMarkdown(report, sources, followups);
     const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -108,6 +137,33 @@ export const ResearchReportPage: React.FC = () => {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+  };
+
+  const handleFollowupSubmit = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    const cleaned = followupQuestion.trim();
+    if (!id || !cleaned || followupSubmitting) return;
+    setFollowupSubmitting(true);
+    setFollowupError(null);
+    try {
+      const response = await reportService.askFollowup(id, {
+        question: cleaned,
+        ...(preferredProvider ? { preferredProvider } : {}),
+        ...(modelOverride ? { modelOverride } : {}),
+        ...(localFallbackEnabled !== undefined ? { localFallbackEnabled } : {}),
+      });
+      setFollowups((prev) => [...prev, response.followup]);
+      setSources(response.sources);
+      setFollowupQuestion('');
+    } catch (err) {
+      setFollowupError(
+        redactSecrets(
+          apiErrorMessage(err, 'Could not answer your follow-up right now. Please try again.'),
+        ),
+      );
+    } finally {
+      setFollowupSubmitting(false);
+    }
   };
 
   if (error) {
@@ -268,6 +324,123 @@ export const ResearchReportPage: React.FC = () => {
                 </section>
               ))}
             </article>
+
+            {/* Grounded follow-up thread + lightweight composer */}
+            <section
+              aria-labelledby="report-followups-heading"
+              className="mt-14 border-t border-line pt-10"
+            >
+              <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <MessageSquarePlus className="h-4 w-4 text-accent" />
+                  <h2
+                    id="report-followups-heading"
+                    className="text-base font-semibold tracking-[-0.01em] text-ink"
+                  >
+                    Follow-up questions
+                  </h2>
+                </div>
+                <span className="inline-flex items-center gap-1 rounded-full bg-subtle px-2.5 py-0.5 text-[11px] font-medium text-ink-muted">
+                  <Sparkles className="h-3 w-3 text-accent" />
+                  Uses report memory · 0.25× credits
+                </span>
+              </div>
+
+              {followups.length > 0 && (
+                <div className="mb-6 space-y-5">
+                  {followups.map((turn) => (
+                    <div
+                      key={turn.id}
+                      className="rounded-xl border border-line bg-subtle/30 p-4 sm:p-5"
+                    >
+                      <p className="text-[14px] font-semibold text-ink">
+                        {turn.question}
+                      </p>
+                      <div className="mt-2.5 font-serif text-[16px] leading-[1.75] text-ink">
+                        <SafeMarkdown
+                          content={turn.answer}
+                          className="text-[16px] leading-[1.75]"
+                          renderCitation={renderCitation}
+                        />
+                      </div>
+                      <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-ink-muted">
+                        {turn.provider ? (
+                          <span>{prettyModelName(turn.provider, turn.model)}</span>
+                        ) : null}
+                        {turn.insufficientEvidence ? (
+                          <span className="rounded bg-subtle px-1.5 py-0.5 text-ink-soft">
+                            0 credits charged
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <form
+                onSubmit={(e) => void handleFollowupSubmit(e)}
+                className="rounded-xl border border-line bg-subtle/25 p-4 shadow-xs"
+              >
+                <label
+                  htmlFor="followup-question-input"
+                  className="mb-2 block text-xs font-medium text-ink-muted"
+                >
+                  Ask a follow-up grounded in this report and its attached sources
+                </label>
+                <textarea
+                  id="followup-question-input"
+                  aria-label="Follow-up question"
+                  rows={2}
+                  maxLength={2000}
+                  disabled={followupSubmitting}
+                  value={followupQuestion}
+                  onChange={(e) => setFollowupQuestion(e.target.value)}
+                  onKeyDown={(e) => {
+                    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                      e.preventDefault();
+                      void handleFollowupSubmit();
+                    }
+                  }}
+                  placeholder="Ask a follow-up (e.g. explain this point simpler, or compare doses mentioned)…"
+                  className="w-full resize-none rounded-lg border border-line bg-panel px-3 py-2.5 text-[14px] text-ink placeholder:text-ink-muted focus:border-line-strong focus:outline-none disabled:opacity-60"
+                />
+
+                {followupError ? (
+                  <p role="alert" className="mt-2 text-xs text-danger">
+                    {followupError}
+                  </p>
+                ) : null}
+
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                  <ModelControlBar
+                    depth={researchDepth}
+                    onDepthChange={setResearchDepth}
+                    preferredProvider={preferredProvider}
+                    onPreferredProviderChange={setPreferredProvider}
+                    modelOverride={modelOverride}
+                    onModelOverrideChange={setModelOverride}
+                    localFallbackEnabled={localFallbackEnabled}
+                    onLocalFallbackChange={setLocalFallbackEnabled}
+                    disabled={followupSubmitting}
+                    menuPlacement="up"
+                  />
+                  <div className="flex items-center gap-2">
+                    <span className="hidden text-[11px] text-ink-muted sm:inline">
+                      {shortcutLabel('Enter')}
+                    </span>
+                    <PrimaryButton
+                      type="submit"
+                      size="sm"
+                      disabled={followupSubmitting || !followupQuestion.trim()}
+                    >
+                      <Send className="h-3.5 w-3.5" />
+                      {followupSubmitting ? 'Answering…' : 'Ask follow-up'}
+                    </PrimaryButton>
+                  </div>
+                </div>
+              </form>
+            </section>
           </div>
         </main>
 

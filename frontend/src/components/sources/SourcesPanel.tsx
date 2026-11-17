@@ -41,7 +41,7 @@ export const SourcesPanel: React.FC<SourcesPanelProps> = ({
   useEffect(() => {
     if (selectedSourceNumber) {
       const el = document.getElementById(`source-${selectedSourceNumber}`);
-      if (el) {
+      if (el && typeof el.scrollIntoView === 'function') {
         el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       }
     }
