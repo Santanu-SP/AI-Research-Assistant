@@ -74,6 +74,9 @@ def test_draft_progress_response_is_factual_and_frontend_friendly(
         "completedAt",
         "failedAt",
         "failureReason",
+        "failureProvider",
+        "failureModel",
+        "failureType",
         "documentsReady",
         "documentsPreparing",
     }

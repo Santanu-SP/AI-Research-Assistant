@@ -148,6 +148,46 @@ class ProviderOutageError(ProviderError):
     trips_circuit = True
 
 
+# Short, safe failure types the UI can explain in plain words.
+MODEL_ERROR_QUOTA = "quota"
+MODEL_ERROR_AUTH = "auth"
+MODEL_ERROR_TIMEOUT = "timeout"
+MODEL_ERROR_UNAVAILABLE = "unavailable"
+MODEL_ERROR_OTHER = "other"
+
+
+def model_error_type(exc: Exception) -> str:
+    """Map a provider error to one of the short failure types above."""
+    if isinstance(exc, RateLimitError):
+        return MODEL_ERROR_QUOTA
+    if isinstance(exc, AuthenticationError):
+        return MODEL_ERROR_AUTH
+    if isinstance(exc, ProviderTimeoutError):
+        return MODEL_ERROR_TIMEOUT
+    if isinstance(exc, (ModelUnavailableError, ProviderOutageError)):
+        return MODEL_ERROR_UNAVAILABLE
+    return MODEL_ERROR_OTHER
+
+
+_SECRET_PATTERNS = (
+    re.compile(r"AIza[0-9A-Za-z_\-]{20,}"),
+    re.compile(r"\b(?:sk|pk|gsk|csk|xai)-[A-Za-z0-9_\-]{8,}"),
+    re.compile(r"(?i)(bearer\s+)[A-Za-z0-9._\-]{8,}"),
+    re.compile(r"(?i)((?:api[_-]?key|key|token|secret)\s*[=:]\s*)[^\s&,;\"']{6,}"),
+)
+
+
+def redact_secrets(text: str) -> str:
+    """Hide anything that looks like an API key before a message is stored or shown."""
+    cleaned = text
+    for pattern in _SECRET_PATTERNS:
+        cleaned = pattern.sub(
+            lambda match: (match.group(1) if match.groups() else "") + "[hidden]",
+            cleaned,
+        )
+    return cleaned
+
+
 def classify_http_error(provider: str, response: httpx.Response) -> ProviderError:
     status = response.status_code
     retry_after: float | None = None
