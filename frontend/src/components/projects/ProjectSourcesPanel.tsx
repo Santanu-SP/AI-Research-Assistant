@@ -59,11 +59,11 @@ export const ProjectSourcesPanel: React.FC<ProjectSourcesPanelProps> = ({ projec
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted" />
           <input
             type="search"
-            aria-label="Search documents"
+            aria-label="Search files"
             id="sources-search"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search documents"
+            placeholder="Search files"
             className="field h-9 pl-9 pr-8 text-[13px]"
           />
           {searchQuery && (
@@ -82,9 +82,9 @@ export const ProjectSourcesPanel: React.FC<ProjectSourcesPanelProps> = ({ projec
           <p className="text-xs tabular-nums text-ink-muted sm:ml-1" aria-live="polite">
             {searching
               ? `${total} match${total === 1 ? '' : 'es'}`
-              : [`${total} document${total === 1 ? '' : 's'}`, preparingCount > 0 && `${preparingCount} preparing`]
-                  .filter(Boolean)
-                  .join(' · ')}
+              : [`${total} file${total === 1 ? '' : 's'}`, preparingCount > 0 && `${preparingCount} preparing`]
+                .filter(Boolean)
+                .join(' · ')}
           </p>
         )}
 
@@ -109,11 +109,11 @@ export const ProjectSourcesPanel: React.FC<ProjectSourcesPanelProps> = ({ projec
       {isLoading ? (
         <LoadingState rows={3} />
       ) : error ? (
-        <ErrorState title="Couldn’t load documents" message={error} onRetry={reload} />
+        <ErrorState title="Couldn’t load files" message={error} onRetry={reload} />
       ) : documents.length === 0 && searching ? (
         <EmptyState
           icon={Search}
-          title="No matching documents"
+          title="No matching files"
           description="Try a different search."
           primaryActionLabel="Clear search"
           onPrimaryAction={() => setSearchQuery('')}
@@ -121,13 +121,13 @@ export const ProjectSourcesPanel: React.FC<ProjectSourcesPanelProps> = ({ projec
       ) : documents.length === 0 ? (
         <EmptyState
           icon={FolderUp}
-          title="No documents yet"
+          title="No files yet"
           description={
             isArchived
-              ? 'This project is archived, so documents can’t be added.'
-              : 'Upload files or discover trusted papers and articles from OpenAlex, Crossref, arXiv, and Wikipedia.'
+              ? 'This project is archived, so files can’t be added.'
+              : 'Upload files or discover trusted papers and articles from OpenAlex, Crossref, arXiv, and Wikipedia. Questions in this project are answered only from these files.'
           }
-          primaryActionLabel={isArchived ? undefined : 'Upload document'}
+          primaryActionLabel={isArchived ? undefined : 'Upload a file'}
           onPrimaryAction={isArchived ? undefined : () => setIsUploadOpen(true)}
           secondaryActionLabel={isArchived ? undefined : 'Discover trusted sources'}
           onSecondaryAction={isArchived ? undefined : () => setIsDiscoverOpen(true)}
@@ -135,7 +135,7 @@ export const ProjectSourcesPanel: React.FC<ProjectSourcesPanelProps> = ({ projec
       ) : (
         <div
           role="list"
-          aria-label="Project documents"
+          aria-label="Project files"
           className="divide-y divide-line overflow-hidden rounded-lg border border-line bg-panel shadow-xs"
         >
           {documents.map((doc) => (
@@ -165,7 +165,7 @@ export const ProjectSourcesPanel: React.FC<ProjectSourcesPanelProps> = ({ projec
 
       {readyCount === 0 && preparingCount > 0 && !searching && (
         <p className="sr-only" role="status">
-          Your documents will be ready in a moment.
+          Your files will be ready in a moment.
         </p>
       )}
 

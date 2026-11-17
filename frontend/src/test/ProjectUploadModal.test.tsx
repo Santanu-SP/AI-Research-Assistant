@@ -52,16 +52,16 @@ describe('ProjectUploadModal', () => {
 
   it('renders with accessible title and dropzone', () => {
     renderModal();
-    expect(screen.getByText('Upload documents')).toBeInTheDocument();
+    expect(screen.getByText('Upload files')).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: /Choose (research documents|PDF or DOCX)/i })
+      screen.getByRole('button', { name: /Choose files to upload/i })
     ).toBeInTheDocument();
   });
 
   it('shows upload button when files are queued', async () => {
     renderModal();
     const dropzone = screen.getByRole('button', {
-      name: /Choose (research documents|PDF or DOCX)/i,
+      name: /Choose files to upload/i,
     });
 
     // Simulate file input change via the hidden input
@@ -147,7 +147,7 @@ describe('ProjectUploadModal', () => {
 
   it('does not render when isOpen=false', () => {
     renderModal({ isOpen: false });
-    expect(screen.queryByText('Upload documents')).not.toBeInTheDocument();
+    expect(screen.queryByText('Upload files')).not.toBeInTheDocument();
   });
 
   it('calls onClose when Cancel is clicked', () => {

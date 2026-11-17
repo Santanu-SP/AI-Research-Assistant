@@ -158,8 +158,8 @@ describe('Controlled Discovery UI', () => {
     fireEvent.change(questionInput, { target: { value: 'How does self-attention scale?' } });
 
     const startBtn = screen.getByRole('button', { name: /Start research/i });
-    expect(screen.getByText('Upload or pick a document first')).toBeInTheDocument();
-    expect(startBtn).toBeDisabled();
+    expect(screen.getByText('Add a file first: upload one or pick from your Library')).toBeInTheDocument();
+    expect(startBtn).toHaveAttribute('aria-disabled', 'true');
 
     const toggle = screen.getByRole('switch', { name: 'Enable trusted online discovery' });
     expect(toggle).toHaveAttribute('aria-checked', 'false');
@@ -168,6 +168,7 @@ describe('Controlled Discovery UI', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Scholarly' }));
     expect(startBtn).toBeEnabled();
+    expect(startBtn).not.toHaveAttribute('aria-disabled');
     fireEvent.click(startBtn);
 
     await waitFor(() => expect(startSpy).toHaveBeenCalledTimes(1));
@@ -221,7 +222,7 @@ describe('Controlled Discovery UI', () => {
 
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
 
-    const panel = screen.getByRole('region', { name: 'Documents for this research' });
+    const panel = screen.getByRole('region', { name: 'Files for this research' });
     expect(within(panel).getByText('Attention Is All You Need')).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('Research question'), {

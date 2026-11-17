@@ -231,6 +231,12 @@ def update_research(
     return research_service.attach_source_counts(session, [record])[0]
 
 
+@router.post("/{research_id}/restore", response_model=ResearchResponse)
+def restore_research(research_id: UUID, session: DatabaseSession, user: CurrentUser) -> ResearchResponse:
+    record = research_service.restore_research(session, research_id, user.id)
+    return research_service.attach_source_counts(session, [record])[0]
+
+
 @router.delete("/{research_id}", status_code=status.HTTP_204_NO_CONTENT)
 def archive_research(research_id: UUID, session: DatabaseSession, user: CurrentUser) -> Response:
     research_service.archive_research(session, research_id, user.id)

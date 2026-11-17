@@ -12,16 +12,16 @@ export function useDocumentActions(onChange: () => void) {
 
   const remove = useCallback(
     async (id: string) => {
-      if (!window.confirm('Remove this document? This can’t be undone.')) return;
+      if (!window.confirm('Delete this file? This can’t be undone.')) return;
       setDeletingId(id);
       try {
         await documentsService.deleteDocument(id);
         onChange();
-        addToast({ type: 'success', title: 'Document removed' });
+        addToast({ type: 'success', title: 'File deleted' });
       } catch {
         addToast({
           type: 'error',
-          title: 'Couldn’t remove the document',
+          title: 'Couldn’t delete the file',
           description: 'Please try again.',
         });
       } finally {

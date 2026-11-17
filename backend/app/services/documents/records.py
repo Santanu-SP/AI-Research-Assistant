@@ -14,6 +14,7 @@ from app.core.errors import AppError
 from app.domain.documents import ContentLevel, DocumentStatus, DocumentType, SourceType
 from app.models.document import Document
 from app.models.project import ResearchProject
+from app.models.research import Research, research_documents
 from app.services.rag.embeddings import EmbeddingService
 from app.services.ingestion.pipeline import DocumentIngestionAdapter, ingest_document
 from app.services.documents.storage import LocalDocumentStorage, StoredUpload, ValidatedUpload
@@ -340,6 +341,26 @@ def _remove_document(session: Session, document: Document, storage: LocalDocumen
     _commit(session, "The previous failed copy could not be replaced")
 
 
+# Library filter groups shown to people, mapped to stored file types.
+DOCUMENT_KINDS: dict[str, tuple[DocumentType, ...]] = {
+    "documents": (
+        DocumentType.PDF,
+        DocumentType.DOCX,
+        DocumentType.TXT,
+        DocumentType.PPTX,
+        DocumentType.XLSX,
+        DocumentType.HTML,
+    ),
+    "images": (DocumentType.IMAGE,),
+    "audio": (DocumentType.AUDIO,),
+    "video": (DocumentType.VIDEO,),
+    "links": (DocumentType.WEB, DocumentType.YOUTUBE),
+}
+
+# How many research titles to return per file in list responses.
+USED_IN_LIMIT = 3
+
+
 def list_documents(
     session: Session,
     *,
@@ -350,6 +371,7 @@ def list_documents(
     offset: int,
     user_id: UUID,
     project_id: UUID | None = None,
+    kind: str | None = None,
 ) -> tuple[list[Document], int]:
     filters = [Document.user_id == user_id]
     if project_id is not None:
@@ -370,11 +392,18 @@ def list_documents(
         )
     normalized_search = search.strip() if search else None
     if normalized_search:
-        filters.append(Document.name.icontains(normalized_search, autoescape=True))
+        filters.append(
+            or_(
+                Document.name.icontains(normalized_search, autoescape=True),
+                Document.title.icontains(normalized_search, autoescape=True),
+            )
+        )
     if status is not None:
         filters.append(Document.status == status)
     if file_type is not None:
         filters.append(Document.file_type == file_type)
+    if kind is not None:
+        filters.append(Document.file_type.in_(DOCUMENT_KINDS[kind]))
 
     total = session.scalar(
         select(func.count()).select_from(Document).where(*filters)
@@ -387,7 +416,51 @@ def list_documents(
         .offset(offset)
     )
     documents = list(session.scalars(statement).all())
+    attach_document_usage(session, documents, user_id)
     return documents, total or 0
+
+
+def attach_document_usage(
+    session: Session, documents: list[Document], user_id: UUID
+) -> None:
+    """Set ``project_name`` and ``used_in`` on each document of a page.
+
+    Two queries for the whole page: project names, then the research runs
+    that were limited to these files.
+    """
+    if not documents:
+        return
+    project_ids = {doc.project_id for doc in documents if doc.project_id}
+    names: dict[UUID, str] = {}
+    if project_ids:
+        names = dict(
+            session.execute(
+                select(ResearchProject.id, ResearchProject.name).where(
+                    ResearchProject.id.in_(project_ids),
+                    ResearchProject.user_id == user_id,
+                )
+            ).all()
+        )
+    usage: dict[UUID, list[dict[str, object]]] = {doc.id: [] for doc in documents}
+    rows = session.execute(
+        select(research_documents.c.document_id, Research.id, Research.title)
+        .join(Research, Research.id == research_documents.c.research_id)
+        .where(
+            research_documents.c.document_id.in_(list(usage)),
+            Research.user_id == user_id,
+            Research.archived_at.is_(None),
+        )
+        .order_by(Research.updated_at.desc())
+    ).all()
+    totals: dict[UUID, int] = {}
+    for document_id, research_id, title in rows:
+        totals[document_id] = totals.get(document_id, 0) + 1
+        if len(usage[document_id]) < USED_IN_LIMIT:
+            usage[document_id].append({"id": research_id, "title": title})
+    for doc in documents:
+        doc.project_name = names.get(doc.project_id) if doc.project_id else None
+        doc.used_in = usage[doc.id]
+        doc.used_in_count = totals.get(doc.id, 0)
 
 
 def get_document(session: Session, document_id: UUID, user_id: UUID) -> Document:

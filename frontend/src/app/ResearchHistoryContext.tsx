@@ -15,6 +15,8 @@ interface ResearchHistoryState {
   reload: () => void;
   rename: (id: string, title: string) => Promise<void>;
   remove: (id: string) => Promise<void>;
+  /** Brings back a research removed with ``remove``. */
+  restore: (id: string) => Promise<void>;
 }
 
 const ResearchHistoryContext = createContext<ResearchHistoryState | null>(null);
@@ -74,6 +76,17 @@ export const ResearchHistoryProvider: React.FC<React.PropsWithChildren> = ({ chi
     setTotal((current) => Math.max(0, current - 1));
   }, []);
 
+  const restore = useCallback(async (id: string) => {
+    const restored = await researchService.restoreResearch(id);
+    let added = false;
+    setItems((current) => {
+      if (current.some((item) => item.id === id)) return current;
+      added = true;
+      return [...current, restored].sort(byUpdatedDesc);
+    });
+    if (added) setTotal((current) => current + 1);
+  }, []);
+
   const value = useMemo(
     () => ({
       items,
@@ -84,8 +97,9 @@ export const ResearchHistoryProvider: React.FC<React.PropsWithChildren> = ({ chi
       reload,
       rename,
       remove,
+      restore,
     }),
-    [items, total, loading, error, reload, rename, remove],
+    [items, total, loading, error, reload, rename, remove, restore],
   );
 
   return <ResearchHistoryContext.Provider value={value}>{children}</ResearchHistoryContext.Provider>;

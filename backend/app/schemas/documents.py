@@ -39,9 +39,20 @@ class DocumentResponse(ApiSchema):
     page_count: int | None = Field(default=None, ge=0)
     uploaded_at: datetime
     processing_error: str | None
+    processing_stage: str | None = None
+    processing_progress: int | None = Field(default=None, ge=0, le=100)
+    # Filled on list responses: where the file is used.
+    project_name: str | None = None
+    used_in: list["DocumentUsageResponse"] = Field(default_factory=list)
+    used_in_count: int = Field(default=0, ge=0)
     chunk_count: int = Field(default=0, ge=0)
     created_at: datetime
     updated_at: datetime
+
+
+class DocumentUsageResponse(ApiSchema):
+    id: UUID
+    title: str
 
 
 class DocumentListResponse(ApiSchema):

@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Query, Request, Response, UploadFile, status
@@ -95,6 +95,10 @@ def list_project_documents(
         DocumentType | None,
         Query(alias="type"),
     ] = None,
+    kind: Annotated[
+        Literal["documents", "images", "audio", "video", "links"] | None,
+        Query(),
+    ] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> DocumentListResponse:
@@ -103,6 +107,7 @@ def list_project_documents(
         search=search,
         status=document_status,
         file_type=document_type,
+        kind=kind,
         limit=limit,
         offset=offset,
         user_id=user.id,

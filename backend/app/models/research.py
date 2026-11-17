@@ -180,6 +180,11 @@ class Research(TimestampMixin, Base):
     preferred_provider: Mapped[str | None] = mapped_column(String(64), nullable=True)
     model_override: Mapped[str | None] = mapped_column(String(160), nullable=True)
     local_fallback_enabled: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    # Why the model failed on the last attempt: provider, model and a short
+    # type (quota, auth, timeout, unavailable, other). Never keys or raw text.
+    failure_provider: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    failure_model: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    failure_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
     allow_shared_providers: Mapped[bool] = mapped_column(
         Boolean,
         default=True,

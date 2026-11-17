@@ -229,6 +229,37 @@ def _project_label(document: Document) -> str | None:
     return str(document.project_id)
 
 
+EMBEDDING_PROGRESS_BATCH = 64
+
+
+def _set_stage(
+    session: Session,
+    document: Document,
+    stage: str | None,
+    progress: int | None = None,
+) -> None:
+    """Save the step a file is on so the library can show it while it waits."""
+    document.processing_stage = stage
+    document.processing_progress = progress
+    _commit(session, "The document processing step could not be saved")
+
+
+def _reading_stage(document: Document, path: Path, settings: Settings) -> str:
+    """'ocr' when the file has to be read from images (scans, photos), else 'reading'."""
+    if document.file_type == DocumentType.IMAGE:
+        return "ocr"
+    if (
+        document.file_type == DocumentType.PDF
+        and settings.document_ingestion_backend == "docling"
+        and settings.docling_ocr_mode != "disabled"
+    ):
+        from app.services.ingestion.pdf import pdf_has_text_layer
+
+        if settings.docling_ocr_mode == "force" or not pdf_has_text_layer(path):
+            return "ocr"
+    return "reading"
+
+
 def _parse_uploaded_document(
     adapter: DocumentIngestionAdapter,
     path: Path,
@@ -298,9 +329,18 @@ def _embed_nodes(
                 model_version,
             )
 
-    generated = embedding_service.embed_documents(
-        [node.text for node in parsed.nodes]
-    )
+    texts = [node.text for node in parsed.nodes]
+    if len(texts) <= EMBEDDING_PROGRESS_BATCH:
+        generated = embedding_service.embed_documents(texts)
+    else:
+        # Large files are embedded in batches so the library can show progress.
+        generated = []
+        for start in range(0, len(texts), EMBEDDING_PROGRESS_BATCH):
+            generated.extend(
+                embedding_service.embed_documents(texts[start : start + EMBEDDING_PROGRESS_BATCH])
+            )
+            done = min(len(texts), start + EMBEDDING_PROGRESS_BATCH)
+            _set_stage(session, document, "embedding", round(done * 100 / len(texts)))
     if len(generated) != len(parsed.nodes):
         raise AppError(
             "Embedding generation returned an invalid batch",
@@ -369,6 +409,8 @@ def _store_parsed_document(
         )
     document.status = DocumentStatus.INDEXED
     document.processing_error = None
+    document.processing_stage = None
+    document.processing_progress = None
 
 
 def reembed_document(
@@ -432,6 +474,8 @@ def _record_ingestion_failure(
     failed.chunks.clear()
     failed.status = DocumentStatus.FAILED
     failed.processing_error = message[:1000]
+    failed.processing_stage = None
+    failed.processing_progress = None
     _commit(session, "The document processing failure could not be saved")
     logger.exception(
         "Document ingestion failed",
@@ -485,9 +529,12 @@ def process_document(
     started = clock()
     document.status = DocumentStatus.PROCESSING
     document.processing_error = None
+    document.processing_stage = None
+    document.processing_progress = None
     _commit(session, "The document processing status could not be saved")
 
     try:
+        _set_stage(session, document, _reading_stage(document, path, settings))
         parse_started = clock()
         parsed = _parse_uploaded_document(
             active_adapter,
@@ -497,12 +544,16 @@ def process_document(
         )
         parse_ms = _elapsed_ms(clock, parse_started)
 
+        if parsed.page_count:
+            document.page_count = parsed.page_count
+        _set_stage(session, document, "embedding", 0)
         embedding_started = clock()
         vectors, emb_model, emb_version = _embed_nodes(
             session, document, parsed, settings, embeddings
         )
         embedding_ms = _elapsed_ms(clock, embedding_started)
 
+        _set_stage(session, document, "saving")
         persistence_started = clock()
         _store_parsed_document(
             document,

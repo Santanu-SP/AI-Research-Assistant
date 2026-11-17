@@ -128,6 +128,7 @@ Existing records with `project_id = NULL` remain supported. Project-scoped retri
 - `0014`–`0015`: Neon/multimodal extensions, user BYOK key table, telemetry events, widened `file_type`/`source_type`/`content_level` enums and `CHECK` constraints.
 - `0016_model_prefs_usage_quota`: persisted user provider/model preferences, `local_fallback` setting, and atomic daily quota ledger (`daily_usage_quotas`).
 - `0017_research_documents`: per-research document scope join table and foreign key cascading.
+- `0018_research_model_failure` & `0019_document_progress`: persisted model failure diagnostics (`failure_provider`, `failure_model`, `failure_type`) and per-file ingestion step/percentage tracking.
 
 ## Supported vs remaining deferred scope
 
@@ -168,7 +169,8 @@ Every PR merged into `main` (plus the current stack) shaped the system as follow
 | **#50** | Per-research document scoping via `research_documents` join table (`0017`), new research starting with zero documents, library picker modal (`LibraryPickerDialog`), and `POST /research/query` + `POST /research/jobs` document scoping. |
 | **#51** | Multimodal ingestion fixes: browser MIME aliases (`.mkv`, `.flac`, `.m4a`), PPTX/YouTube/audio/video/vision ingestion pipeline fixes, and upload modal status synchronization. |
 | **#52** | Route `/library` rename and dedicated Library view with filters, sidebar route-based active tab highlighting, light/dark theme switch moved to Settings, and project archive/restore/permanent delete. |
-| **Latest PR (this branch)** | Controlled Discovery: keyless curated connectors (OpenAlex, Crossref, arXiv, Wikipedia), parallel search with DOI/title deduplication, SSRF-safe ingestion ladder (Open-Access PDF full text → Wikipedia/web articles → verified abstract fallback), provenance & coverage badges, opt-in auto-discovery RAG with rich bibliographic citations (publisher, year, DOI, source URL), and regression test suite. |
+| **#53, #55** | Clearer model error tracking (`0018`), per-file ingestion step & progress bar (`0019`), Library type filters & usage links, Settings API key & default model panel, undoable research delete, and consistent `files` UX wording. |
+| **#54** *(this PR)* | Controlled Discovery: keyless curated connectors (OpenAlex, Crossref, arXiv, Wikipedia), parallel search with DOI/title deduplication, SSRF-safe ingestion ladder (Open-Access PDF full text → Wikipedia/web articles → verified abstract fallback), provenance & coverage badges, opt-in auto-discovery RAG with rich bibliographic citations (publisher, year, DOI, source URL), and regression test suite. |
 
 ## Validation
 

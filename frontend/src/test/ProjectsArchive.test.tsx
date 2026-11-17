@@ -22,7 +22,7 @@ const project = (id: string, name: string, archivedAt: string | null = null): Re
 });
 
 const items = [
-  project('a1', 'Thesis draft'),
+  { ...project('a1', 'Thesis draft'), fileCount: 3, reportCount: 1 },
   project('a2', 'RAG survey'),
   project('z1', 'Old semester notes', '2026-11-01T10:00:00Z'),
   project('z2', 'Climate datasets', '2026-11-12T10:00:00Z'),
@@ -114,5 +114,12 @@ describe('Projects archive', () => {
       'Rename or edit',
       'Archive project',
     ]);
+  });
+
+  it('shows how many files and reports each project has', async () => {
+    renderPage('/projects');
+    expect(await screen.findByText('3 files · 1 report')).toBeInTheDocument();
+    // Projects without counts from the server simply skip the line.
+    expect(screen.queryByText(/0 files/)).not.toBeInTheDocument();
   });
 });

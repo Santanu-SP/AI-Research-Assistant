@@ -31,7 +31,7 @@ PROGRESS_STAGES: tuple[tuple[ResearchProgressStage, str], ...] = (
     (ResearchProgressStage.SEARCHING_SOURCES, "Searching sources"),
     (
         ResearchProgressStage.FINDING_DOCUMENTS,
-        "Finding relevant uploaded documents",
+        "Finding relevant files",
     ),
     (ResearchProgressStage.REVIEWING_EVIDENCE, "Reviewing evidence"),
     (ResearchProgressStage.BUILDING_SYNTHESIS, "Building synthesis"),
@@ -316,6 +316,9 @@ def get_research_progress(
         completed_at=research.completed_at,
         failed_at=research.failed_at,
         failure_reason=failure_reason,
+        failure_provider=research.failure_provider if failure_reason else None,
+        failure_model=research.failure_model if failure_reason else None,
+        failure_type=_safe_failure_type(research.failure_type) if failure_reason else None,
         documents_ready=documents_ready,
         documents_preparing=documents_preparing,
     )
@@ -348,8 +351,18 @@ def _document_readiness(session: Session, research: Research) -> tuple[int, int]
 _FAILURE_REASONS = {
     "generation_unavailable": "model_unavailable",
     "generation_invalid_request": "model_unavailable",
+    "generation_timeout": "model_unavailable",
+    "generation_empty_response": "model_unavailable",
     "daily_model_quota_exceeded": "quota_reached",
 }
+
+_FAILURE_TYPES = {"quota", "auth", "timeout", "unavailable", "other"}
+
+
+def _safe_failure_type(value: str | None) -> str | None:
+    if not value:
+        return None
+    return value if value in _FAILURE_TYPES else "other"
 
 
 def _failure_reason(session: Session, research: Research, documents_ready: int) -> str:
@@ -363,6 +376,8 @@ def _failure_reason(session: Session, research: Research, documents_ready: int) 
         code = last_error.split(":", 1)[0].strip()
         if code in _FAILURE_REASONS:
             return _FAILURE_REASONS[code]
+    if research.failure_type:
+        return "model_unavailable"
     if documents_ready == 0:
         return "no_ready_documents"
     return "unexpected"
@@ -628,6 +643,26 @@ def archive_research(session: Session, research_id: UUID, user_id: UUID | None =
     research.archived_at = archived_at
     research.updated_at = archived_at
     _commit(session)
+
+
+def restore_research(session: Session, research_id: UUID, user_id: UUID | None = None) -> Research:
+    """Bring back a deleted research run. Deleting only hides it, so undo is safe."""
+    filters = [Research.id == research_id]
+    if user_id is not None:
+        filters.append(Research.user_id == user_id)
+    research = session.scalar(select(Research).where(*filters))
+    if research is None:
+        raise AppError(
+            "Research not found",
+            status_code=404,
+            code="research_not_found",
+        )
+    if research.archived_at is not None:
+        research.archived_at = None
+        research.updated_at = utc_now()
+        _commit(session)
+        session.refresh(research)
+    return research
 
 
 def attach_source_counts(session: Session, records: list[Research]) -> list[Research]:

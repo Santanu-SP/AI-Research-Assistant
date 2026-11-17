@@ -65,7 +65,9 @@ def get_project(
     session: DatabaseSession,
     user: CurrentUser,
 ) -> ResearchProjectResponse:
-    return project_service.get_project(session, project_id, user.id)
+    project = project_service.get_project(session, project_id, user.id)
+    project_service.attach_project_counts(session, [project])
+    return project
 
 
 @router.patch("/{project_id}", response_model=ResearchProjectResponse)
