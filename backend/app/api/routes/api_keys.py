@@ -87,7 +87,32 @@ class ModelUsageBreakdownItem(ApiSchema):
     last_used_at: datetime | None = None
 
 
+class ProviderCreditItem(ApiSchema):
+    provider: str
+    label: str
+    model_name: str
+    mode: str
+    unlimited: bool
+    remaining_pct: int
+    short_window_pct: int
+    long_window_pct: int
+    short_resets_at: datetime
+    long_resets_at: datetime
+    short_remaining: int
+    short_cap: int
+    long_remaining: int
+    long_cap: int
+
+
 class ModelUsageQuotaResponse(ApiSchema):
+    overall_remaining_pct: int = 100
+    short_window_hours: int = 3
+    long_window_days: int = 2
+    short_credits_per_model: int = 20
+    long_credits_per_model: int = 100
+    short_resets_at: datetime | None = None
+    long_resets_at: datetime | None = None
+    provider_credits: list[ProviderCreditItem] = Field(default_factory=list)
     enrolled_users: int
     shared_requests_used_today: int
     user_daily_request_cap: int
@@ -231,7 +256,14 @@ def get_models_status(
         else [str(item).strip().lower() for item in raw_order if str(item).strip()]
     )
 
-    usage_snapshot = get_user_model_usage_and_quota(session, user.id, settings)
+    usage_snapshot = get_user_model_usage_and_quota(
+        session,
+        user.id,
+        settings,
+        byok_providers=set(byok_records.keys()),
+        user_models=user_models,
+        local_available=local_available,
+    )
 
     return ModelsStatusResponse(
         local=LocalModelStatus(

@@ -287,7 +287,7 @@ class CentralizedLLMRouter:
         failures: list[dict[str, object]] = []
         fallback_attempts = 0
         quota_blocked = False
-        shared_quota_reserved = False
+        reserved_shared_provider: str | None = None
         eligible: list[tuple[LLMProviderAdapter, str | None]] = []
         for adapter in ordered_adapters:
             provider = adapter.provider_name
@@ -309,11 +309,11 @@ class CentralizedLLMRouter:
             if is_shared_provider and not allow_shared_providers:
                 quota_blocked = True
                 continue
-            if is_shared_provider and before_shared_attempt is not None and not shared_quota_reserved:
+            if is_shared_provider and before_shared_attempt is not None and reserved_shared_provider != provider:
                 if not before_shared_attempt(provider):
                     quota_blocked = True
                     continue
-                shared_quota_reserved = True
+                reserved_shared_provider = provider
             has_backup = index + 1 < len(eligible)
             apply_override = not preferred or provider == preferred
             timeout_cap = (
