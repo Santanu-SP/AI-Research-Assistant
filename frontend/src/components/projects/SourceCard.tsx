@@ -194,6 +194,14 @@ export const SourceCard: React.FC<SourceCardProps> = ({
                 <span className="tabular-nums">{item}</span>
               </React.Fragment>
             ))}
+            {document.contentLevel === 'abstract' && (
+              <>
+                <span aria-hidden="true">·</span>
+                <span className="rounded bg-subtle px-1.5 py-0.5 text-[10px] font-medium text-ink-soft">
+                  Abstract only
+                </span>
+              </>
+            )}
             {!compact && document.doi && (
               <>
                 <span aria-hidden="true">·</span>

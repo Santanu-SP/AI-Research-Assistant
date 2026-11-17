@@ -7,6 +7,7 @@ import { shortcutLabel } from '../../lib/shortcuts';
 
 interface ResearchComposerProps {
   initialPrompt?: string;
+  onPromptChange?: (prompt: string) => void;
   onStartResearch: (payload: {
     question: string;
     depth: ResearchDepth;
@@ -27,6 +28,7 @@ const LOADING_MESSAGES = [
 
 export const ResearchComposer: React.FC<ResearchComposerProps> = ({
   initialPrompt = '',
+  onPromptChange,
   onStartResearch,
   isLoading = false,
   blockedReason = null,
@@ -89,7 +91,10 @@ export const ResearchComposer: React.FC<ResearchComposerProps> = ({
           ref={textareaRef}
           id="research-prompt"
           value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
+          onChange={(e) => {
+            setPrompt(e.target.value);
+            onPromptChange?.(e.target.value);
+          }}
           onKeyDown={handleKeyDown}
           rows={4}
           disabled={isLoading}

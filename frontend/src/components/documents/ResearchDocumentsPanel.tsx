@@ -1,13 +1,15 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Library, Plus } from 'lucide-react';
+import { ArrowRight, Globe, Library, Plus, ShieldCheck } from 'lucide-react';
 import { Document } from '../../types/document';
+import { DiscoveryScope } from '../../types/discovery';
 import { DocumentLibrary } from '../../hooks/useDocumentLibrary';
 import { isDocumentPending } from '../../services/documents.service';
 import { SourceCard } from '../projects/SourceCard';
 import { ProjectUploadModal } from '../projects/ProjectUploadModal';
 import { DocumentViewer } from './DocumentViewer';
 import { LibraryPickerDialog } from './LibraryPickerDialog';
+import { SourceDiscoveryDialog } from './SourceDiscoveryDialog';
 import { useToast } from '../../app/ToastContext';
 
 interface ResearchDocumentsPanelProps {
@@ -15,24 +17,43 @@ interface ResearchDocumentsPanelProps {
   library: DocumentLibrary;
   attachedIds: string[];
   onChange: (ids: string[]) => void;
+  onDocumentsResolved?: (docs: Document[]) => void;
+  discoveryInitialQuery?: string;
+  autoDiscover?: boolean;
+  onAutoDiscoverChange?: (enabled: boolean) => void;
+  discoveryScope?: DiscoveryScope;
+  onDiscoveryScopeChange?: (scope: DiscoveryScope) => void;
   className?: string;
 }
 
+const DISCOVERY_SCOPES: { id: DiscoveryScope; label: string }[] = [
+  { id: 'all', label: 'All trusted' },
+  { id: 'scholarly', label: 'Scholarly' },
+  { id: 'web', label: 'Web' },
+];
+
 /**
- * The files one new research will read. It starts empty: upload a file or
- * pick ones you uploaded before. Other uploads are left out.
+ * The files one new research will read. Starts empty: upload a file, pick
+ * from library, discover curated online papers/articles, or opt into auto-discovery.
  */
 export const ResearchDocumentsPanel: React.FC<ResearchDocumentsPanelProps> = ({
   library,
   attachedIds,
   onChange,
+  onDocumentsResolved,
+  discoveryInitialQuery = '',
+  autoDiscover = false,
+  onAutoDiscoverChange,
+  discoveryScope = 'all',
+  onDiscoveryScopeChange,
   className = '',
 }) => {
   const { addToast } = useToast();
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
+  const [isDiscoveryOpen, setIsDiscoveryOpen] = useState(false);
   const [viewing, setViewing] = useState<Document | null>(null);
-  // Fresh uploads show straight away, before the library list reloads.
+  // Fresh uploads & imported discovery sources show straight away before library reloads.
   const [uploaded, setUploaded] = useState<Record<string, Document>>({});
 
   const attached = useMemo(() => {
@@ -47,14 +68,34 @@ export const ResearchDocumentsPanel: React.FC<ResearchDocumentsPanelProps> = ({
     [attachedIds, onChange],
   );
 
+  const attachMany = useCallback(
+    (docs: Document[]) => {
+      if (docs.length === 0) return;
+      setUploaded((prev) => {
+        const next = { ...prev };
+        for (const doc of docs) next[doc.id] = doc;
+        return next;
+      });
+      onDocumentsResolved?.(docs);
+      const merged = [...attachedIds];
+      for (const doc of docs) {
+        if (!merged.includes(doc.id)) merged.push(doc.id);
+      }
+      onChange(merged);
+      library.reload();
+    },
+    [attachedIds, onChange, onDocumentsResolved, library],
+  );
+
   const handleUploaded = useCallback(
     (doc: Document) => {
       setUploaded((prev) => ({ ...prev, [doc.id]: doc }));
+      onDocumentsResolved?.([doc]);
       attach(doc.id);
       library.reload();
       addToast({ type: 'success', title: 'Uploaded', description: `${doc.name} will be ready in a moment.` });
     },
-    [attach, library, addToast],
+    [attach, onDocumentsResolved, library, addToast],
   );
 
   const handleDuplicate = useCallback(
@@ -69,7 +110,9 @@ export const ResearchDocumentsPanel: React.FC<ResearchDocumentsPanelProps> = ({
   const preparing = attached.filter((doc) => isDocumentPending(doc)).length;
   const summary =
     attached.length === 0
-      ? 'None added yet'
+      ? autoDiscover
+        ? 'Will discover trusted online sources'
+        : 'None added yet'
       : [ready > 0 && `${ready} ready`, preparing > 0 && `${preparing} preparing`]
           .filter(Boolean)
           .join(' · ') || `${attached.length} added`;
@@ -82,7 +125,7 @@ export const ResearchDocumentsPanel: React.FC<ResearchDocumentsPanelProps> = ({
       aria-label="Documents for this research"
       className={`flex min-h-0 flex-col overflow-hidden rounded-xl border border-line bg-panel shadow-xs ${className}`}
     >
-      <header className="flex items-center gap-3 border-b border-line px-4 py-3">
+      <header className="flex items-center gap-2 border-b border-line px-4 py-3">
         <div className="min-w-0 flex-1">
           <h2 className="text-[13px] font-semibold text-ink">Documents to search</h2>
           <p className="mt-0.5 truncate text-xs tabular-nums text-ink-muted" aria-live="polite">
@@ -90,18 +133,29 @@ export const ResearchDocumentsPanel: React.FC<ResearchDocumentsPanelProps> = ({
           </p>
         </div>
         {attached.length > 0 && (
-          <button type="button" onClick={() => setIsUploadOpen(true)} className={actionButton}>
-            <Plus className="h-3.5 w-3.5" />
-            Upload
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setIsDiscoveryOpen(true)}
+              className={actionButton}
+              title="Discover curated online sources"
+            >
+              <Globe className="h-3.5 w-3.5" />
+              Discover
+            </button>
+            <button type="button" onClick={() => setIsUploadOpen(true)} className={actionButton}>
+              <Plus className="h-3.5 w-3.5" />
+              Upload
+            </button>
+          </div>
         )}
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         {attached.length === 0 ? (
-          <div className="px-4 py-7 text-center">
+          <div className="px-4 py-6 text-center">
             <p className="text-[13px] font-medium text-ink">Add the files to ask about</p>
-            <p className="mx-auto mt-1 max-w-[240px] text-xs leading-relaxed text-ink-muted">
+            <p className="mx-auto mt-1 max-w-[250px] text-xs leading-relaxed text-ink-muted">
               This research reads only the files you add here, not everything you have uploaded.
             </p>
             <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
@@ -113,6 +167,10 @@ export const ResearchDocumentsPanel: React.FC<ResearchDocumentsPanelProps> = ({
                 <Plus className="h-3.5 w-3.5" />
                 Upload
               </button>
+              <button type="button" onClick={() => setIsDiscoveryOpen(true)} className={actionButton}>
+                <Globe className="h-3.5 w-3.5" />
+                Discover
+              </button>
               {library.total > 0 && (
                 <button type="button" onClick={() => setIsPickerOpen(true)} className={actionButton}>
                   <Library className="h-3.5 w-3.5" />
@@ -120,6 +178,59 @@ export const ResearchDocumentsPanel: React.FC<ResearchDocumentsPanelProps> = ({
                 </button>
               )}
             </div>
+
+            {onAutoDiscoverChange && (
+              <div className="mt-4 rounded-lg border border-line bg-canvas/70 p-3 text-left">
+                <div className="flex items-start justify-between gap-2.5">
+                  <div className="min-w-0">
+                    <p className="flex items-center gap-1.5 text-xs font-medium text-ink">
+                      <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-accent" />
+                      <span>Trusted online discovery</span>
+                    </p>
+                    <p className="mt-0.5 text-[11px] leading-snug text-ink-muted">
+                      Search OpenAlex, Crossref, arXiv &amp; Wikipedia if no files are added.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={autoDiscover}
+                    aria-label="Enable trusted online discovery"
+                    onClick={() => onAutoDiscoverChange(!autoDiscover)}
+                    className={`relative mt-0.5 inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border transition-colors ${
+                      autoDiscover
+                        ? 'border-accent bg-solid'
+                        : 'border-line-strong bg-subtle'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow-xs transition-transform ${
+                        autoDiscover ? 'translate-x-4' : 'translate-x-0.5'
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {autoDiscover && onDiscoveryScopeChange && (
+                  <div className="mt-2.5 flex items-center gap-1">
+                    {DISCOVERY_SCOPES.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => onDiscoveryScopeChange(item.id)}
+                        className={`rounded px-2 py-0.5 text-[11px] font-medium transition-colors ${
+                          discoveryScope === item.id
+                            ? 'bg-accent-soft text-accent border border-accent-line'
+                            : 'text-ink-soft hover:bg-subtle hover:text-ink border border-transparent'
+                        }`}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         ) : (
           <div role="list" aria-label="Documents for this research" className="divide-y divide-line">
@@ -169,6 +280,13 @@ export const ResearchDocumentsPanel: React.FC<ResearchDocumentsPanelProps> = ({
         attachedIds={attachedIds}
         onClose={() => setIsPickerOpen(false)}
         onApply={onChange}
+      />
+      <SourceDiscoveryDialog
+        isOpen={isDiscoveryOpen}
+        initialQuery={discoveryInitialQuery}
+        projectId={null}
+        onClose={() => setIsDiscoveryOpen(false)}
+        onImported={attachMany}
       />
       {viewing && <DocumentViewer document={viewing} onClose={() => setViewing(null)} />}
     </section>

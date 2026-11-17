@@ -1,4 +1,5 @@
 import type { ContentLevel, SourceType as DocumentSourceType } from './document';
+import type { DiscoveryScope } from './discovery';
 
 export type ResearchStatus = 'completed' | 'researching' | 'draft' | 'failed';
 export type ResearchDepth = 'quick' | 'standard' | 'deep';
@@ -114,8 +115,10 @@ export interface ResearchProgress {
 export interface ResearchQueryRequest {
   query: string;
   projectId?: string;
-  /** The documents this research may read. Required (non-empty) outside a project. */
+  /** The documents this research may read. Required (non-empty) outside a project unless autoDiscover is set. */
   documentIds?: string[];
+  autoDiscover?: boolean;
+  discoveryScope?: DiscoveryScope;
   researchDepth?: ResearchDepth;
   preferredProvider?: string;
   modelOverride?: string;
@@ -133,6 +136,9 @@ export interface Citation {
   paperTitle: string | null;
   authors: string[] | null;
   doi: string | null;
+  url?: string | null;
+  publisher?: string | null;
+  year?: number | null;
   page: number | null;
   pageEnd?: number | null;
   section: string | null;

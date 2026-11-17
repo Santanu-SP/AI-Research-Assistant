@@ -1,9 +1,10 @@
 import React, { useCallback, useState } from 'react';
-import { FolderUp, Search, Upload, X } from 'lucide-react';
+import { FolderUp, Globe, Search, Upload, X } from 'lucide-react';
 import { ResearchProject } from '../../types/project';
 import { Document } from '../../types/document';
 import { SourceCard } from './SourceCard';
 import { ProjectUploadModal } from './ProjectUploadModal';
+import { SourceDiscoveryDialog } from '../documents/SourceDiscoveryDialog';
 import { DocumentViewer } from '../documents/DocumentViewer';
 import { EmptyState } from '../common/EmptyState';
 import { ErrorState } from '../common/ErrorState';
@@ -23,6 +24,7 @@ export const ProjectSourcesPanel: React.FC<ProjectSourcesPanelProps> = ({ projec
   const { addToast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
   const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const [isDiscoverOpen, setIsDiscoverOpen] = useState(false);
   const { documents, total, isLoading, error, readyCount, preparingCount, refreshPaused, reload } =
     useDocumentLibrary({ projectId: project.id }, searchQuery);
   const actions = useDocumentActions(reload);
@@ -32,6 +34,20 @@ export const ProjectSourcesPanel: React.FC<ProjectSourcesPanelProps> = ({ projec
     (doc: Document) => {
       reload();
       addToast({ type: 'success', title: 'Uploaded', description: `${doc.name} will be ready in a moment.` });
+    },
+    [reload, addToast],
+  );
+
+  const handleDiscovered = useCallback(
+    (docs: Document[]) => {
+      reload();
+      if (docs.length > 0) {
+        addToast({
+          type: 'success',
+          title: 'Sources added',
+          description: `Added ${docs.length} trusted source${docs.length === 1 ? '' : 's'} to this project.`,
+        });
+      }
     },
     [reload, addToast],
   );
@@ -73,10 +89,20 @@ export const ProjectSourcesPanel: React.FC<ProjectSourcesPanelProps> = ({ projec
         )}
 
         {!isArchived && (
-          <PrimaryButton id="upload-document-btn" onClick={() => setIsUploadOpen(true)} className="sm:ml-auto">
-            <Upload className="h-4 w-4" />
-            Upload
-          </PrimaryButton>
+          <div className="flex items-center gap-2 sm:ml-auto">
+            <PrimaryButton
+              variant="outline"
+              id="discover-sources-btn"
+              onClick={() => setIsDiscoverOpen(true)}
+            >
+              <Globe className="h-4 w-4" />
+              Discover
+            </PrimaryButton>
+            <PrimaryButton id="upload-document-btn" onClick={() => setIsUploadOpen(true)}>
+              <Upload className="h-4 w-4" />
+              Upload
+            </PrimaryButton>
+          </div>
         )}
       </div>
 
@@ -99,10 +125,12 @@ export const ProjectSourcesPanel: React.FC<ProjectSourcesPanelProps> = ({ projec
           description={
             isArchived
               ? 'This project is archived, so documents can’t be added.'
-              : 'Upload documents, slides, spreadsheets, media, or web links. Questions in this project are answered only from these sources.'
+              : 'Upload files or discover trusted papers and articles from OpenAlex, Crossref, arXiv, and Wikipedia.'
           }
           primaryActionLabel={isArchived ? undefined : 'Upload document'}
           onPrimaryAction={isArchived ? undefined : () => setIsUploadOpen(true)}
+          secondaryActionLabel={isArchived ? undefined : 'Discover trusted sources'}
+          onSecondaryAction={isArchived ? undefined : () => setIsDiscoverOpen(true)}
         />
       ) : (
         <div
@@ -146,6 +174,12 @@ export const ProjectSourcesPanel: React.FC<ProjectSourcesPanelProps> = ({ projec
         projectId={project.id}
         onClose={() => setIsUploadOpen(false)}
         onUploaded={handleUploaded}
+      />
+      <SourceDiscoveryDialog
+        isOpen={isDiscoverOpen}
+        projectId={project.id}
+        onClose={() => setIsDiscoverOpen(false)}
+        onImported={handleDiscovered}
       />
       {actions.viewing && <DocumentViewer document={actions.viewing} onClose={actions.close} />}
     </div>

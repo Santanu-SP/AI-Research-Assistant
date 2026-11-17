@@ -11,11 +11,13 @@ import {
 import { FolderOpen, History } from 'lucide-react';
 import { shortcutLabel } from '../lib/shortcuts';
 import { ResearchDepth } from '../types/research';
+import { DiscoveryScope } from '../types/discovery';
 import { ResearchDocumentsPanel } from '../components/documents/ResearchDocumentsPanel';
 import { useDocumentLibrary } from '../hooks/useDocumentLibrary';
 import { documentsBlockedReason } from '../lib/researchDocuments';
 import { ApiError } from '../services/api';
 import { Document } from '../types/document';
+import { getDiscoveryErrorMessage } from '../services/discovery.service';
 
 const ALL_DOCUMENTS = { all: true } as const;
 
@@ -40,6 +42,10 @@ export const NewResearch: React.FC = () => {
   const library = useDocumentLibrary(ALL_DOCUMENTS);
   // A new research starts with no documents; the user adds the ones to ask about.
   const [attachedIds, setAttachedIds] = useState<string[]>([]);
+  const [knownDocs, setKnownDocs] = useState<Record<string, Document>>({});
+  const [promptDraft, setPromptDraft] = useState('');
+  const [autoDiscover, setAutoDiscover] = useState(false);
+  const [discoveryScope, setDiscoveryScope] = useState<DiscoveryScope>('all');
   // Set synchronously so a double click or Ctrl+Enter pressed twice can't
   // send the same question before React re-renders the disabled button.
   const submitting = useRef(false);
@@ -47,13 +53,22 @@ export const NewResearch: React.FC = () => {
   useEffect(() => {
     setCreateError(null);
     setAttachedIds([]);
+    setKnownDocs({});
+    setPromptDraft('');
+    setAutoDiscover(false);
+    setDiscoveryScope('all');
   }, [location.key]);
 
   const attachedDocuments = useMemo(() => {
     const byId = new Map(library.documents.map((doc) => [doc.id, doc]));
-    return attachedIds.map((id) => byId.get(id)).filter((doc): doc is Document => Boolean(doc));
-  }, [attachedIds, library.documents]);
-  const blockedReason = documentsBlockedReason(attachedDocuments, attachedIds.length);
+    return attachedIds
+      .map((id) => byId.get(id) ?? knownDocs[id])
+      .filter((doc): doc is Document => Boolean(doc));
+  }, [attachedIds, library.documents, knownDocs]);
+  const blockedReason =
+    attachedIds.length === 0 && autoDiscover
+      ? null
+      : documentsBlockedReason(attachedDocuments, attachedIds.length);
 
   const handleStartResearch = async (payload: {
     question: string;
@@ -67,7 +82,11 @@ export const NewResearch: React.FC = () => {
     setIsSubmitting(true);
     setCreateError(null);
     const requestExtras = {
-      documentIds: attachedIds,
+      ...(attachedIds.length > 0
+        ? { documentIds: attachedIds }
+        : autoDiscover
+          ? { autoDiscover: true, discoveryScope }
+          : { documentIds: attachedIds }),
       ...(payload.preferredProvider ? { preferredProvider: payload.preferredProvider } : {}),
       ...(payload.modelOverride ? { modelOverride: payload.modelOverride } : {}),
       ...(payload.localFallbackEnabled !== undefined
@@ -102,7 +121,9 @@ export const NewResearch: React.FC = () => {
       setCreateError(
         apiErrorCode(error) === 'document_not_found'
           ? 'One of the picked files no longer exists. Remove it and try again.'
-          : getResearchErrorMessage(error, 'Research could not be started. Please try again.')
+          : apiErrorCode(error) === 'no_discoverable_sources' || apiErrorCode(error) === 'discovery_disabled'
+            ? getDiscoveryErrorMessage(error, 'Research could not discover external sources.')
+            : getResearchErrorMessage(error, 'Research could not be started. Please try again.')
       );
     } finally {
       submitting.current = false;
@@ -133,6 +154,7 @@ export const NewResearch: React.FC = () => {
 
             <ResearchComposer
               key={location.key}
+              onPromptChange={setPromptDraft}
               onStartResearch={handleStartResearch}
               isLoading={isSubmitting}
               blockedReason={blockedReason}
@@ -174,6 +196,21 @@ export const NewResearch: React.FC = () => {
               setAttachedIds(ids);
               setCreateError(null);
             }}
+            onDocumentsResolved={(docs) =>
+              setKnownDocs((prev) => {
+                const next = { ...prev };
+                for (const doc of docs) next[doc.id] = doc;
+                return next;
+              })
+            }
+            discoveryInitialQuery={promptDraft}
+            autoDiscover={autoDiscover}
+            onAutoDiscoverChange={(enabled) => {
+              setAutoDiscover(enabled);
+              setCreateError(null);
+            }}
+            discoveryScope={discoveryScope}
+            onDiscoveryScopeChange={setDiscoveryScope}
             className="order-2 min-w-0 lg:order-none lg:sticky lg:top-20 lg:mt-[7.5rem] lg:max-h-[calc(100vh-7rem)]"
           />
         </div>
