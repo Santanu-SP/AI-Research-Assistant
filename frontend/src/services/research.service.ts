@@ -141,6 +141,10 @@ export const archiveResearch = async (researchId: string): Promise<void> => {
   await apiRequest<void>(`/research/${encodeURIComponent(researchId)}`, { method: 'DELETE' });
 };
 
+/** Undo a delete: deleted research is only hidden on the server. */
+export const restoreResearch = async (researchId: string): Promise<ResearchResponse> =>
+  apiRequest<ResearchResponse>(`/research/${encodeURIComponent(researchId)}/restore`, { method: 'POST' });
+
 export const getResearchErrorMessage = (
   error: unknown,
   fallback: string
@@ -203,4 +207,5 @@ export const researchService = {
   getResearch,
   updateResearch,
   archiveResearch,
+  restoreResearch,
 };

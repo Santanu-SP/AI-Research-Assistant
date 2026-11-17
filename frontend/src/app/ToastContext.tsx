@@ -15,6 +15,10 @@ export interface ToastMessage {
   type: ToastType;
   title: string;
   description?: string;
+  /** One button inside the toast, e.g. Undo. The toast closes when it is used. */
+  action?: { label: string; onClick: () => void };
+  /** How long the toast stays, in milliseconds. */
+  durationMs?: number;
 }
 
 interface ToastContextValue {
@@ -44,7 +48,7 @@ export const ToastProvider: React.FC<React.PropsWithChildren> = ({
     (toast: Omit<ToastMessage, 'id'>) => {
       const id = `toast-${++toastIdCounter}`;
       setToasts((prev) => [...prev.slice(-4), { ...toast, id }]);
-      const duration = toast.type === 'error' ? 6000 : 4000;
+      const duration = toast.durationMs ?? (toast.action ? 8000 : toast.type === 'error' ? 6000 : 4000);
       timers.current.set(id, setTimeout(() => remove(id), duration));
     },
     [remove]
@@ -130,6 +134,18 @@ const ToastContainer: React.FC<ToastContainerProps> = ({
               </p>
             )}
           </div>
+          {toast.action && (
+            <button
+              type="button"
+              onClick={() => {
+                toast.action?.onClick();
+                onDismiss(toast.id);
+              }}
+              className="shrink-0 rounded-md border border-line px-2.5 py-1 text-xs font-medium text-ink transition-colors hover:bg-subtle"
+            >
+              {toast.action.label}
+            </button>
+          )}
           <button
             type="button"
             aria-label="Dismiss notification"
