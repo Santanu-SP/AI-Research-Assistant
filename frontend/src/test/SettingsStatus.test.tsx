@@ -50,4 +50,82 @@ describe('Settings system status', () => {
     expect(screen.getByText('No model is set up yet. Add an API key above.')).toBeInTheDocument();
     expect(screen.queryByText('postgresql')).not.toBeInTheDocument();
   });
+
+  it('displays fixed per-model 3-hour and 2-day credit percentages without user-count dilution', async () => {
+    vi.spyOn(systemService, 'getReadiness').mockResolvedValue({
+      status: 'ready',
+      checks: [{ name: 'database', ok: true, detail: 'postgresql' }],
+    });
+    vi.spyOn(byokService, 'getUsage').mockResolvedValue({
+      overallRemainingPct: 90,
+      shortWindowHours: 3,
+      longWindowDays: 2,
+      shortCreditsPerModel: 20,
+      longCreditsPerModel: 100,
+      shortResetsAt: '2026-11-18T03:00:00Z',
+      longResetsAt: '2026-11-20T00:00:00Z',
+      providerCredits: [
+        {
+          provider: 'gemini',
+          label: 'Gemini',
+          modelName: 'gemini-3.8-flash',
+          mode: 'shared',
+          unlimited: false,
+          remainingPct: 80,
+          shortWindowPct: 80,
+          longWindowPct: 96,
+          shortResetsAt: '2026-11-18T03:00:00Z',
+          longResetsAt: '2026-11-20T00:00:00Z',
+          shortRemaining: 16,
+          shortCap: 20,
+          longRemaining: 96,
+          longCap: 100,
+        },
+        {
+          provider: 'groq',
+          label: 'Groq',
+          modelName: 'llama-3.3-70b-versatile',
+          mode: 'shared',
+          unlimited: false,
+          remainingPct: 100,
+          shortWindowPct: 100,
+          longWindowPct: 100,
+          shortResetsAt: '2026-11-18T03:00:00Z',
+          longResetsAt: '2026-11-20T00:00:00Z',
+          shortRemaining: 20,
+          shortCap: 20,
+          longRemaining: 100,
+          longCap: 100,
+        },
+      ],
+      enrolledUsers: 1,
+      sharedRequestsUsedToday: 4,
+      userDailyRequestCap: 40,
+      userRequestsRemainingToday: 36,
+      systemPoolTotal: 200,
+      systemPoolUsedToday: 4,
+      systemPoolRemaining: 196,
+      byokRequestsToday: 0,
+      localRequestsToday: 0,
+      totalRequestsToday: 4,
+      totalTokensToday: 900,
+      totalRequestsAllTime: 4,
+      totalTokensAllTime: 900,
+      resetsAt: '2026-11-18T03:00:00Z',
+      models: [],
+    });
+
+    render(
+      <MemoryRouter>
+        <SettingsPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('80% remaining')).toBeInTheDocument();
+    expect(screen.getByText('100% remaining')).toBeInTheDocument();
+    expect(screen.getByText(/3-hour credits: 80%/)).toBeInTheDocument();
+    expect(screen.getByText(/2-day pool: 96%/)).toBeInTheDocument();
+    const activityDetails = screen.getByText('Detailed activity counters').closest('details') as HTMLDetailsElement;
+    expect(activityDetails.open).toBe(false);
+  });
 });

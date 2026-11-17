@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from 'react';
 import '@testing-library/jest-dom/vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -126,20 +126,61 @@ describe('ProjectResearchPanel & ResearchProgress fast-path UX', () => {
       ],
       routerOrder: ['gemini', 'openrouter'],
       usage: {
-        enrolledUsers: 2,
+        overallRemainingPct: 85,
+        shortWindowHours: 3,
+        longWindowDays: 2,
+        shortCreditsPerModel: 20,
+        longCreditsPerModel: 100,
+        shortResetsAt: '2026-11-15T03:00:00Z',
+        longResetsAt: '2026-11-17T00:00:00Z',
+        providerCredits: [
+          {
+            provider: 'gemini',
+            label: 'Gemini',
+            modelName: 'gemini-3.8-flash',
+            mode: 'shared',
+            unlimited: false,
+            remainingPct: 85,
+            shortWindowPct: 85,
+            longWindowPct: 97,
+            shortResetsAt: '2026-11-15T03:00:00Z',
+            longResetsAt: '2026-11-17T00:00:00Z',
+            shortRemaining: 17,
+            shortCap: 20,
+            longRemaining: 97,
+            longCap: 100,
+          },
+          {
+            provider: 'ollama',
+            label: 'Local Ollama',
+            modelName: 'llama3.2:3b',
+            mode: 'local',
+            unlimited: true,
+            remainingPct: 100,
+            shortWindowPct: 100,
+            longWindowPct: 100,
+            shortResetsAt: '2026-11-15T03:00:00Z',
+            longResetsAt: '2026-11-17T00:00:00Z',
+            shortRemaining: 20,
+            shortCap: 20,
+            longRemaining: 100,
+            longCap: 100,
+          },
+        ],
+        enrolledUsers: 1,
         sharedRequestsUsedToday: 3,
-        userDailyRequestCap: 50,
-        userRequestsRemainingToday: 47,
+        userDailyRequestCap: 20,
+        userRequestsRemainingToday: 17,
         systemPoolTotal: 100,
-        systemPoolUsedToday: 6,
-        systemPoolRemaining: 94,
+        systemPoolUsedToday: 3,
+        systemPoolRemaining: 97,
         byokRequestsToday: 1,
         localRequestsToday: 0,
         totalRequestsToday: 4,
         totalTokensToday: 2400,
         totalRequestsAllTime: 9,
         totalTokensAllTime: 6100,
-        resetsAt: '2026-11-15T00:00:00Z',
+        resetsAt: '2026-11-15T03:00:00Z',
         models: [
           {
             provider: 'gemini',
@@ -284,16 +325,18 @@ describe('ProjectResearchPanel & ResearchProgress fast-path UX', () => {
       expect(saveKeyMock).toHaveBeenCalledWith('auto', 'sk-proj-testkey1234');
     });
 
-    // Pick custom model inside Models dropdown + inspect clearly labeled daily usage & cap
+    // Pick custom model inside Models dropdown + inspect Antigravity-style model-wise credit %
     fireEvent.click(screen.getByRole('button', { name: 'New question' }));
-    expect(screen.getByText('47 requests left')).toBeInTheDocument();
+    expect(screen.getByText('85% credits')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Models' }));
-    expect(screen.getByText('3 / 50 requests (47 left)')).toBeInTheDocument();
-    expect(screen.getByText('94 of 100 requests')).toBeInTheDocument();
-    expect(screen.getByText('2 active users')).toBeInTheDocument();
-    expect(screen.getByText('4 requests · 2.4k tokens')).toBeInTheDocument();
-    expect(screen.getByText('1 BYOK · 0 Local')).toBeInTheDocument();
-    expect(screen.getByText('gemini / gemini-3.8-flash')).toBeInTheDocument();
+    const creditsCard = screen.getByLabelText('AI credits by model');
+    expect(within(creditsCard).getByText('AI credits')).toBeInTheDocument();
+    expect(within(creditsCard).getByText('Fixed per account')).toBeInTheDocument();
+    expect(within(creditsCard).getByText('85%')).toBeInTheDocument();
+    expect(within(creditsCard).getByText('3h cycle: 85%')).toBeInTheDocument();
+    expect(within(creditsCard).getByText('2-day cycle: 97%')).toBeInTheDocument();
+    expect(within(creditsCard).getByText('Local Ollama (Local)')).toBeInTheDocument();
+    expect(screen.queryByText(/active users/i)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Add OpenAI key' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Select model gpt-4o' })).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Specific model name'), {
