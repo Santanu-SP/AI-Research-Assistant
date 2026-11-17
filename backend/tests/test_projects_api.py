@@ -140,3 +140,75 @@ def test_archived_project_can_be_deleted_and_keeps_its_files(
     document = client.get(f"/api/v1/documents/{document_id}")
     assert document.status_code == 200
     assert document.json()["projectId"] is None
+
+
+def _add_research(client: TestClient, project_id: str, question: str) -> str:
+    response = client.post(
+        "/api/v1/research", json={"question": question, "projectId": project_id}
+    )
+    assert response.status_code == 201, response.text
+    return response.json()["id"]
+
+
+def test_project_list_counts_files_and_finished_reports(
+    client: TestClient, test_app
+) -> None:
+    from uuid import UUID
+
+    from sqlalchemy import event, update
+
+    from app.core.time import utc_now
+    from app.domain.research import ResearchStatus
+    from app.models.research import Research
+    from tests.test_documents_api import PDF_MIME, make_pdf
+
+    busy = create_project(client, name="Busy project")
+    empty = create_project(client, name="Empty project")
+    for index in range(2):
+        upload = client.post(
+            f"/api/v1/projects/{busy['id']}/documents",
+            files={"file": (f"f{index}.pdf", make_pdf(f"evidence {index}"), PDF_MIME)},
+        )
+        assert upload.status_code == 201, upload.text
+
+    finished = _add_research(client, busy["id"], "What does the evidence show?")
+    archived = _add_research(client, busy["id"], "What else does it show here?")
+    _add_research(client, busy["id"], "A draft question that never ran")
+    with test_app.state.db_session_factory() as session:
+        session.execute(
+            update(Research)
+            .where(Research.id.in_([UUID(finished), UUID(archived)]))
+            .values(status=ResearchStatus.COMPLETED)
+        )
+        session.execute(
+            update(Research)
+            .where(Research.id == UUID(archived))
+            .values(archived_at=utc_now())
+        )
+        session.commit()
+
+    statements: list[str] = []
+
+    def count(conn, cursor, statement, *args) -> None:
+        if statement.lstrip().upper().startswith("SELECT"):
+            statements.append(statement)
+
+    engine = test_app.state.db_engine
+    event.listen(engine, "before_cursor_execute", count)
+    try:
+        listed = client.get("/api/v1/projects")
+    finally:
+        event.remove(engine, "before_cursor_execute", count)
+    assert listed.status_code == 200
+    by_name = {item["name"]: item for item in listed.json()["items"]}
+    assert by_name["Busy project"]["fileCount"] == 2
+    assert by_name["Busy project"]["reportCount"] == 1
+    assert by_name["Empty project"]["fileCount"] == 0
+    assert by_name["Empty project"]["reportCount"] == 0
+    # The counts come from grouped queries, not one query per project.
+    count_queries = [s for s in statements if "GROUP BY" in s.upper()]
+    assert len(count_queries) == 2
+
+    single = client.get(f"/api/v1/projects/{busy['id']}").json()
+    assert single["fileCount"] == 2
+    assert single["reportCount"] == 1

@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
 from app.core.time import utc_now
+from app.domain.research import ResearchStatus
 from app.models.document import Document
 from app.models.project import ResearchProject
 from app.models.research import Research
@@ -75,7 +76,42 @@ def list_projects(
             .offset(offset)
         ).all()
     )
+    attach_project_counts(session, items)
     return items, total or 0
+
+
+def attach_project_counts(
+    session: Session, projects: list[ResearchProject]
+) -> None:
+    """Set ``file_count`` and ``report_count`` on each project.
+
+    Uses one grouped query per count for the whole page instead of a query
+    per project.
+    """
+    if not projects:
+        return
+    project_ids = [project.id for project in projects]
+    file_counts = dict(
+        session.execute(
+            select(Document.project_id, func.count(Document.id))
+            .where(Document.project_id.in_(project_ids))
+            .group_by(Document.project_id)
+        ).all()
+    )
+    report_counts = dict(
+        session.execute(
+            select(Research.project_id, func.count(Research.id))
+            .where(
+                Research.project_id.in_(project_ids),
+                Research.status == ResearchStatus.COMPLETED,
+                Research.archived_at.is_(None),
+            )
+            .group_by(Research.project_id)
+        ).all()
+    )
+    for project in projects:
+        project.file_count = int(file_counts.get(project.id, 0))
+        project.report_count = int(report_counts.get(project.id, 0))
 
 
 def get_project(
