@@ -76,6 +76,9 @@ export const useToast = (): ToastContextValue => {
   return ctx;
 };
 
+export const useOptionalToast = (): ToastContextValue | null =>
+  useContext(ToastContext);
+
 
 const ICONS: Record<ToastType, React.ReactNode> = {
   success: <Check className="w-4 h-4 text-accent" />,

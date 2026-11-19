@@ -1,5 +1,6 @@
 import { ResearchStatus } from './research';
 import type { SourceType } from './source';
+import type { CollaboratorRole } from './collaboration';
 
 export interface CitationResponse {
   id: string;
@@ -52,6 +53,8 @@ export interface ResearchReportResponse {
   sourceCount: number;
   status: ResearchStatus;
   version: number;
+  myRole?: CollaboratorRole;
+  isShared?: boolean;
   sections: ReportSectionResponse[];
   createdAt: string;
   updatedAt: string;
@@ -60,6 +63,8 @@ export interface ResearchReportResponse {
 export interface ReportFollowupResponse {
   id: string;
   reportId: string;
+  authorId?: string | null;
+  authorName?: string | null;
   question: string;
   answer: string;
   citationIds: number[];

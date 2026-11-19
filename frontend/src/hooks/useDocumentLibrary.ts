@@ -174,6 +174,21 @@ export function useDocumentLibrary(
     setTotal(res.total);
   }, [cache, cacheKey, term, kind]);
 
+  useEffect(() => {
+    if (!scopeKey) return;
+    const onRemoteSync = (event: Event) => {
+      const targetProjectId = (event as CustomEvent<{ projectId?: string | null }>).detail?.projectId;
+      const current = scopeRef.current;
+      if (!current) return;
+      if ('projectId' in current && targetProjectId && current.projectId !== targetProjectId) {
+        return;
+      }
+      void refresh();
+    };
+    window.addEventListener('documents:remote-sync', onRemoteSync);
+    return () => window.removeEventListener('documents:remote-sync', onRemoteSync);
+  }, [scopeKey, refresh]);
+
   const pendingKey = activeIngestionKey(documents);
   const { timedOut } = useBackoffPolling(Boolean(scope) && pendingKey !== '', refresh, `${scopeKey}:${pendingKey}`);
 
