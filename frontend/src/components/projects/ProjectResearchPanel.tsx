@@ -2,13 +2,15 @@
  * The question is always submitted with this panel's project id.
  * A project change drops any answer that belonged to the previous project.
  */
-import React, { useEffect, useRef, useState } from 'react';
-import { Send, RotateCcw, AlertTriangle, Info } from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { Send, RotateCcw, AlertTriangle, Info, Clock } from 'lucide-react';
 import { ResearchProject } from '../../types/project';
 import {
   Citation,
   ResearchDepth,
   ResearchQueryResponse,
+  ResearchResponse,
 } from '../../types/research';
 import {
   friendlyResearchError,
@@ -16,6 +18,7 @@ import {
   researchIdFromError,
   retryResearch,
 } from '../../services/research.service';
+import * as researchServiceNs from '../../services/research.service';
 import { ApiError } from '../../services/api';
 import { shortcutLabel } from '../../lib/shortcuts';
 import { SafeMarkdown } from '../common/SafeMarkdown';
@@ -28,9 +31,12 @@ import { getDefaultModel } from '../../lib/defaultModel';
 interface ProjectResearchPanelProps {
   project: ResearchProject;
   isArchived: boolean;
+  readOnly?: boolean;
   /** Documents ready to answer from. Leave undefined when unknown. */
   readyCount?: number;
   preparingCount?: number;
+  researchSyncSignal?: number;
+  onActivity?: (activity: 'idle' | 'asking') => void;
   /** Opens a run's progress page (used after "Try again"). */
   onOpenRun?: (researchId: string) => void;
 }
@@ -42,8 +48,11 @@ const MAX_QUESTION_LENGTH = 2000;
 export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
   project,
   isArchived,
+  readOnly = false,
   readyCount,
   preparingCount = 0,
+  researchSyncSignal = 0,
+  onActivity,
   onOpenRun,
 }) => {
   const [question, setQuestion] = useState('');
@@ -59,8 +68,28 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
   // The research item a failed question created. Asking again (edited or
   // not) runs that same item again instead of adding a duplicate.
   const [failedResearchId, setFailedResearchId] = useState<string | null>(null);
+  const [recentRuns, setRecentRuns] = useState<ResearchResponse[]>([]);
   const inFlight = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const loadRecentRuns = useCallback(async () => {
+    const keys = Object.keys(researchServiceNs);
+    const listFn = keys.includes('listResearch')
+      ? researchServiceNs.listResearch
+      : keys.includes('researchService')
+        ? researchServiceNs.researchService?.listResearch
+        : undefined;
+    if (typeof listFn !== 'function') return;
+    try {
+      const res = await listFn({
+        projectId: project.id,
+        limit: 10,
+      });
+      setRecentRuns(res.items);
+    } catch {
+      // Non-critical list; keep UI responsive even if unreachable.
+    }
+  }, [project.id]);
 
   // Track active project id and request epoch so stale responses after a project switch are ignored
   const activeProjectIdRef = useRef(project.id);
@@ -77,7 +106,12 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
     setResearchState('idle');
     setSelectedCitationId(null);
     setFailedResearchId(null);
+    setRecentRuns([]);
   }, [project.id]);
+
+  useEffect(() => {
+    void loadRecentRuns();
+  }, [loadRecentRuns, researchSyncSignal]);
 
   useEffect(() => {
     return () => {
@@ -99,8 +133,9 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
   }, [researchState]);
 
   const noReadyDocuments = readyCount === 0;
+  const effectiveReadOnly = isArchived || readOnly;
   const isDisabled =
-    isArchived ||
+    effectiveReadOnly ||
     noReadyDocuments ||
     researchState === 'submitting' ||
     !question.trim() ||
@@ -158,6 +193,7 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
       requestEpochRef.current !== submitEpoch;
 
     setResearchState('submitting');
+    onActivity?.('asking');
     setError(null);
     setResult(null);
     setSelectedCitationId(null);
@@ -174,6 +210,7 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
 
       setResult(response);
       setResearchState('complete');
+      void loadRecentRuns();
     } catch (err) {
       if (isStaleSubmission()) return;
       const researchId = researchIdFromError(err);
@@ -187,6 +224,7 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
       setResearchState('failed');
     } finally {
       inFlight.current = false;
+      onActivity?.('idle');
     }
   };
 
@@ -223,6 +261,11 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
           <div className="flex items-start gap-2.5 rounded-lg border border-warning-line bg-warning-soft px-4 py-3 text-[13px] text-warning">
             <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
             <p>Research is disabled for archived projects.</p>
+          </div>
+        ) : effectiveReadOnly ? (
+          <div className="flex items-start gap-2.5 rounded-lg border border-line bg-subtle/40 px-4 py-3 text-[13px] text-ink-soft">
+            <Info className="w-4 h-4 mt-0.5 shrink-0 text-ink-muted" />
+            <p>View-only collaborators can read existing research reports and follow-ups, but cannot start new research.</p>
           </div>
         ) : (
           <form onSubmit={(e) => void handleSubmit(e)} className="space-y-3">
@@ -355,6 +398,50 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
           onSelectCitation={setSelectedCitationId}
         />
       )}
+
+      {recentRuns.length > 0 && (
+        <section
+          aria-label="Recent project research"
+          className="rounded-lg border border-line bg-panel shadow-xs overflow-hidden"
+        >
+          <div className="flex items-center justify-between border-b border-line px-4 py-2.5">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+              Shared project research ({recentRuns.length})
+            </h3>
+          </div>
+          <div className="divide-y divide-line">
+            {recentRuns.map((run) => {
+              const targetPath =
+                run.status === 'completed'
+                  ? `/research/${run.id}`
+                  : `/research/${run.id}/progress`;
+              return (
+                <Link
+                  key={run.id}
+                  to={targetPath}
+                  className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm transition-colors hover:bg-subtle/60"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-ink">{run.title}</p>
+                    <p className="mt-0.5 flex items-center gap-1.5 text-xs text-ink-muted">
+                      {run.ownerName ? <span>by {run.ownerName}</span> : null}
+                      {run.ownerName ? <span aria-hidden="true">·</span> : null}
+                      <span className="capitalize">{run.status}</span>
+                    </p>
+                  </div>
+                  <span className="inline-flex shrink-0 items-center gap-1 text-xs text-ink-muted">
+                    <Clock className="h-3 w-3" />
+                    {new Date(run.updatedAt).toLocaleDateString(undefined, {
+                      month: 'short',
+                      day: 'numeric',
+                    })}
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
+        </section>
+      )}
     </div>
   );
 };
@@ -436,11 +523,10 @@ const ResearchResult: React.FC<ResearchResultProps> = ({
                         : citation.citationId
                     )
                   }
-                  className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium transition-colors ${
-                    selectedCitationId === citation.citationId
-                      ? 'border-accent bg-accent-soft text-accent'
-                      : 'border-line bg-panel text-ink-soft hover:border-line-strong hover:text-ink'
-                  }`}
+                  className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium transition-colors ${selectedCitationId === citation.citationId
+                    ? 'border-accent bg-accent-soft text-accent'
+                    : 'border-line bg-panel text-ink-soft hover:border-line-strong hover:text-ink'
+                    }`}
                 >
                   <InlineCitationLabel citation={citation} />
                 </button>

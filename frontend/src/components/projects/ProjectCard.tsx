@@ -65,11 +65,31 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <h3 className="truncate text-sm font-medium text-ink">{project.name}</h3>
+              {project.isShared && (
+                <span className="shrink-0 rounded-full border border-accent-line bg-accent-soft px-2 py-0.5 text-[11px] font-medium text-accent">
+                  {(project.myRole ?? 'owner') === 'owner'
+                    ? 'Shared'
+                    : project.myRole === 'editor'
+                      ? 'Shared · Edit'
+                      : 'Shared · View'}
+                </span>
+              )}
             </div>
             <p className="mt-0.5 truncate text-[13px] text-ink-muted">
               {project.description || 'No description'}
             </p>
-            {counts && <p className="mt-1 text-xs tabular-nums text-ink-soft">{counts}</p>}
+            {(counts || (project.ownerName && (project.myRole ?? 'owner') !== 'owner')) && (
+              <p className="mt-1 text-xs tabular-nums text-ink-soft">
+                {[
+                  counts,
+                  project.ownerName && (project.myRole ?? 'owner') !== 'owner'
+                    ? `Owner: ${project.ownerName}`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </p>
+            )}
             <p className="mt-1 text-xs text-ink-muted sm:hidden">
               Updated {formatProjectDate(project.updatedAt)}
             </p>
@@ -88,8 +108,20 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
           className="justify-self-end"
           items={[
             { label: 'Open project', icon: ExternalLink, onSelect: () => onOpen(project) },
-            { label: 'Rename or edit', icon: Pencil, onSelect: () => setIsEditOpen(true) },
-            { label: 'Archive project', icon: Archive, danger: true, separated: true, onSelect: () => setIsArchiveOpen(true) },
+            ...((project.myRole ?? 'owner') === 'owner' || project.myRole === 'editor'
+              ? [{ label: 'Rename or edit', icon: Pencil, onSelect: () => setIsEditOpen(true) }]
+              : []),
+            ...((project.myRole ?? 'owner') === 'owner'
+              ? [
+                  {
+                    label: 'Archive project',
+                    icon: Archive,
+                    danger: true,
+                    separated: true,
+                    onSelect: () => setIsArchiveOpen(true),
+                  },
+                ]
+              : []),
           ]}
         />
       </div>

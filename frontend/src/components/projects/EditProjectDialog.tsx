@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { PrimaryButton } from '../common/PrimaryButton';
 import { ResearchProject } from '../../types/project';
+import { ApiError } from '../../services/api';
 import {
   getProjectErrorMessage,
   projectsService,
@@ -62,11 +63,16 @@ export const EditProjectDialog: React.FC<EditProjectDialogProps> = ({
       const updated = await projectsService.updateProject(project.id, {
         name: trimmedName,
         description: description.trim() || null,
+        ...(project.version !== undefined ? { version: project.version } : {}),
       });
       addToast({ type: 'success', title: 'Project updated' });
       onUpdated(updated);
     } catch (err) {
-      setError(getProjectErrorMessage(err, 'Failed to update project.'));
+      if (err instanceof ApiError && err.status === 409) {
+        setError('A collaborator updated this project just now. Close and reopen to see their latest changes.');
+      } else {
+        setError(getProjectErrorMessage(err, 'Failed to update project.'));
+      }
     } finally {
       setIsSubmitting(false);
     }
