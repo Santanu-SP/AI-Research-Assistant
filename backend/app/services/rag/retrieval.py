@@ -11,12 +11,18 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.core.config import Settings
 from app.core.errors import AppError
+from app.domain.collaboration import CollaboratorRole
 from app.domain.documents import DocumentStatus
+from app.models.collaboration import ResearchMember
 from app.models.document import Document, DocumentChunk
 from app.models.project import ResearchProject
+from app.models.research import Research, research_documents
 from app.schemas.retrieval import RetrievalCandidate
+from app.services.collaboration.access import (
+    accessible_project_ids_select,
+    require_project_access,
+)
 from app.services.rag.embeddings import EmbeddingService, embedding_service_for
-from app.services.research import projects as project_service
 
 # Standard reciprocal-rank fusion constant. A larger k softens the penalty
 # for a result that only one of the two lists ranked highly.
@@ -105,16 +111,43 @@ def _active_project_filter():
     )
 
 
-def _scope_filters(project_id: UUID | None, document_ids: list[UUID] | None) -> list:
-    """Limit a search to one project and/or a chosen set of documents.
+def _shared_research_document_ids_select(user_id: UUID):
+    """Document IDs attached to individual research chats shared with ``user_id``."""
+    shared_runs = select(Research.id).where(
+        Research.archived_at.is_(None),
+        or_(
+            Research.user_id == user_id,
+            Research.id.in_(
+                select(ResearchMember.research_id).where(ResearchMember.user_id == user_id)
+            ),
+        ),
+    )
+    return select(research_documents.c.document_id).where(
+        research_documents.c.research_id.in_(shared_runs)
+    )
 
-    ``document_ids=None`` means no document limit; an empty list matches
-    nothing, so a run whose documents were all deleted finds no evidence
-    instead of quietly searching everything.
-    """
+
+def _scope_filters(
+    user_id: UUID,
+    project_id: UUID | None,
+    document_ids: list[UUID] | None,
+) -> list:
+    """Limit a search to one project, accessible shared documents, or a chosen set."""
     filters = []
     if project_id is not None:
         filters.append(Document.project_id == project_id)
+    else:
+        access_clauses = [
+            Document.user_id == user_id,
+            Document.project_id.in_(
+                accessible_project_ids_select(user_id, include_archived=False)
+            ),
+        ]
+        if document_ids is not None:
+            access_clauses.append(
+                Document.id.in_(_shared_research_document_ids_select(user_id))
+            )
+        filters.append(or_(*access_clauses))
     if document_ids is not None:
         filters.append(Document.id.in_(list(document_ids)))
     return filters
@@ -134,12 +167,11 @@ def semantic_search(
 ) -> list[RankedChunk]:
     distance = DocumentChunk.embedding.cosine_distance(query_vector)
     filters = [
-        Document.user_id == user_id,
         Document.status == DocumentStatus.INDEXED,
         DocumentChunk.embedding.is_not(None),
         _active_project_filter(),
     ]
-    filters.extend(_scope_filters(project_id, document_ids))
+    filters.extend(_scope_filters(user_id, project_id, document_ids))
     rows = session.execute(
         select(DocumentChunk, distance.label("distance"))
         .options(joinedload(DocumentChunk.document))
@@ -166,12 +198,11 @@ def keyword_search(
     query_expression = _any_term_tsquery(query)
     rank = func.ts_rank_cd(DocumentChunk.search_vector, query_expression)
     filters = [
-        Document.user_id == user_id,
         Document.status == DocumentStatus.INDEXED,
         DocumentChunk.search_vector.op("@@")(query_expression),
         _active_project_filter(),
     ]
-    filters.extend(_scope_filters(project_id, document_ids))
+    filters.extend(_scope_filters(user_id, project_id, document_ids))
     rows = session.execute(
         select(DocumentChunk, rank.label("rank"))
         .options(joinedload(DocumentChunk.document))
@@ -209,11 +240,10 @@ def _sqlite_hybrid_search(
     document_ids: list[UUID] | None = None,
 ) -> tuple[list[RankedChunk], list[RankedChunk]]:
     filters = [
-        Document.user_id == user_id,
         Document.status == DocumentStatus.INDEXED,
         _active_project_filter(),
     ]
-    filters.extend(_scope_filters(project_id, document_ids))
+    filters.extend(_scope_filters(user_id, project_id, document_ids))
     chunks = list(
         session.scalars(
             select(DocumentChunk)
@@ -303,11 +333,10 @@ def _postgres_hybrid_search(
 ) -> tuple[list[RankedChunk], list[RankedChunk]]:
     """Fetch vector and FTS top-k candidates in a single PostgreSQL round-trip."""
     base_filters = [
-        Document.user_id == user_id,
         Document.status == DocumentStatus.INDEXED,
         _active_project_filter(),
     ]
-    base_filters.extend(_scope_filters(project_id, document_ids))
+    base_filters.extend(_scope_filters(user_id, project_id, document_ids))
 
     distance = DocumentChunk.embedding.cosine_distance(query_vector)
     vec_q = (
@@ -380,7 +409,9 @@ def retrieve(
         )
     normalized = search_text_for(normalized)
     if project_id is not None:
-        project_service.get_project(session, project_id, user_id)
+        require_project_access(
+            session, project_id, user_id, min_role=CollaboratorRole.VIEWER
+        )
     if document_ids is not None and not document_ids:
         return []
 

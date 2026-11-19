@@ -1,5 +1,6 @@
 import type { ContentLevel, SourceType as DocumentSourceType } from './document';
 import type { DiscoveryScope } from './discovery';
+import type { CollaboratorRole } from './collaboration';
 
 export type ResearchStatus = 'completed' | 'researching' | 'draft' | 'failed';
 export type ResearchDepth = 'quick' | 'standard' | 'deep';
@@ -26,6 +27,11 @@ export interface ResearchResponse {
   domain: string | null;
   status: ResearchStatus;
   researchDepth: ResearchDepth;
+  version?: number;
+  myRole?: CollaboratorRole;
+  isShared?: boolean;
+  memberCount?: number;
+  ownerName?: string | null;
   sourceCount: number;
   /** True when the run reads only `documentIds`; false for project and older runs. */
   documentsScoped?: boolean;
@@ -48,6 +54,7 @@ export interface UpdateResearchInput {
   question?: string;
   domain?: string | null;
   researchDepth?: ResearchDepth;
+  version?: number;
 }
 
 export interface ResearchListParams {

@@ -27,6 +27,7 @@ from app.services.documents.storage import DocumentStorageBackend, get_document_
 from app.services.research import runs as research_service
 from app.services.research import reports as reports_service
 from app.services.rag import retrieval as retrieval_service
+from app.services.collaboration.service import attach_research_collab_metadata
 from app.services.rag import query as rag_service
 
 router = APIRouter(prefix="/research", tags=["research"])
@@ -238,6 +239,7 @@ def get_research(
     user: CurrentUser,
 ) -> ResearchResponse:
     record = research_service.get_research(session, research_id, user.id)
+    attach_research_collab_metadata(session, [record], user.id)
     return research_service.attach_source_counts(session, [record])[0]
 
 

@@ -6,6 +6,7 @@ from uuid import UUID
 
 from pydantic import ConfigDict, Field, StringConstraints, model_validator
 
+from app.domain.collaboration import CollaboratorRole
 from app.domain.research import (
     ResearchDepth,
     ResearchProgressStage,
@@ -45,10 +46,11 @@ class ResearchUpdate(ApiSchema):
     question: QuestionText | None = None
     domain: DomainText | None = None
     research_depth: ResearchDepth | None = None
+    version: int | None = Field(default=None, ge=1)
 
     @model_validator(mode="after")
     def validate_partial_update(self) -> ResearchUpdate:
-        if not self.model_fields_set:
+        if not (self.model_fields_set - {"version"}):
             raise ValueError("At least one field must be provided")
 
         non_nullable_fields = {"title", "question", "research_depth"}
@@ -70,6 +72,11 @@ class ResearchResponse(ApiSchema):
     domain: str | None
     status: ResearchStatus
     research_depth: ResearchDepth
+    version: int = Field(default=1, ge=1)
+    my_role: CollaboratorRole = CollaboratorRole.OWNER
+    is_shared: bool = False
+    member_count: int = Field(default=1, ge=1)
+    owner_name: str | None = None
     source_count: int = 0
     # True when the run reads only ``document_ids``; false for project runs
     # and older runs, which use the project's or all of the user's documents.

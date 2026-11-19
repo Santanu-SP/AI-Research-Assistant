@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from app.api.routes.api_keys import router as api_keys_router
 from app.api.routes.auth import router as auth_router
+from app.api.routes.collaboration import router as collaboration_router
 from app.api.routes.discovery import router as discovery_router
 from app.api.routes.documents import router as documents_router
 from app.api.routes.health import router as health_router
@@ -9,10 +10,12 @@ from app.api.routes.jobs import router as jobs_router
 from app.api.routes.project_documents import router as project_documents_router
 from app.api.routes.projects import router as projects_router
 from app.api.routes.research import router as research_router
+from app.api.routes.ws import router as ws_router
 
 api_router = APIRouter()
 api_router.include_router(auth_router)
 api_router.include_router(api_keys_router)
+api_router.include_router(collaboration_router)
 api_router.include_router(discovery_router)
 api_router.include_router(health_router)
 api_router.include_router(jobs_router)
@@ -20,3 +23,4 @@ api_router.include_router(projects_router)
 api_router.include_router(project_documents_router)
 api_router.include_router(research_router)
 api_router.include_router(documents_router)
+api_router.include_router(ws_router)

@@ -13,7 +13,11 @@ import { ProjectSourcesPanel } from '../components/projects/ProjectSourcesPanel'
 import { ProjectResearchPanel } from '../components/projects/ProjectResearchPanel';
 import { DocumentsPanel } from '../components/documents/DocumentsPanel';
 import { useDocumentLibrary } from '../hooks/useDocumentLibrary';
+import { useRealtimeRoom } from '../hooks/useRealtimeRoom';
 import { useProject } from '../app/ProjectContext';
+import { useAuth } from '../app/AuthContext';
+import { useToast } from '../app/ToastContext';
+import type { RealtimeEventEnvelope } from '../types/collaboration';
 
 type WorkspaceTab = 'ask' | 'documents';
 
@@ -25,9 +29,12 @@ const TABS: { id: WorkspaceTab; label: string; icon: typeof FileText }[] = [
 export const ProjectWorkspacePage: React.FC = () => {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const { addToast } = useToast();
   const { selectedProject, projectLoading, projectError, selectProject, refreshProject } =
     useProject();
   const [searchParams, setSearchParams] = useSearchParams();
+  const [researchSyncSignal, setResearchSyncSignal] = useState(0);
   const activeTab: WorkspaceTab = searchParams.get('tab') === 'documents' ? 'documents' : 'ask';
   const [visitedTabs, setVisitedTabs] = useState<{
     projectId?: string;
@@ -79,6 +86,59 @@ export const ProjectWorkspacePage: React.FC = () => {
   const askLibrary = useDocumentLibrary(
     projectReady && askMounted && projectId ? { projectId } : null,
   );
+  const reloadAskLibrary = askLibrary.reload;
+
+  const handleRealtimeEvent = useCallback(
+    (event: RealtimeEventEnvelope) => {
+      const eventProjectId =
+        (event.payload as { projectId?: string | null })?.projectId ?? projectId ?? null;
+      if (event.type === 'project.updated' || event.type === 'project.archived' || event.type === 'project.restored') {
+        void refreshProject();
+        return;
+      }
+      if (event.type === 'project.deleted') {
+        addToast({ type: 'info', title: 'Project removed', description: 'This project was deleted by the owner.' });
+        navigate('/projects', { replace: true });
+        return;
+      }
+      if (event.type === 'member.removed') {
+        const removedUserId = (event.payload as { userId?: string })?.userId;
+        if (removedUserId && removedUserId === user?.id) {
+          addToast({ type: 'info', title: 'Access removed', description: 'You no longer have access to this project.' });
+          navigate('/projects', { replace: true });
+          return;
+        }
+        void refreshProject();
+        return;
+      }
+      if (event.type === 'member.joined' || event.type === 'member.updated') {
+        void refreshProject();
+        return;
+      }
+      if (event.type === 'document.added' || event.type === 'document.updated' || event.type === 'document.deleted') {
+        reloadAskLibrary();
+        window.dispatchEvent(
+          new CustomEvent('documents:remote-sync', { detail: { projectId: eventProjectId } }),
+        );
+        return;
+      }
+      if (
+        event.type.startsWith('research.') ||
+        event.type === 'followup.created'
+      ) {
+        setResearchSyncSignal((prev) => prev + 1);
+        window.dispatchEvent(new Event('research-history:refresh'));
+      }
+    },
+    [projectId, refreshProject, reloadAskLibrary, navigate, addToast, user?.id],
+  );
+
+  const { connectionState, presence, sendActivity } = useRealtimeRoom({
+    resourceType: 'project',
+    resourceId: projectId,
+    enabled: projectReady,
+    onEvent: handleRealtimeEvent,
+  });
 
   // When the URL project changes, update the selected project context
   useEffect(() => {
@@ -88,6 +148,8 @@ export const ProjectWorkspacePage: React.FC = () => {
   }, [projectId, selectProject]);
 
   const isArchived = Boolean(selectedProject?.archivedAt);
+  const isViewer = selectedProject?.myRole === 'viewer';
+  const isReadOnly = isArchived || isViewer;
 
   if (projectLoading && !projectReady) {
     return (
@@ -154,6 +216,9 @@ export const ProjectWorkspacePage: React.FC = () => {
             project={selectedProject}
             onUpdated={() => void refreshProject()}
             onArchived={() => navigate('/projects')}
+            presence={presence}
+            connectionState={connectionState}
+            currentUserId={user?.id ?? null}
           />
 
           <div role="tablist" aria-label="Project sections" className="mt-8 flex items-center gap-5 border-b border-line">
@@ -188,14 +253,17 @@ export const ProjectWorkspacePage: React.FC = () => {
                   <ProjectResearchPanel
                     project={selectedProject}
                     isArchived={isArchived}
+                    readOnly={isReadOnly}
                     readyCount={askLibrary.isLoading || askLibrary.error ? undefined : askLibrary.readyCount}
                     preparingCount={askLibrary.preparingCount}
+                    researchSyncSignal={researchSyncSignal}
+                    onActivity={(activity) => sendActivity(activity)}
                     onOpenRun={(researchId) => navigate(`/research/${researchId}/progress`)}
                   />
                   <DocumentsPanel
                     library={askLibrary}
                     projectId={selectedProject.id}
-                    readOnly={isArchived}
+                    readOnly={isReadOnly}
                     manageHref={`/projects/${selectedProject.id}?tab=documents`}
                     className="lg:sticky lg:top-20 lg:max-h-[calc(100vh-7rem)]"
                   />
@@ -204,7 +272,12 @@ export const ProjectWorkspacePage: React.FC = () => {
             </div>
             <div id="panel-documents" role="tabpanel" aria-labelledby="tab-documents" hidden={activeTab !== 'documents'}>
               {documentsMounted && (
-                <ProjectSourcesPanel project={selectedProject} isArchived={isArchived} />
+                <ProjectSourcesPanel
+                  project={selectedProject}
+                  isArchived={isArchived}
+                  readOnly={isViewer}
+                  onActivity={(activity) => sendActivity(activity)}
+                />
               )}
             </div>
           </div>

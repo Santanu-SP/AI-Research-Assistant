@@ -4,6 +4,7 @@ from uuid import UUID
 
 from pydantic import ConfigDict, Field, StringConstraints, model_validator
 
+from app.domain.collaboration import CollaboratorRole
 from app.schemas.base import ApiSchema
 
 ProjectName = Annotated[
@@ -26,10 +27,11 @@ class ResearchProjectUpdate(ApiSchema):
 
     name: ProjectName | None = None
     description: ProjectDescription | None = None
+    version: int | None = Field(default=None, ge=1)
 
     @model_validator(mode="after")
     def validate_partial_update(self) -> "ResearchProjectUpdate":
-        if not self.model_fields_set:
+        if not (self.model_fields_set - {"version"}):
             raise ValueError("At least one field must be provided")
         if "name" in self.model_fields_set and self.name is None:
             raise ValueError("Project name cannot be null")
@@ -40,6 +42,11 @@ class ResearchProjectResponse(ApiSchema):
     id: UUID
     name: str
     description: str | None
+    version: int = Field(default=1, ge=1)
+    my_role: CollaboratorRole = CollaboratorRole.OWNER
+    is_shared: bool = False
+    member_count: int = Field(default=1, ge=1)
+    owner_name: str | None = None
     archived_at: datetime | None
     created_at: datetime
     updated_at: datetime

@@ -16,6 +16,8 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.core.errors import AppError
+from app.core.realtime_bus import project_room, publish_realtime_event
+from app.domain.collaboration import CollaboratorRole
 from app.domain.documents import ContentLevel, DocumentStatus, DocumentType, MetadataProvenance
 from app.domain.ingestion import CanonicalMetadata, ParsedDocument, ParsedNode
 from app.models.document import Document
@@ -26,6 +28,7 @@ from app.schemas.discovery import (
     DiscoveryScope,
     DiscoverySearchResponse,
 )
+from app.services.collaboration.access import actor_for_user, require_project_access
 from app.services.discovery.providers import normalize_doi, search_curated_sources
 from app.services.documents.records import _remove_document
 from app.services.documents.storage import LocalDocumentStorage, R2DocumentStorage
@@ -38,7 +41,6 @@ from app.services.ingestion.pipeline import (
 )
 from app.services.ingestion.web import WebsiteIngestionAdapter, chunk_web_sections, validate_public_url
 from app.services.rag.embeddings import EmbeddingService
-from app.services.research import projects as project_service
 
 logger = logging.getLogger(__name__)
 
@@ -64,9 +66,9 @@ def _find_matching_document(
     if not conditions:
         return None
 
-    filters = [Document.user_id == user_id, or_(*conditions)]
+    filters = [or_(*conditions)]
     if project_id is None:
-        filters.append(Document.project_id.is_(None))
+        filters.extend([Document.user_id == user_id, Document.project_id.is_(None)])
     else:
         filters.append(Document.project_id == project_id)
     return session.scalar(select(Document).where(*filters).order_by(Document.created_at.desc()).limit(1))
@@ -90,7 +92,9 @@ def search_and_annotate(
             code="discovery_disabled",
         )
     if project_id is not None:
-        project_service.get_project(session, project_id, user_id)
+        require_project_access(
+            session, project_id, user_id, min_role=CollaboratorRole.VIEWER
+        )
 
     outcome = search_curated_sources(
         query,
@@ -641,7 +645,9 @@ def import_discovered_sources(
             code="discovery_disabled",
         )
     if project_id is not None:
-        project_service.get_project(session, project_id, user_id)
+        require_project_access(
+            session, project_id, user_id, min_role=CollaboratorRole.EDITOR
+        )
 
     documents: list[Document] = []
     reused_count = 0
@@ -683,6 +689,18 @@ def import_discovered_sources(
                 reused_count += 1
             else:
                 imported_count += 1
+                if doc.project_id is not None:
+                    publish_realtime_event(
+                        [project_room(doc.project_id)],
+                        "document.added",
+                        {
+                            "projectId": str(doc.project_id),
+                            "documentId": str(doc.id),
+                            "name": doc.name,
+                            "status": str(doc.status.value),
+                        },
+                        actor=actor_for_user(session, user_id),
+                    )
         except (AppError, DocumentIngestionError) as exc:
             failed.append(
                 DiscoveryImportFailure(

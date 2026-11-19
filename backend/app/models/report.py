@@ -207,6 +207,11 @@ class ReportFollowup(TimestampMixin, Base):
         nullable=False,
         index=True,
     )
+    user_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     question: Mapped[str] = mapped_column(Text, nullable=False)
     answer: Mapped[str] = mapped_column(Text, nullable=False)
     citation_numbers: Mapped[list[int]] = mapped_column(

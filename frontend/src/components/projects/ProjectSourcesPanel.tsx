@@ -17,10 +17,17 @@ import { useToast } from '../../app/ToastContext';
 interface ProjectSourcesPanelProps {
   project: ResearchProject;
   isArchived: boolean;
+  readOnly?: boolean;
+  onActivity?: (activity: 'idle' | 'uploading') => void;
 }
 
 /** The project's Documents tab: every document that belongs to this project. */
-export const ProjectSourcesPanel: React.FC<ProjectSourcesPanelProps> = ({ project, isArchived }) => {
+export const ProjectSourcesPanel: React.FC<ProjectSourcesPanelProps> = ({
+  project,
+  isArchived,
+  readOnly = false,
+  onActivity,
+}) => {
   const { addToast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
   const [isUploadOpen, setIsUploadOpen] = useState(false);
@@ -29,6 +36,7 @@ export const ProjectSourcesPanel: React.FC<ProjectSourcesPanelProps> = ({ projec
     useDocumentLibrary({ projectId: project.id }, searchQuery);
   const actions = useDocumentActions(reload);
   const searching = Boolean(searchQuery.trim());
+  const isReadOnly = isArchived || readOnly;
 
   const handleUploaded = useCallback(
     (doc: Document) => {
@@ -88,17 +96,26 @@ export const ProjectSourcesPanel: React.FC<ProjectSourcesPanelProps> = ({ projec
           </p>
         )}
 
-        {!isArchived && (
+        {!isReadOnly && (
           <div className="flex items-center gap-2 sm:ml-auto">
             <PrimaryButton
               variant="outline"
               id="discover-sources-btn"
-              onClick={() => setIsDiscoverOpen(true)}
+              onClick={() => {
+                onActivity?.('uploading');
+                setIsDiscoverOpen(true);
+              }}
             >
               <Globe className="h-4 w-4" />
               Discover
             </PrimaryButton>
-            <PrimaryButton id="upload-document-btn" onClick={() => setIsUploadOpen(true)}>
+            <PrimaryButton
+              id="upload-document-btn"
+              onClick={() => {
+                onActivity?.('uploading');
+                setIsUploadOpen(true);
+              }}
+            >
               <Upload className="h-4 w-4" />
               Upload
             </PrimaryButton>
@@ -125,12 +142,28 @@ export const ProjectSourcesPanel: React.FC<ProjectSourcesPanelProps> = ({ projec
           description={
             isArchived
               ? 'This project is archived, so files can’t be added.'
-              : 'Upload files or discover trusted papers and articles from OpenAlex, Crossref, arXiv, and Wikipedia. Questions in this project are answered only from these files.'
+              : isReadOnly
+                ? 'View-only access: only editors or the owner can upload or discover files here.'
+                : 'Upload files or discover trusted papers and articles from OpenAlex, Crossref, arXiv, and Wikipedia. Questions in this project are answered only from these files.'
           }
-          primaryActionLabel={isArchived ? undefined : 'Upload a file'}
-          onPrimaryAction={isArchived ? undefined : () => setIsUploadOpen(true)}
-          secondaryActionLabel={isArchived ? undefined : 'Discover trusted sources'}
-          onSecondaryAction={isArchived ? undefined : () => setIsDiscoverOpen(true)}
+          primaryActionLabel={isReadOnly ? undefined : 'Upload a file'}
+          onPrimaryAction={
+            isReadOnly
+              ? undefined
+              : () => {
+                  onActivity?.('uploading');
+                  setIsUploadOpen(true);
+                }
+          }
+          secondaryActionLabel={isReadOnly ? undefined : 'Discover trusted sources'}
+          onSecondaryAction={
+            isReadOnly
+              ? undefined
+              : () => {
+                  onActivity?.('uploading');
+                  setIsDiscoverOpen(true);
+                }
+          }
         />
       ) : (
         <div
@@ -143,11 +176,11 @@ export const ProjectSourcesPanel: React.FC<ProjectSourcesPanelProps> = ({ projec
               <SourceCard
                 document={doc}
                 onOpen={actions.open}
-                onDelete={!isArchived ? actions.remove : undefined}
-                onRetry={!isArchived ? actions.retry : undefined}
+                onDelete={!isReadOnly ? actions.remove : undefined}
+                onRetry={!isReadOnly ? actions.retry : undefined}
                 isRetrying={actions.retryingId === doc.id}
                 isDeleting={actions.deletingId === doc.id}
-                isArchived={isArchived}
+                isArchived={isReadOnly}
               />
             </div>
           ))}
@@ -172,13 +205,19 @@ export const ProjectSourcesPanel: React.FC<ProjectSourcesPanelProps> = ({ projec
       <ProjectUploadModal
         isOpen={isUploadOpen}
         projectId={project.id}
-        onClose={() => setIsUploadOpen(false)}
+        onClose={() => {
+          setIsUploadOpen(false);
+          onActivity?.('idle');
+        }}
         onUploaded={handleUploaded}
       />
       <SourceDiscoveryDialog
         isOpen={isDiscoverOpen}
         projectId={project.id}
-        onClose={() => setIsDiscoverOpen(false)}
+        onClose={() => {
+          setIsDiscoverOpen(false);
+          onActivity?.('idle');
+        }}
         onImported={handleDiscovered}
       />
       {actions.viewing && <DocumentViewer document={actions.viewing} onClose={actions.close} />}

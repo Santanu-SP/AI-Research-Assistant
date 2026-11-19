@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -14,8 +15,10 @@ from app.core.middleware import (
     SecurityHeadersMiddleware,
 )
 from app.core.rate_limit import RateLimiter
+from app.core.realtime_bus import clear_active_publisher, set_active_publisher
 from app.db.session import create_db_engine, create_session_factory
 from app.services.jobs.worker import JobWorker
+from app.services.realtime.hub import RealtimeHub
 
 # Room for multipart boundaries and headers around the uploaded file.
 MULTIPART_OVERHEAD_BYTES = 1024 * 1024
@@ -34,15 +37,20 @@ def create_app(app_settings: Settings | None = None) -> FastAPI:
     )
     session_factory = create_session_factory(engine)
     worker = JobWorker(session_factory, active_settings)
+    realtime_hub = RealtimeHub()
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         active_settings.validate_production_startup()
+        realtime_hub.set_loop(asyncio.get_running_loop())
+        set_active_publisher(realtime_hub)
         if active_settings.worker_enabled:
             worker.start()
         try:
             yield
         finally:
+            clear_active_publisher(realtime_hub)
+            realtime_hub.set_loop(None)
             worker.stop()
             engine.dispose()
 
@@ -60,6 +68,7 @@ def create_app(app_settings: Settings | None = None) -> FastAPI:
     application.state.db_session_factory = session_factory
     application.state.job_worker = worker
     application.state.rate_limiter = RateLimiter()
+    application.state.realtime_hub = realtime_hub
 
     # Middleware runs in reverse order of registration: the request id is
     # assigned first, then body limits, headers, and CORS.

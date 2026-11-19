@@ -76,9 +76,15 @@ export const getProjectErrorMessage = (
   if (error.status === 404) return 'Project not found.';
   if (error.status === 403) return 'You do not have access to this project.';
   if (error.status === 409) {
-    const data = error.data as { error?: { code?: string } } | null;
+    const data = error.data as { error?: { code?: string; message?: string } } | null;
     if (data?.error?.code === 'research_project_not_archived') {
       return 'Archive this project first.';
+    }
+    if (data?.error?.code === 'version_conflict') {
+      return (
+        data.error.message ||
+        'Another collaborator updated this project. Refresh and try again.'
+      );
     }
     return 'A project with that name already exists.';
   }

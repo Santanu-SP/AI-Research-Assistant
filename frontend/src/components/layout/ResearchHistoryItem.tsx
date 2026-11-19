@@ -172,6 +172,11 @@ export const ResearchHistoryItem: React.FC<ResearchHistoryItemProps> = ({
         <span className="min-w-0 flex-1 truncate">
           <Highlighted text={item.title} query={highlight} />
         </span>
+        {item.isShared && (
+          <span className="shrink-0 rounded bg-accent-soft px-1.5 py-0.5 text-[10px] font-medium text-accent">
+            Shared
+          </span>
+        )}
         {statusLabel && (
           <span
             title={statusLabel}
@@ -211,28 +216,37 @@ export const ResearchHistoryItem: React.FC<ResearchHistoryItemProps> = ({
             style={{ top: menuPosition.top, left: menuPosition.left, width: 168 }}
             className="menu-enter fixed z-[70] overflow-hidden rounded-lg border border-line bg-panel py-1 shadow-lg"
           >
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setMenuOpen(false);
-                setEditing(true);
-              }}
-              className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] text-ink-soft outline-none hover:bg-subtle hover:text-ink focus:bg-subtle focus:text-ink"
-            >
-              <Pencil className="h-3.5 w-3.5" /> Rename
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setMenuOpen(false);
-                onDelete();
-              }}
-              className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] text-danger outline-none hover:bg-danger-soft focus:bg-danger-soft"
-            >
-              <Trash2 className="h-3.5 w-3.5" /> Delete
-            </button>
+            {((item.myRole ?? 'owner') === 'owner' || item.myRole === 'editor') && (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false);
+                  setEditing(true);
+                }}
+                className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] text-ink-soft outline-none hover:bg-subtle hover:text-ink focus:bg-subtle focus:text-ink"
+              >
+                <Pencil className="h-3.5 w-3.5" /> Rename
+              </button>
+            )}
+            {(item.myRole ?? 'owner') === 'owner' && (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false);
+                  onDelete();
+                }}
+                className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] text-danger outline-none hover:bg-danger-soft focus:bg-danger-soft"
+              >
+                <Trash2 className="h-3.5 w-3.5" /> Delete
+              </button>
+            )}
+            {item.myRole === 'viewer' && (
+              <div className="px-3 py-2 text-[12px] text-ink-muted">
+                Shared · View only
+              </div>
+            )}
           </div>,
           document.body,
         )}

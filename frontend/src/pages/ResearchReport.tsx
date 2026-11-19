@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { TopBar } from '../components/layout/TopBar';
 import { StatusBadge } from '../components/common/StatusBadge';
@@ -9,12 +9,17 @@ import { CenteredLoadingState } from '../components/common/LoadingState';
 import { ErrorState } from '../components/common/ErrorState';
 import { PrimaryButton } from '../components/common/PrimaryButton';
 import { ModelControlBar } from '../components/research/ModelControlBar';
+import { PresenceBar } from '../components/collaboration/PresenceBar';
+import { ShareDialog } from '../components/collaboration/ShareDialog';
+import { useAuth } from '../app/AuthContext';
+import { useRealtimeRoom } from '../hooks/useRealtimeRoom';
 import { reportService } from '../services/report.service';
 import {
   ReportFollowupResponse,
   ResearchReportResponse,
   SourceResponse,
 } from '../types/report';
+import type { RealtimeEventEnvelope } from '../types/collaboration';
 import { ResearchDepth } from '../types/research';
 import { getDefaultModel } from '../lib/defaultModel';
 import { shortcutLabel } from '../lib/shortcuts';
@@ -30,6 +35,7 @@ import {
   MessageSquarePlus,
   Send,
   Sparkles,
+  Users,
 } from 'lucide-react';
 
 const INLINE_CITATION = /\[S\d+\]/;
@@ -75,6 +81,7 @@ const buildReportMarkdown = (
 export const ResearchReportPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [report, setReport] = useState<ResearchReportResponse | null>(null);
   const [sources, setSources] = useState<SourceResponse[]>([]);
   const [followups, setFollowups] = useState<ReportFollowupResponse[]>([]);
@@ -87,12 +94,12 @@ export const ResearchReportPage: React.FC = () => {
   const [localFallbackEnabled, setLocalFallbackEnabled] = useState<boolean | undefined>(undefined);
   const [selectedSourceNumber, setSelectedSourceNumber] = useState<number>(1);
   const [isMobileSourcesOpen, setIsMobileSourcesOpen] = useState(false);
+  const [isShareOpen, setIsShareOpen] = useState(false);
   const [copiedShare, setCopiedShare] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
-  useEffect(() => {
+  const refreshReport = useCallback(() => {
     if (!id) return;
-    
     reportService
       .getResearchReport(id)
       .then((data) => {
@@ -100,13 +107,65 @@ export const ResearchReportPage: React.FC = () => {
         setSources(data.sources);
         setFollowups(data.followups ?? []);
         if (data.sources.length > 0) {
-          setSelectedSourceNumber(data.sources[0].number);
+          setSelectedSourceNumber((prev) =>
+            data.sources.some((s) => s.number === prev) ? prev : data.sources[0].number,
+          );
         }
       })
       .catch((err) => {
         setError(err instanceof Error ? err : new Error('Unknown error occurred'));
       });
   }, [id]);
+
+  useEffect(() => {
+    refreshReport();
+  }, [refreshReport]);
+
+  const handleRealtimeEvent = useCallback(
+    (event: RealtimeEventEnvelope) => {
+      if (event.type === 'followup.created') {
+        const payload = event.payload as {
+          followup?: ReportFollowupResponse;
+          sources?: SourceResponse[];
+        };
+        if (payload.followup) {
+          const incoming = payload.followup;
+          setFollowups((prev) =>
+            prev.some((item) => item.id === incoming.id)
+              ? prev
+              : [...prev, incoming].sort((a, b) => a.position - b.position),
+          );
+        }
+        if (Array.isArray(payload.sources)) {
+          setSources(payload.sources);
+        }
+        return;
+      }
+
+      if (
+        event.type === 'research.updated' ||
+        event.type === 'research.completed' ||
+        event.type === 'member.added' ||
+        event.type === 'member.updated' ||
+        event.type === 'member.removed'
+      ) {
+        refreshReport();
+        return;
+      }
+
+      if (event.type === 'research.deleted') {
+        navigate('/');
+      }
+    },
+    [navigate, refreshReport],
+  );
+
+  const { connectionState, presence, sendActivity } = useRealtimeRoom({
+    resourceType: 'research',
+    resourceId: id,
+    enabled: Boolean(id && report),
+    onEvent: handleRealtimeEvent,
+  });
 
   const handleCitationSelect = (num: number) => {
     setSelectedSourceNumber(num);
@@ -145,6 +204,7 @@ export const ResearchReportPage: React.FC = () => {
     if (!id || !cleaned || followupSubmitting) return;
     setFollowupSubmitting(true);
     setFollowupError(null);
+    sendActivity('asking');
     try {
       const response = await reportService.askFollowup(id, {
         question: cleaned,
@@ -152,7 +212,11 @@ export const ResearchReportPage: React.FC = () => {
         ...(modelOverride ? { modelOverride } : {}),
         ...(localFallbackEnabled !== undefined ? { localFallbackEnabled } : {}),
       });
-      setFollowups((prev) => [...prev, response.followup]);
+      setFollowups((prev) =>
+        prev.some((item) => item.id === response.followup.id)
+          ? prev
+          : [...prev, response.followup].sort((a, b) => a.position - b.position),
+      );
       setSources(response.sources);
       setFollowupQuestion('');
     } catch (err) {
@@ -163,6 +227,7 @@ export const ResearchReportPage: React.FC = () => {
       );
     } finally {
       setFollowupSubmitting(false);
+      sendActivity('viewing');
     }
   };
 
@@ -197,6 +262,8 @@ export const ResearchReportPage: React.FC = () => {
     );
   }
 
+  const myRole = report.myRole ?? 'owner';
+  const canEdit = myRole === 'owner' || myRole === 'editor';
   const getSourceByNum = (n: number) => sources.find((s) => s.number === n);
   const renderCitation = (sourceNumber: number, key: string) => (
     <CitationChip
@@ -222,7 +289,13 @@ export const ResearchReportPage: React.FC = () => {
           </div>
         }
         rightActions={
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1.5">
+            <PresenceBar
+              presence={presence}
+              currentUserId={user?.id ?? null}
+              connectionState={connectionState}
+            />
+
             <button
               type="button"
               onClick={() => setIsMobileSourcesOpen(true)}
@@ -231,6 +304,16 @@ export const ResearchReportPage: React.FC = () => {
               <BookOpen className="h-4 w-4" />
               <span>Sources</span>
               <span className="tabular-nums text-ink-muted">{sources.length}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsShareOpen(true)}
+              aria-label="Share research"
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-panel px-2.5 text-[13px] font-medium text-ink-soft transition-colors hover:border-line-strong hover:bg-subtle hover:text-ink"
+            >
+              <Users className="h-4 w-4" />
+              <span className="hidden md:inline">Share</span>
             </button>
 
             <button
@@ -364,6 +447,11 @@ export const ResearchReportPage: React.FC = () => {
                         />
                       </div>
                       <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-ink-muted">
+                        {turn.authorName ? (
+                          <span className="font-medium text-ink-soft">
+                            Asked by {turn.authorName}
+                          </span>
+                        ) : null}
                         {turn.provider ? (
                           <span>{prettyModelName(turn.provider, turn.model)}</span>
                         ) : null}
@@ -378,68 +466,82 @@ export const ResearchReportPage: React.FC = () => {
                 </div>
               )}
 
-              <form
-                onSubmit={(e) => void handleFollowupSubmit(e)}
-                className="rounded-xl border border-line bg-subtle/25 p-4 shadow-xs"
-              >
-                <label
-                  htmlFor="followup-question-input"
-                  className="mb-2 block text-xs font-medium text-ink-muted"
+              {canEdit ? (
+                <form
+                  onSubmit={(e) => void handleFollowupSubmit(e)}
+                  className="rounded-xl border border-line bg-subtle/25 p-4 shadow-xs"
                 >
-                  Ask a follow-up grounded in this report and its attached sources
-                </label>
-                <textarea
-                  id="followup-question-input"
-                  aria-label="Follow-up question"
-                  rows={2}
-                  maxLength={2000}
-                  disabled={followupSubmitting}
-                  value={followupQuestion}
-                  onChange={(e) => setFollowupQuestion(e.target.value)}
-                  onKeyDown={(e) => {
-                    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-                      e.preventDefault();
-                      void handleFollowupSubmit();
-                    }
-                  }}
-                  placeholder="Ask a follow-up (e.g. explain this point simpler, or compare doses mentioned)…"
-                  className="w-full resize-none rounded-lg border border-line bg-panel px-3 py-2.5 text-[14px] text-ink placeholder:text-ink-muted focus:border-line-strong focus:outline-none disabled:opacity-60"
-                />
-
-                {followupError ? (
-                  <p role="alert" className="mt-2 text-xs text-danger">
-                    {followupError}
-                  </p>
-                ) : null}
-
-                <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-                  <ModelControlBar
-                    depth={researchDepth}
-                    onDepthChange={setResearchDepth}
-                    preferredProvider={preferredProvider}
-                    onPreferredProviderChange={setPreferredProvider}
-                    modelOverride={modelOverride}
-                    onModelOverrideChange={setModelOverride}
-                    localFallbackEnabled={localFallbackEnabled}
-                    onLocalFallbackChange={setLocalFallbackEnabled}
+                  <label
+                    htmlFor="followup-question-input"
+                    className="mb-2 block text-xs font-medium text-ink-muted"
+                  >
+                    Ask a follow-up grounded in this report and its attached sources
+                  </label>
+                  <textarea
+                    id="followup-question-input"
+                    aria-label="Follow-up question"
+                    rows={2}
+                    maxLength={2000}
                     disabled={followupSubmitting}
-                    menuPlacement="up"
+                    value={followupQuestion}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      setFollowupQuestion(next);
+                      sendActivity(next.trim().length > 0 ? 'typing' : 'viewing');
+                    }}
+                    onBlur={() => {
+                      if (!followupSubmitting) sendActivity('viewing');
+                    }}
+                    onKeyDown={(e) => {
+                      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                        e.preventDefault();
+                        void handleFollowupSubmit();
+                      }
+                    }}
+                    placeholder="Ask a follow-up (e.g. explain this point simpler, or compare doses mentioned)…"
+                    className="w-full resize-none rounded-lg border border-line bg-panel px-3 py-2.5 text-[14px] text-ink placeholder:text-ink-muted focus:border-line-strong focus:outline-none disabled:opacity-60"
                   />
-                  <div className="flex items-center gap-2">
-                    <span className="hidden text-[11px] text-ink-muted sm:inline">
-                      {shortcutLabel('Enter')}
-                    </span>
-                    <PrimaryButton
-                      type="submit"
-                      size="sm"
-                      disabled={followupSubmitting || !followupQuestion.trim()}
-                    >
-                      <Send className="h-3.5 w-3.5" />
-                      {followupSubmitting ? 'Answering…' : 'Ask follow-up'}
-                    </PrimaryButton>
+
+                  {followupError ? (
+                    <p role="alert" className="mt-2 text-xs text-danger">
+                      {followupError}
+                    </p>
+                  ) : null}
+
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                    <ModelControlBar
+                      depth={researchDepth}
+                      onDepthChange={setResearchDepth}
+                      preferredProvider={preferredProvider}
+                      onPreferredProviderChange={setPreferredProvider}
+                      modelOverride={modelOverride}
+                      onModelOverrideChange={setModelOverride}
+                      localFallbackEnabled={localFallbackEnabled}
+                      onLocalFallbackChange={setLocalFallbackEnabled}
+                      disabled={followupSubmitting}
+                      menuPlacement="up"
+                    />
+                    <div className="flex items-center gap-2">
+                      <span className="hidden text-[11px] text-ink-muted sm:inline">
+                        {shortcutLabel('Enter')}
+                      </span>
+                      <PrimaryButton
+                        type="submit"
+                        size="sm"
+                        disabled={followupSubmitting || !followupQuestion.trim()}
+                      >
+                        <Send className="h-3.5 w-3.5" />
+                        {followupSubmitting ? 'Answering…' : 'Ask follow-up'}
+                      </PrimaryButton>
+                    </div>
                   </div>
+                </form>
+              ) : (
+                <div className="rounded-xl border border-line bg-subtle/25 px-4 py-3 text-xs text-ink-muted">
+                  You have view-only access to this research report. Ask an owner to grant edit
+                  permission to ask follow-up questions.
                 </div>
-              </form>
+              )}
             </section>
           </div>
         </main>
@@ -471,6 +573,17 @@ export const ResearchReportPage: React.FC = () => {
             />
           </div>
         </div>
+      )}
+
+      {isShareOpen && (
+        <ShareDialog
+          isOpen={isShareOpen}
+          resourceType="research"
+          resourceId={id ?? report.researchId}
+          resourceTitle={report.title}
+          onClose={() => setIsShareOpen(false)}
+          onChanged={refreshReport}
+        />
       )}
     </div>
   );

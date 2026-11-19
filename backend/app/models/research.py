@@ -211,6 +211,12 @@ class Research(TimestampMixin, Base):
     # ("all", "scholarly" or "web"). The background job searches, imports and
     # attaches them, so starting the run returns right away.
     discovery_scope: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    version: Mapped[int] = mapped_column(
+        Integer,
+        default=1,
+        server_default="1",
+        nullable=False,
+    )
     attached_documents: Mapped[list["Document"]] = relationship(
         secondary=research_documents,
         lazy="selectin",
@@ -219,6 +225,11 @@ class Research(TimestampMixin, Base):
     )
     project: Mapped["ResearchProject | None"] = relationship(
         back_populates="research_runs"
+    )
+    members: Mapped[list["ResearchMember"]] = relationship(
+        back_populates="research",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
     report: Mapped["ResearchReport | None"] = relationship(
         back_populates="research",
