@@ -2,7 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ChevronRight } from 'lucide-react';
 import { StatusBadge } from '../components/common/StatusBadge';
+import { useCallback } from 'react';
 import { TopBar } from '../components/layout/TopBar';
+import { useRealtimeRoom } from '../hooks/useRealtimeRoom';
+import { PresenceBar } from '../components/collaboration/PresenceBar';
+import type { RealtimeEventEnvelope } from '../types/collaboration';
 import { ProgressStepper } from '../components/research/ProgressStepper';
 import { progressService } from '../services/progress.service';
 import { ResearchProgressResponse } from '../types/progress';
@@ -23,6 +27,30 @@ export const ResearchProgressPage: React.FC = () => {
   const [runKey, setRunKey] = useState(0);
   const history = useResearchHistory();
   const reloadHistory = history?.reload;
+
+  const handleRealtimeEvent = useCallback(
+    (event: RealtimeEventEnvelope) => {
+      if (
+        event.type === 'research.started' ||
+        event.type === 'research.progress' ||
+        event.type === 'research.completed' ||
+        event.type === 'research.failed'
+      ) {
+        if (event.type === 'research.completed' || event.type === 'research.failed') {
+          reloadHistory?.();
+        }
+        setRunKey((value) => value + 1);
+      }
+    },
+    [reloadHistory],
+  );
+
+  const { connectionState, presence } = useRealtimeRoom({
+    resourceType: 'research',
+    resourceId: id,
+    enabled: Boolean(id),
+    onEvent: handleRealtimeEvent,
+  });
 
   useEffect(() => {
     let mounted = true;
@@ -119,15 +147,18 @@ export const ResearchProgressPage: React.FC = () => {
           </div>
         }
         rightActions={
-          isCompleted ? (
-            <button
-              type="button"
-              onClick={() => navigate(`/research/${progress.id}`)}
-              className="inline-flex h-8 items-center rounded-md bg-solid px-3 text-[13px] font-medium text-on-solid shadow-xs transition-colors hover:bg-solid-hover"
-            >
-              View report
-            </button>
-          ) : null
+          <div className="flex items-center gap-2">
+            <PresenceBar presence={presence} connectionState={connectionState} />
+            {isCompleted ? (
+              <button
+                type="button"
+                onClick={() => navigate(`/research/${progress.id}`)}
+                className="inline-flex h-8 items-center rounded-md bg-solid px-3 text-[13px] font-medium text-on-solid shadow-xs transition-colors hover:bg-solid-hover"
+              >
+                View report
+              </button>
+            ) : null}
+          </div>
         }
       />
 
