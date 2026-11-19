@@ -22,6 +22,7 @@ const ResearchReportPage = page(() => import('../pages/ResearchReport'), 'Resear
 const ProjectsPage = page(() => import('../pages/Projects'), 'ProjectsPage');
 const ProjectWorkspacePage = page(() => import('../pages/ProjectWorkspace'), 'ProjectWorkspacePage');
 const LibraryPage = page(() => import('../pages/Library'), 'LibraryPage');
+const JoinInvitePage = page(() => import('../pages/JoinInvitePage'), 'JoinInvitePage');
 const NotFoundPage = page(() => import('../pages/NotFound'), 'NotFoundPage');
 const GoogleAuthCompletePage = page(
   () => import('../pages/GoogleAuthComplete'),
@@ -31,8 +32,15 @@ const GoogleAuthCompletePage = page(
 
 const ProtectedLayout: React.FC = () => {
   const { user, loading } = useAuth();
+  const location = useLocation();
   if (loading) return <CenteredLoadingState label="Restoring your session…" />;
-  return user ? <AppLayout /> : <Navigate to="/login" replace />;
+  if (!user) {
+    const target = `${location.pathname}${location.search}`;
+    const loginPath =
+      target && target !== '/' ? `/login?redirect=${encodeURIComponent(target)}` : '/login';
+    return <Navigate to={loginPath} replace />;
+  }
+  return <AppLayout />;
 };
 
 export const AppRouter: React.FC = () => {
@@ -48,6 +56,7 @@ export const AppRouter: React.FC = () => {
           <Route element={<ProtectedLayout />}>
             <Route path="/projects" element={<ProjectsPage />} />
             <Route path="/projects/:projectId" element={<ProjectWorkspacePage />} />
+            <Route path="/join/:token" element={<JoinInvitePage />} />
             <Route path="/research/new" element={<NewResearch />} />
             <Route path="/research/:id/progress" element={<ResearchProgressPage />} />
             {/* Research history lives in the sidebar now; keep old links working. */}

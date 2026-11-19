@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { AuthShell, authInputClass, authLabelClass } from '../components/auth/AuthShell';
 import { useAuth } from '../app/AuthContext';
 import { authErrorMessage, authService } from '../services/auth.service';
@@ -7,13 +7,19 @@ import { authErrorMessage, authService } from '../services/auth.service';
 export const RegisterPage: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  if (user) return <Navigate to="/research/new" replace />;
+  const rawRedirect = searchParams.get('redirect');
+  const safeRedirect =
+    rawRedirect && rawRedirect.startsWith('/') && !rawRedirect.startsWith('//') ? rawRedirect : null;
+  if (user) return <Navigate to={safeRedirect ?? '/research/new'} replace />;
+
+  const loginPath = safeRedirect ? `/login?redirect=${encodeURIComponent(safeRedirect)}` : '/login';
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -23,7 +29,7 @@ export const RegisterPage: React.FC = () => {
     setBusy(true); setError(null);
     try {
       await authService.register(name.trim(), email.trim(), password);
-      navigate('/login', { replace: true, state: { registered: true } });
+      navigate(loginPath, { replace: true, state: { registered: true } });
     } catch (cause) {
       setError(authErrorMessage(cause, 'Unable to create your account. Try again.'));
     } finally { setBusy(false); }
@@ -37,7 +43,7 @@ export const RegisterPage: React.FC = () => {
       <div><label htmlFor="register-password" className={authLabelClass}>Password</label><input id="register-password" type="password" autoComplete="new-password" minLength={8} required value={password} onChange={(event) => setPassword(event.target.value)} className={authInputClass} aria-describedby="register-password-hint" /><p id="register-password-hint" className="mt-1.5 text-xs text-ink-muted">At least 8 characters.</p></div>
       <div><label htmlFor="register-confirm" className={authLabelClass}>Confirm password</label><input id="register-confirm" type="password" autoComplete="new-password" required value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} className={authInputClass} /></div>
       <button type="submit" disabled={busy} className="h-10 w-full rounded-md bg-solid px-4 text-sm font-medium text-on-solid shadow-xs transition-colors hover:bg-solid-hover disabled:opacity-60">{busy ? 'Creating account…' : 'Create account'}</button>
-      <p className="pt-2 text-center text-[13px] text-ink-soft">Already have an account? <Link to="/login" className="font-medium text-accent hover:underline">Sign in</Link></p>
+      <p className="pt-2 text-center text-[13px] text-ink-soft">Already have an account? <Link to={loginPath} className="font-medium text-accent hover:underline">Sign in</Link></p>
     </form>
   </AuthShell>;
 };
