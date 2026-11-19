@@ -48,7 +48,12 @@ export function useRealtimeRoom({
   }, []);
 
   useEffect(() => {
-    if (!enabled || !resourceId || typeof window === 'undefined' || typeof window.WebSocket !== 'function') {
+    const hasWindow = typeof window !== 'undefined' && typeof window.WebSocket === 'function';
+    const isUnmockedTestSocket =
+      hasWindow &&
+      import.meta.env.MODE === 'test' &&
+      Function.prototype.toString.call(window.WebSocket).includes('[native code]');
+    if (!enabled || !resourceId || !hasWindow || isUnmockedTestSocket) {
       setConnectionState('idle');
       setPresence([]);
       return;

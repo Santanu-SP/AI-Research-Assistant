@@ -123,10 +123,14 @@ const renderReport = () =>
   );
 
 describe('ResearchReportPage follow-up questions', () => {
+  let getModelsSpy: ReturnType<typeof vi.spyOn>;
+
   beforeEach(() => {
     vi.restoreAllMocks();
     window.localStorage.clear();
-    vi.spyOn(byokService, 'getModelsStatus').mockResolvedValue(modelsStatus as never);
+    getModelsSpy = vi
+      .spyOn(byokService, 'getModelsStatus')
+      .mockResolvedValue(modelsStatus as never);
   });
 
   afterEach(() => {
@@ -204,6 +208,8 @@ describe('ResearchReportPage follow-up questions', () => {
     renderReport();
 
     expect(await screen.findByText('Follow-up questions')).toBeInTheDocument();
+    await waitFor(() => expect(getModelsSpy).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(screen.getByText('Uses report memory · 0.25× credits')).toBeInTheDocument();
     expect(screen.getByText('Which enzyme does it inhibit?')).toBeInTheDocument();
     expect(screen.getByText(/It inhibits inositol monophosphatase/)).toBeInTheDocument();
