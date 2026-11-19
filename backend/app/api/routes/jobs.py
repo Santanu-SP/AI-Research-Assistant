@@ -12,9 +12,9 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import CurrentUser
 from app.core.errors import AppError
 from app.db.session import get_db
-from app.models.document import Document
-from app.models.research import Research
+from app.domain.collaboration import CollaboratorRole
 from app.schemas.base import ApiSchema
+from app.services.collaboration.access import require_document_access, require_research_access
 from app.services.jobs import queue as job_queue
 from app.services.observability.telemetry import summarize_telemetry
 
@@ -44,15 +44,25 @@ def get_job_status(
     if job is None:
         raise AppError("Background job not found", status_code=404, code="job_not_found")
 
-    # Verify ownership of target resource
+    # Verify collaborator/owner access of target resource
     if job.kind in job_queue.DOCUMENT_JOB_KINDS:
-        doc = session.get(Document, job.target_id)
-        if doc is None or doc.user_id != user.id:
-            raise AppError("Background job not found", status_code=404, code="job_not_found")
+        try:
+            require_document_access(
+                session, job.target_id, user.id, min_role=CollaboratorRole.VIEWER
+            )
+        except AppError as exc:
+            raise AppError(
+                "Background job not found", status_code=404, code="job_not_found"
+            ) from exc
     elif job.kind == job_queue.RUN_RESEARCH:
-        run = session.get(Research, job.target_id)
-        if run is None or run.user_id != user.id:
-            raise AppError("Background job not found", status_code=404, code="job_not_found")
+        try:
+            require_research_access(
+                session, job.target_id, user.id, min_role=CollaboratorRole.VIEWER
+            )
+        except AppError as exc:
+            raise AppError(
+                "Background job not found", status_code=404, code="job_not_found"
+            ) from exc
 
     return BackgroundJobStatusResponse.model_validate(job)
 

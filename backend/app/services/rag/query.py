@@ -9,12 +9,16 @@ import re
 from time import monotonic
 from uuid import UUID, uuid4, uuid5
 
-from sqlalchemy import select
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
 from app.core.errors import AppError
+from app.core.realtime_bus import project_room, publish_realtime_event, research_room
 from app.core.time import utc_now
+from app.domain.collaboration import CollaboratorRole
+from app.domain.documents import SourceType as DocumentSourceType
 from app.domain.reports import SourceType
 from app.domain.research import ResearchDepth, ResearchStatus
 from app.domain.states import ProjectStatus
@@ -37,8 +41,10 @@ from app.services.rag.evidence import (
 from app.services.rag.generation import GenerationService, generation_service_for
 from app.services.rag.reranking import RerankerService, reranker_service_for
 from app.models.document import Document
-from app.models.report import ReportFollowup, Source
+from app.models.report import ReportFollowup, ResearchReport, Source
 from app.models.research import Research
+from app.services.collaboration.access import actor_for_user, require_research_access
+from app.services.collaboration.service import attach_research_collab_metadata
 from app.services.jobs import queue as job_queue
 from app.services.observability.telemetry import estimate_cost_usd, record_telemetry_event
 from app.services.observability.usage import (
@@ -502,7 +508,9 @@ def queue_query(
         return duplicate
     record = _create_started_record(session, user_id, payload, settings)
     job_queue.enqueue(session, job_queue.RUN_RESEARCH, record.id)
-    return research.get_research(session, record.id, user_id)
+    loaded = research.get_research(session, record.id, user_id)
+    attach_research_collab_metadata(session, [loaded], user_id)
+    return loaded
 
 
 # A repeat of the same question inside this window is treated as the same
@@ -681,7 +689,9 @@ def retry_research(
     from app.services.auth import api_keys as api_key_service
 
     runtime_settings = settings or get_settings()
-    record = research.get_research(session, research_id, user_id)
+    record = research.get_research(
+        session, research_id, user_id, min_role=CollaboratorRole.EDITOR
+    )
     if record.status != ResearchStatus.FAILED:
         raise AppError(
             "Only research that stopped before finishing can be run again",
@@ -736,7 +746,12 @@ def retry_research(
     except Exception:
         _release_on_error(session, user_id, reserved, quota_date, record.id)
         raise
-    return research.get_research(session, record.id, user_id)
+    reloaded = research.get_research(session, record.id, user_id)
+    attach_research_collab_metadata(session, [reloaded], user_id)
+    research.broadcast_research_event(
+        session, reloaded, "research.started", actor_id=user_id
+    )
+    return reloaded
 
 
 _MODEL_ERROR_CODES = {
@@ -816,13 +831,14 @@ def execute_research(
         if record.discovery_scope and not record.documents_scoped:
             _discover_sources_for_run(session, record, user_id, settings)
             record = research.get_research(session, research_id, user_id)
+        doc_scope = scoped_document_ids(record)
         candidates = retrieval.retrieve(
             session,
             user_id,
             normalized_query,
             runtime_settings,
             project_id=record.project_id,
-            document_ids=scoped_document_ids(record),
+            document_ids=doc_scope,
         )
         if candidates:
             ranked = (reranker or reranker_service_for(runtime_settings)).rerank(
@@ -1079,12 +1095,17 @@ def _source_to_evidence_item(
     excerpt = (source.relevant_excerpt or "").strip()
     if not excerpt:
         return None
+    raw_source_type = getattr(source.source_type, "value", source.source_type)
+    try:
+        evidence_source_type = DocumentSourceType(raw_source_type) if raw_source_type else None
+    except ValueError:
+        evidence_source_type = None
     return EvidenceItem(
         source_id=f"S{source.number}",
         node_id=None,
         document_id=source.document_id or uuid5(research_id, f"source-doc-{source.number}"),
         project_id=project_id,
-        source_type=source.source_type,
+        source_type=evidence_source_type,
         content_level=None,
         chunk_id=source.chunk_id or uuid5(research_id, f"source-chunk-{source.number}"),
         paper_title=source.title,
@@ -1203,7 +1224,9 @@ def ask_report_followup(
     from app.services.auth import api_keys as api_key_service
 
     runtime_settings = settings or get_settings()
-    record = research.get_research(session, research_id, user_id)
+    record, _ = require_research_access(
+        session, research_id, user_id, min_role=CollaboratorRole.EDITOR
+    )
     composed_report = reports._load_report(session, research_id)
     if composed_report is None:
         raise AppError(
@@ -1477,10 +1500,23 @@ def ask_report_followup(
             answer = INSUFFICIENT_EVIDENCE_ANSWER
             validated_citation_nums = []
 
-        next_position = max((turn.position for turn in prior_followups), default=-1) + 1
+        # Lock the parent report row (Postgres) and compute the next position atomically
+        # so simultaneous follow-ups from collaborators never collide on position.
+        session.execute(
+            select(ResearchReport.id)
+            .where(ResearchReport.id == composed_report.id)
+            .with_for_update()
+        ).first()
+        current_max_position = session.scalar(
+            select(func.max(ReportFollowup.position)).where(
+                ReportFollowup.report_id == composed_report.id
+            )
+        )
+        next_position = (-1 if current_max_position is None else int(current_max_position)) + 1
         followup_row = ReportFollowup(
             id=followup_id,
             report_id=composed_report.id,
+            user_id=user_id,
             question=normalized_question,
             answer=answer,
             citation_numbers=validated_citation_nums,
@@ -1490,12 +1526,53 @@ def ask_report_followup(
             insufficient_evidence=insufficient,
         )
         session.add(followup_row)
-        session.commit()
+        try:
+            session.commit()
+        except IntegrityError:
+            session.rollback()
+            # SQLite concurrent write fallback: recompute next position and commit cleanly.
+            retry_max = session.scalar(
+                select(func.max(ReportFollowup.position)).where(
+                    ReportFollowup.report_id == composed_report.id
+                )
+            )
+            followup_row = ReportFollowup(
+                id=followup_id,
+                report_id=composed_report.id,
+                user_id=user_id,
+                question=normalized_question,
+                answer=answer,
+                citation_numbers=validated_citation_nums,
+                position=(-1 if retry_max is None else int(retry_max)) + 1,
+                provider=actual_provider,
+                model=actual_model,
+                insufficient_evidence=insufficient,
+            )
+            session.add(followup_row)
+            session.commit()
         session.refresh(followup_row)
         updated_sources = reports.list_report_sources(session, research_id)
+        serialized_followup = reports.serialize_followup(followup_row, session=session)
+        serialized_sources = [reports.serialize_source(s) for s in updated_sources]
+        rooms = [research_room(research_id)]
+        if record.project_id is not None:
+            rooms.append(project_room(record.project_id))
+        publish_realtime_event(
+            rooms,
+            "followup.created",
+            {
+                "researchId": str(research_id),
+                "projectId": str(record.project_id) if record.project_id else None,
+                "followup": serialized_followup.model_dump(by_alias=True, mode="json"),
+                "sources": [
+                    item.model_dump(by_alias=True, mode="json") for item in serialized_sources
+                ],
+            },
+            actor=actor_for_user(session, user_id),
+        )
         return ReportFollowupCreateResponse(
-            followup=reports.serialize_followup(followup_row),
-            sources=[reports.serialize_source(s) for s in updated_sources],
+            followup=serialized_followup,
+            sources=serialized_sources,
             credit_cost=credit_cost,
         )
     except AppError:

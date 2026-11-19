@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 
 from pydantic import ConfigDict, Field, StringConstraints
 
+from app.domain.collaboration import CollaboratorRole
 from app.domain.reports import SourceType
 from app.domain.research import ResearchStatus
 from app.schemas.base import ApiSchema
@@ -144,6 +145,8 @@ class ResearchReportResponse(ApiSchema):
     source_count: int = Field(ge=0)
     status: ResearchStatus
     version: int = Field(ge=1)
+    my_role: CollaboratorRole = CollaboratorRole.OWNER
+    is_shared: bool = False
     sections: list[ReportSectionResponse]
     created_at: datetime
     updated_at: datetime
@@ -152,6 +155,8 @@ class ResearchReportResponse(ApiSchema):
 class ReportFollowupResponse(ApiSchema):
     id: UUID
     report_id: UUID
+    author_id: UUID | None = None
+    author_name: str | None = None
     question: str
     answer: str
     citation_ids: list[int] = Field(default_factory=list)

@@ -5,7 +5,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.errors import AppError
+from app.domain.collaboration import CollaboratorRole
 from app.models.report import Citation, ReportFollowup, ReportSection, ResearchReport, Source
+from app.models.user import User
 from app.schemas.reports import (
     CitationResponse,
     ComposedReportResponse,
@@ -15,6 +17,8 @@ from app.schemas.reports import (
     ResearchReportResponse,
     SourceResponse,
 )
+from app.services.collaboration.access import require_research_access
+from app.services.collaboration.service import attach_research_collab_metadata
 from app.services.research.runs import get_research
 
 
@@ -187,10 +191,25 @@ def serialize_source(source: Source) -> SourceResponse:
     )
 
 
-def serialize_followup(followup: ReportFollowup) -> ReportFollowupResponse:
+def serialize_followup(
+    followup: ReportFollowup,
+    *,
+    author_names: dict[UUID, str] | None = None,
+    session: Session | None = None,
+) -> ReportFollowupResponse:
+    author_name: str | None = None
+    if followup.user_id is not None:
+        if author_names is not None and followup.user_id in author_names:
+            author_name = author_names[followup.user_id]
+        elif session is not None:
+            author_name = session.scalar(
+                select(User.name).where(User.id == followup.user_id)
+            )
     return ReportFollowupResponse(
         id=followup.id,
         report_id=followup.report_id,
+        author_id=followup.user_id,
+        author_name=author_name,
         question=followup.question,
         answer=followup.answer,
         citation_ids=list(followup.citation_numbers or []),
@@ -219,7 +238,10 @@ def get_composed_report(
     research_id: UUID,
     user_id: UUID | None = None,
 ) -> ComposedReportResponse:
-    research = get_research(session, research_id, user_id)
+    research, my_role = require_research_access(
+        session, research_id, user_id, min_role=CollaboratorRole.VIEWER
+    )
+    attach_research_collab_metadata(session, [research], user_id)
     report = _load_report(session, research_id)
     if report is None:
         raise AppError(
@@ -255,7 +277,17 @@ def get_composed_report(
         )
 
     source_responses = [serialize_source(source) for source in sources]
-    followup_responses = [serialize_followup(item) for item in report.followups]
+    followup_author_ids = {item.user_id for item in report.followups if item.user_id is not None}
+    author_names: dict[UUID, str] = {}
+    if followup_author_ids:
+        author_names = dict(
+            session.execute(
+                select(User.id, User.name).where(User.id.in_(followup_author_ids))
+            ).all()
+        )
+    followup_responses = [
+        serialize_followup(item, author_names=author_names) for item in report.followups
+    ]
     return ComposedReportResponse(
         report=ResearchReportResponse(
             id=report.id,
@@ -267,6 +299,8 @@ def get_composed_report(
             source_count=len(sources),
             status=research.status,
             version=report.version,
+            my_role=my_role,
+            is_shared=bool(getattr(research, "is_shared", False)),
             sections=section_responses,
             created_at=report.created_at,
             updated_at=report.updated_at,

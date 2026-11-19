@@ -5,7 +5,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
+from app.core.realtime_bus import project_room, publish_realtime_event, research_room
 from app.core.time import utc_now
+from app.domain.collaboration import CollaboratorRole
 from app.domain.research import (
     ResearchProgressStage,
     ResearchProgressStepStatus,
@@ -13,6 +15,7 @@ from app.domain.research import (
 )
 from app.domain.states import ProjectStatus
 from app.domain.documents import DocumentStatus
+from app.models.collaboration import ResearchMember
 from app.models.document import Document
 from app.models.job import BackgroundJob
 from app.models.report import Source
@@ -23,7 +26,40 @@ from app.schemas.research import (
     ResearchProgressStep,
     ResearchUpdate,
 )
-from app.services.research import projects as project_service
+from app.services.collaboration.access import (
+    accessible_project_ids_select,
+    actor_for_user,
+    require_project_access,
+    require_research_access,
+)
+from app.services.collaboration.service import attach_research_collab_metadata
+
+
+def broadcast_research_event(
+    session: Session,
+    record: Research,
+    event_type: str,
+    *,
+    actor_id: UUID | None = None,
+) -> None:
+    rooms = [research_room(record.id)]
+    if record.project_id is not None:
+        rooms.append(project_room(record.project_id))
+    publish_realtime_event(
+        rooms,
+        event_type,
+        {
+            "researchId": str(record.id),
+            "projectId": str(record.project_id) if record.project_id else None,
+            "title": record.title,
+            "question": record.question,
+            "status": str(record.status.value),
+            "progressStage": record.progress_stage.value if record.progress_stage else None,
+            "version": record.version,
+            "updatedAt": record.updated_at.isoformat(),
+        },
+        actor=actor_for_user(session, actor_id),
+    )
 
 FALLBACK_TITLE_MAX_LENGTH = 80
 PROGRESS_STAGES: tuple[tuple[ResearchProgressStage, str], ...] = (
@@ -81,7 +117,12 @@ def create_research(session: Session, payload: ResearchCreate, user_id: UUID | N
                 status_code=422,
                 code="research_project_user_required",
             )
-        project_service.get_project(session, payload.project_id, user_id)
+        require_project_access(
+            session,
+            payload.project_id,
+            user_id,
+            min_role=CollaboratorRole.EDITOR,
+        )
     attached = _documents_to_attach(session, payload, user_id)
     research = Research(
         user_id=user_id,
@@ -99,6 +140,7 @@ def create_research(session: Session, payload: ResearchCreate, user_id: UUID | N
     session.add(research)
     _commit(session)
     session.refresh(research)
+    attach_research_collab_metadata(session, [research], user_id)
     return research
 
 
@@ -138,9 +180,17 @@ def _documents_to_attach(
             status_code=422,
             code="research_documents_too_many",
         )
-    filters = [Document.id.in_(wanted), Document.user_id == user_id]
+    filters = [Document.id.in_(wanted)]
     if payload.project_id is not None:
         filters.append(Document.project_id == payload.project_id)
+    else:
+        accessible_projects = accessible_project_ids_select(user_id, include_archived=False)
+        filters.append(
+            or_(
+                Document.user_id == user_id,
+                Document.project_id.in_(accessible_projects),
+            )
+        )
     found = {document.id: document for document in session.scalars(select(Document).where(*filters))}
     if len(found) != len(wanted):
         raise AppError("Document not found", status_code=404, code="document_not_found")
@@ -160,8 +210,6 @@ def list_research(
     project_id: UUID | None = None,
 ) -> tuple[list[Research], int]:
     filters = []
-    if user_id is not None:
-        filters.append(Research.user_id == user_id)
     if project_id is not None:
         if user_id is None:
             raise AppError(
@@ -169,8 +217,24 @@ def list_research(
                 status_code=422,
                 code="research_project_user_required",
             )
-        project_service.get_project(session, project_id, user_id)
+        require_project_access(
+            session, project_id, user_id, min_role=CollaboratorRole.VIEWER
+        )
         filters.append(Research.project_id == project_id)
+    elif user_id is not None:
+        direct_research = select(ResearchMember.research_id).where(
+            ResearchMember.user_id == user_id
+        )
+        accessible_projects = accessible_project_ids_select(
+            user_id, include_archived=True
+        )
+        filters.append(
+            or_(
+                Research.user_id == user_id,
+                Research.id.in_(direct_research),
+                Research.project_id.in_(accessible_projects),
+            )
+        )
     normalized_search = search.strip() if search else None
     normalized_domain = domain.strip() if domain else None
 
@@ -199,23 +263,26 @@ def list_research(
         .offset(offset)
     )
     items = list(session.scalars(statement).all())
+    attach_research_collab_metadata(session, items, user_id)
     return items, total or 0
 
 
-def get_research(session: Session, research_id: UUID, user_id: UUID | None = None) -> Research:
-    filters = [Research.id == research_id, Research.archived_at.is_(None)]
-    if user_id is not None:
-        filters.append(Research.user_id == user_id)
-    research = session.scalar(
-        select(Research).where(*filters)
+def get_research(
+    session: Session,
+    research_id: UUID,
+    user_id: UUID | None = None,
+    *,
+    min_role: CollaboratorRole = CollaboratorRole.VIEWER,
+    include_archived: bool = False,
+) -> Research:
+    record, _ = require_research_access(
+        session,
+        research_id,
+        user_id,
+        min_role=min_role,
+        include_archived=include_archived,
     )
-    if research is None:
-        raise AppError(
-            "Research not found",
-            status_code=404,
-            code="research_not_found",
-        )
-    return research
+    return record
 
 
 def map_project_status(
@@ -333,13 +400,14 @@ def get_research_progress(
 
 def _document_readiness(session: Session, research: Research) -> tuple[int, int]:
     """Count ready and still-processing documents in the run's scope."""
-    if research.user_id is None:
-        return 0, 0
-    filters = [Document.user_id == research.user_id]
     if research.documents_scoped:
-        filters.append(Document.id.in_(research.document_ids))
+        filters = [Document.id.in_(research.document_ids)]
     elif research.project_id is not None:
-        filters.append(Document.project_id == research.project_id)
+        filters = [Document.project_id == research.project_id]
+    elif research.user_id is not None:
+        filters = [Document.user_id == research.user_id]
+    else:
+        return 0, 0
     counts = dict(
         session.execute(
             select(Document.status, func.count(Document.id))
@@ -416,6 +484,16 @@ def restart_research(session: Session, research_id: UUID, *, commit: bool = True
     if commit:
         _commit(session)
         session.refresh(research)
+        event_type = (
+            "research.completed"
+            if project_status == ProjectStatus.REPORT_READY
+            else (
+                "research.failed"
+                if project_status == ProjectStatus.PROCESSING_FAILED
+                else "research.progress"
+            )
+        )
+        broadcast_research_event(session, research, event_type)
     else:
         session.flush()
     return research
@@ -450,6 +528,7 @@ def start_research(session: Session, research_id: UUID) -> Research:
     research.updated_at = timestamp
     _commit(session)
     session.refresh(research)
+    broadcast_research_event(session, research, "research.started", actor_id=research.user_id)
     return research
 
 
@@ -488,6 +567,16 @@ def update_research_lifecycle(
     research.updated_at = timestamp
     _commit(session)
     session.refresh(research)
+    event_type = (
+        "research.completed"
+        if project_status == ProjectStatus.REPORT_READY
+        else (
+            "research.failed"
+            if project_status == ProjectStatus.PROCESSING_FAILED
+            else "research.progress"
+        )
+    )
+    broadcast_research_event(session, research, event_type)
     return research
 
 
@@ -612,6 +701,16 @@ def advance_research_progress(
     if commit:
         _commit(session)
         session.refresh(research)
+        event_type = (
+            "research.completed"
+            if project_status == ProjectStatus.REPORT_READY
+            else (
+                "research.failed"
+                if project_status == ProjectStatus.PROCESSING_FAILED
+                else "research.progress"
+            )
+        )
+        broadcast_research_event(session, research, event_type)
     else:
         session.flush()
     return research
@@ -635,42 +734,62 @@ def update_research(
     payload: ResearchUpdate,
     user_id: UUID | None = None,
 ) -> Research:
-    research = get_research(session, research_id, user_id)
-    updates = payload.model_dump(exclude_unset=True)
+    research = get_research(
+        session, research_id, user_id, min_role=CollaboratorRole.EDITOR
+    )
+    if payload.version is not None and payload.version != research.version:
+        raise AppError(
+            "This research chat was updated by a collaborator. Refresh to see the latest version.",
+            status_code=409,
+            code="version_conflict",
+            details={
+                "currentVersion": research.version,
+                "title": research.title,
+                "question": research.question,
+            },
+        )
+    updates = payload.model_dump(exclude_unset=True, exclude={"version"})
     for field, value in updates.items():
         setattr(research, field, value)
+    research.version += 1
     research.updated_at = utc_now()
 
     _commit(session)
     session.refresh(research)
+    attach_research_collab_metadata(session, [research], user_id)
+    broadcast_research_event(session, research, "research.updated", actor_id=user_id)
     return research
 
 
 def archive_research(session: Session, research_id: UUID, user_id: UUID | None = None) -> None:
-    research = get_research(session, research_id, user_id)
+    research = get_research(
+        session, research_id, user_id, min_role=CollaboratorRole.OWNER
+    )
     archived_at = utc_now()
     research.archived_at = archived_at
+    research.version += 1
     research.updated_at = archived_at
     _commit(session)
+    broadcast_research_event(session, research, "research.archived", actor_id=user_id)
 
 
 def restore_research(session: Session, research_id: UUID, user_id: UUID | None = None) -> Research:
     """Bring back a deleted research run. Deleting only hides it, so undo is safe."""
-    filters = [Research.id == research_id]
-    if user_id is not None:
-        filters.append(Research.user_id == user_id)
-    research = session.scalar(select(Research).where(*filters))
-    if research is None:
-        raise AppError(
-            "Research not found",
-            status_code=404,
-            code="research_not_found",
-        )
+    research = get_research(
+        session,
+        research_id,
+        user_id,
+        min_role=CollaboratorRole.OWNER,
+        include_archived=True,
+    )
     if research.archived_at is not None:
         research.archived_at = None
+        research.version += 1
         research.updated_at = utc_now()
         _commit(session)
         session.refresh(research)
+        broadcast_research_event(session, research, "research.restored", actor_id=user_id)
+    attach_research_collab_metadata(session, [research], user_id)
     return research
 
 
