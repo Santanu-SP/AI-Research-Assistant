@@ -9,6 +9,7 @@ from app.api.dependencies import CurrentUser
 from app.api.uploads import enforce_upload_rate_limit, upload_status_code
 from app.core.errors import AppError
 from app.db.session import get_db
+from app.domain.collaboration import CollaboratorRole
 from app.domain.documents import DocumentStatus, DocumentType
 from app.schemas.documents import (
     DocumentListResponse,
@@ -192,7 +193,9 @@ def reembed_existing_document(
     force: Annotated[bool, Query()] = False,
 ) -> DocumentResponse:
     """Recompute chunk embeddings only if the embedding model/version changed or force=true."""
-    document = document_service.get_document(session, document_id, user.id)
+    document = document_service.get_document(
+        session, document_id, user.id, min_role=CollaboratorRole.EDITOR
+    )
     return reembed_document(
         session,
         document,

@@ -5,12 +5,17 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
+from app.core.realtime_bus import project_room, publish_realtime_event
 from app.core.time import utc_now
+from app.domain.collaboration import CollaboratorRole
 from app.domain.research import ResearchStatus
+from app.models.collaboration import ProjectMember
 from app.models.document import Document
 from app.models.project import ResearchProject
 from app.models.research import Research
 from app.schemas.projects import ResearchProjectCreate, ResearchProjectUpdate
+from app.services.collaboration.access import actor_for_user, require_project_access
+from app.services.collaboration.service import attach_project_collab_metadata
 
 
 def _commit(session: Session) -> None:
@@ -38,6 +43,7 @@ def create_project(
     session.add(project)
     _commit(session)
     session.refresh(project)
+    attach_project_collab_metadata(session, [project], user_id)
     return project
 
 
@@ -50,7 +56,15 @@ def list_projects(
     offset: int,
     include_archived: bool,
 ) -> tuple[list[ResearchProject], int]:
-    filters = [ResearchProject.user_id == user_id]
+    member_project_ids = select(ProjectMember.project_id).where(
+        ProjectMember.user_id == user_id
+    )
+    filters = [
+        or_(
+            ResearchProject.user_id == user_id,
+            ResearchProject.id.in_(member_project_ids),
+        )
+    ]
     if not include_archived:
         filters.append(ResearchProject.archived_at.is_(None))
     normalized_search = search.strip() if search else None
@@ -77,6 +91,7 @@ def list_projects(
         ).all()
     )
     attach_project_counts(session, items)
+    attach_project_collab_metadata(session, items, user_id)
     return items, total or 0
 
 
@@ -119,21 +134,16 @@ def get_project(
     project_id: UUID,
     user_id: UUID,
     *,
+    min_role: CollaboratorRole = CollaboratorRole.VIEWER,
     include_archived: bool = False,
 ) -> ResearchProject:
-    filters = [
-        ResearchProject.id == project_id,
-        ResearchProject.user_id == user_id,
-    ]
-    if not include_archived:
-        filters.append(ResearchProject.archived_at.is_(None))
-    project = session.scalar(select(ResearchProject).where(*filters))
-    if project is None:
-        raise AppError(
-            "Research project not found",
-            status_code=404,
-            code="research_project_not_found",
-        )
+    project, _ = require_project_access(
+        session,
+        project_id,
+        user_id,
+        min_role=min_role,
+        include_archived=include_archived,
+    )
     return project
 
 
@@ -143,27 +153,69 @@ def update_project(
     payload: ResearchProjectUpdate,
     user_id: UUID,
 ) -> ResearchProject:
-    project = get_project(session, project_id, user_id)
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    project = get_project(
+        session, project_id, user_id, min_role=CollaboratorRole.EDITOR
+    )
+    if payload.version is not None and payload.version != project.version:
+        raise AppError(
+            "This project was updated by a collaborator. Refresh to get the latest changes.",
+            status_code=409,
+            code="version_conflict",
+            details={
+                "currentVersion": project.version,
+                "name": project.name,
+                "description": project.description,
+            },
+        )
+    for field, value in payload.model_dump(exclude_unset=True, exclude={"version"}).items():
         setattr(project, field, value)
+    project.version += 1
     project.updated_at = utc_now()
     _commit(session)
     session.refresh(project)
+    attach_project_collab_metadata(session, [project], user_id)
+    publish_realtime_event(
+        [project_room(project.id)],
+        "project.updated",
+        {
+            "projectId": str(project.id),
+            "name": project.name,
+            "description": project.description,
+            "version": project.version,
+            "updatedAt": project.updated_at.isoformat(),
+        },
+        actor=actor_for_user(session, user_id),
+    )
     return project
 
 
 def archive_project(session: Session, project_id: UUID, user_id: UUID) -> None:
-    project = get_project(session, project_id, user_id)
+    project = get_project(
+        session, project_id, user_id, min_role=CollaboratorRole.OWNER
+    )
     timestamp = utc_now()
     project.archived_at = timestamp
+    project.version += 1
     project.updated_at = timestamp
     _commit(session)
+    publish_realtime_event(
+        [project_room(project.id)],
+        "project.archived",
+        {"projectId": str(project.id), "archivedAt": timestamp.isoformat()},
+        actor=actor_for_user(session, user_id),
+    )
 
 
 def _get_archived_project(
     session: Session, project_id: UUID, user_id: UUID
 ) -> ResearchProject:
-    project = get_project(session, project_id, user_id, include_archived=True)
+    project = get_project(
+        session,
+        project_id,
+        user_id,
+        min_role=CollaboratorRole.OWNER,
+        include_archived=True,
+    )
     if project.archived_at is None:
         raise AppError(
             "Only archived projects can be restored or deleted",
@@ -178,9 +230,17 @@ def restore_project(
 ) -> ResearchProject:
     project = _get_archived_project(session, project_id, user_id)
     project.archived_at = None
+    project.version += 1
     project.updated_at = utc_now()
     _commit(session)
     session.refresh(project)
+    attach_project_collab_metadata(session, [project], user_id)
+    publish_realtime_event(
+        [project_room(project.id)],
+        "project.restored",
+        {"projectId": str(project.id)},
+        actor=actor_for_user(session, user_id),
+    )
     return project
 
 
@@ -193,6 +253,8 @@ def delete_project_permanently(
     in the user's library and research history.
     """
     project = _get_archived_project(session, project_id, user_id)
+    actor = actor_for_user(session, user_id)
+    project_id_str = str(project.id)
     session.execute(
         update(Document)
         .where(Document.project_id == project.id)
@@ -205,3 +267,9 @@ def delete_project_permanently(
     )
     session.delete(project)
     _commit(session)
+    publish_realtime_event(
+        [project_room(project_id_str)],
+        "project.deleted",
+        {"projectId": project_id_str},
+        actor=actor,
+    )

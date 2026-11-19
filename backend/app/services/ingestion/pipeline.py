@@ -232,6 +232,25 @@ def _project_label(document: Document) -> str | None:
 EMBEDDING_PROGRESS_BATCH = 64
 
 
+def _broadcast_document_progress(document: Document) -> None:
+    if document.project_id is None:
+        return
+    from app.core.realtime_bus import project_room, publish_realtime_event
+
+    publish_realtime_event(
+        [project_room(document.project_id)],
+        "document.updated",
+        {
+            "projectId": str(document.project_id),
+            "documentId": str(document.id),
+            "name": document.name,
+            "status": str(document.status.value),
+            "processingStage": document.processing_stage,
+            "processingProgress": document.processing_progress,
+        },
+    )
+
+
 def _set_stage(
     session: Session,
     document: Document,
@@ -242,6 +261,7 @@ def _set_stage(
     document.processing_stage = stage
     document.processing_progress = progress
     _commit(session, "The document processing step could not be saved")
+    _broadcast_document_progress(document)
 
 
 def _reading_stage(document: Document, path: Path, settings: Settings) -> str:
@@ -477,6 +497,7 @@ def _record_ingestion_failure(
     failed.processing_stage = None
     failed.processing_progress = None
     _commit(session, "The document processing failure could not be saved")
+    _broadcast_document_progress(failed)
     logger.exception(
         "Document ingestion failed",
         extra={
@@ -564,6 +585,7 @@ def process_document(
         )
         _commit(session, "The processed document could not be saved")
         session.refresh(document)
+        _broadcast_document_progress(document)
         persistence_ms = _elapsed_ms(clock, persistence_started)
         logger.info(
             "Document ingestion completed",

@@ -11,15 +11,47 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.core.errors import AppError
+from app.core.realtime_bus import project_room, publish_realtime_event
+from app.domain.collaboration import CollaboratorRole
 from app.domain.documents import ContentLevel, DocumentStatus, DocumentType, SourceType
+from app.models.collaboration import ResearchMember
 from app.models.document import Document
 from app.models.project import ResearchProject
 from app.models.research import Research, research_documents
+from app.services.collaboration.access import (
+    accessible_project_ids_select,
+    actor_for_user,
+    require_document_access,
+    require_project_access,
+)
 from app.services.rag.embeddings import EmbeddingService
 from app.services.ingestion.pipeline import DocumentIngestionAdapter, ingest_document
 from app.services.documents.storage import LocalDocumentStorage, StoredUpload, ValidatedUpload
 from app.services.jobs import queue as job_queue
-from app.services.research import projects as project_service
+
+
+def _broadcast_document_event(
+    session: Session,
+    document: Document,
+    event_type: str,
+    *,
+    actor_id: UUID | None = None,
+) -> None:
+    if document.project_id is None:
+        return
+    publish_realtime_event(
+        [project_room(document.project_id)],
+        event_type,
+        {
+            "projectId": str(document.project_id),
+            "documentId": str(document.id),
+            "name": document.name,
+            "status": str(document.status.value),
+            "processingStage": document.processing_stage,
+            "processingProgress": document.processing_progress,
+        },
+        actor=actor_for_user(session, actor_id),
+    )
 
 
 def _commit(session: Session, error_message: str) -> None:
@@ -40,16 +72,19 @@ def _find_duplicate(
     checksum: str,
     project_id: UUID | None,
 ) -> Document | None:
-    # A null project is its own scope. Matching only on checksum would treat
-    # a legacy unscoped upload as a duplicate of a project upload.
-    filters = [
-        Document.user_id == user_id,
-        Document.checksum == checksum,
-    ]
-    if project_id is None:
-        filters.append(Document.project_id.is_(None))
+    # Project uploads deduplicate across the whole project so teammates don't
+    # re-upload identical files; personal library uploads deduplicate per user.
+    if project_id is not None:
+        filters = [
+            Document.project_id == project_id,
+            Document.checksum == checksum,
+        ]
     else:
-        filters.append(Document.project_id == project_id)
+        filters = [
+            Document.user_id == user_id,
+            Document.project_id.is_(None),
+            Document.checksum == checksum,
+        ]
     return session.scalar(select(Document).where(*filters))
 
 
@@ -68,11 +103,20 @@ async def create_document(
     # Database calls are blocking, so they run on the thread pool; only the
     # streamed upload itself is awaited on the event loop.
     if project_id is not None:
-        await run_in_threadpool(project_service.get_project, session, project_id, user_id)
+        await run_in_threadpool(
+            require_project_access,
+            session,
+            project_id,
+            user_id,
+            min_role=CollaboratorRole.EDITOR,
+        )
     metadata = storage.validate(upload)
     stored = await storage.save(upload, metadata.extension)
     document = await run_in_threadpool(
         _register_upload, session, storage, metadata, stored, user_id, project_id
+    )
+    await run_in_threadpool(
+        _broadcast_document_event, session, document, "document.added", actor_id=user_id
     )
     return await start_ingestion(
         session,
@@ -229,7 +273,13 @@ async def create_url_document(
     notify_worker: Callable[[], None] | None = None,
 ) -> Document:
     if project_id is not None:
-        await run_in_threadpool(project_service.get_project, session, project_id, user_id)
+        await run_in_threadpool(
+            require_project_access,
+            session,
+            project_id,
+            user_id,
+            min_role=CollaboratorRole.EDITOR,
+        )
     document = await run_in_threadpool(
         _register_url_document,
         session,
@@ -238,6 +288,9 @@ async def create_url_document(
         title,
         user_id,
         project_id,
+    )
+    await run_in_threadpool(
+        _broadcast_document_event, session, document, "document.added", actor_id=user_id
     )
     return await start_ingestion(
         session,
@@ -304,7 +357,9 @@ async def retry_document(
     notify_worker: Callable[[], None] | None = None,
 ) -> Document:
     """Re-run ingestion for a document whose previous attempt failed."""
-    document = await run_in_threadpool(get_document, session, document_id, user_id)
+    document = await run_in_threadpool(
+        get_document, session, document_id, user_id, min_role=CollaboratorRole.EDITOR
+    )
     if document.status != DocumentStatus.FAILED:
         raise AppError(
             "Only documents that failed processing can be retried",
@@ -373,23 +428,27 @@ def list_documents(
     project_id: UUID | None = None,
     kind: str | None = None,
 ) -> tuple[list[Document], int]:
-    filters = [Document.user_id == user_id]
+    accessible_active = accessible_project_ids_select(user_id, include_archived=False)
     if project_id is not None:
-        project_service.get_project(session, project_id, user_id)
-        filters.append(Document.project_id == project_id)
+        require_project_access(
+            session, project_id, user_id, min_role=CollaboratorRole.VIEWER
+        )
+        filters = [Document.project_id == project_id]
     else:
-        # Documents inside archived projects leave the global library too.
-        filters.append(
+        # Documents inside archived projects leave the global library too;
+        # shared non-archived project documents appear for collaborators.
+        filters = [
+            or_(
+                or_(
+                    Document.user_id == user_id,
+                    Document.project_id.in_(accessible_active),
+                ),
+            ),
             or_(
                 Document.project_id.is_(None),
-                Document.project_id.in_(
-                    select(ResearchProject.id).where(
-                        ResearchProject.user_id == user_id,
-                        ResearchProject.archived_at.is_(None),
-                    )
-                ),
-            )
-        )
+                Document.project_id.in_(accessible_active),
+            ),
+        ]
     normalized_search = search.strip() if search else None
     if normalized_search:
         filters.append(
@@ -430,6 +489,8 @@ def attach_document_usage(
     """
     if not documents:
         return
+    accessible_projects = accessible_project_ids_select(user_id, include_archived=True)
+    direct_research = select(ResearchMember.research_id).where(ResearchMember.user_id == user_id)
     project_ids = {doc.project_id for doc in documents if doc.project_id}
     names: dict[UUID, str] = {}
     if project_ids:
@@ -437,7 +498,7 @@ def attach_document_usage(
             session.execute(
                 select(ResearchProject.id, ResearchProject.name).where(
                     ResearchProject.id.in_(project_ids),
-                    ResearchProject.user_id == user_id,
+                    ResearchProject.id.in_(accessible_projects),
                 )
             ).all()
         )
@@ -447,7 +508,11 @@ def attach_document_usage(
         .join(Research, Research.id == research_documents.c.research_id)
         .where(
             research_documents.c.document_id.in_(list(usage)),
-            Research.user_id == user_id,
+            or_(
+                Research.user_id == user_id,
+                Research.id.in_(direct_research),
+                Research.project_id.in_(accessible_projects),
+            ),
             Research.archived_at.is_(None),
         )
         .order_by(Research.updated_at.desc())
@@ -463,19 +528,16 @@ def attach_document_usage(
         doc.used_in_count = totals.get(doc.id, 0)
 
 
-def get_document(session: Session, document_id: UUID, user_id: UUID) -> Document:
-    document = session.scalar(
-        select(Document).where(
-            Document.id == document_id,
-            Document.user_id == user_id,
-        )
+def get_document(
+    session: Session,
+    document_id: UUID,
+    user_id: UUID,
+    *,
+    min_role: CollaboratorRole = CollaboratorRole.VIEWER,
+) -> Document:
+    document, _ = require_document_access(
+        session, document_id, user_id, min_role=min_role
     )
-    if document is None:
-        raise AppError(
-            "Document not found",
-            status_code=404,
-            code="document_not_found",
-        )
     return document
 
 
@@ -485,10 +547,22 @@ def delete_document(
     storage: LocalDocumentStorage,
     user_id: UUID,
 ) -> None:
-    document = get_document(session, document_id, user_id)
+    document = get_document(
+        session, document_id, user_id, min_role=CollaboratorRole.EDITOR
+    )
+    project_id = document.project_id
+    doc_id = str(document.id)
+    doc_name = document.name
     storage.delete(document.stored_name)
     session.delete(document)
     _commit(session, "The document metadata could not be deleted")
+    if project_id is not None:
+        publish_realtime_event(
+            [project_room(project_id)],
+            "document.deleted",
+            {"projectId": str(project_id), "documentId": doc_id, "name": doc_name},
+            actor=actor_for_user(session, user_id),
+        )
 
 
 def mark_interrupted(session: Session, document_id: UUID, message: str) -> None:
@@ -499,3 +573,4 @@ def mark_interrupted(session: Session, document_id: UUID, message: str) -> None:
     document.status = DocumentStatus.FAILED
     document.processing_error = message[:1000]
     _commit(session, "The interrupted document could not be updated")
+    _broadcast_document_event(session, document, "document.updated")

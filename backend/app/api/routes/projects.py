@@ -12,6 +12,7 @@ from app.schemas.projects import (
     ResearchProjectResponse,
     ResearchProjectUpdate,
 )
+from app.services.collaboration.service import attach_project_collab_metadata
 from app.services.research import projects as project_service
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -67,6 +68,7 @@ def get_project(
 ) -> ResearchProjectResponse:
     project = project_service.get_project(session, project_id, user.id)
     project_service.attach_project_counts(session, [project])
+    attach_project_collab_metadata(session, [project], user.id)
     return project
 
 
