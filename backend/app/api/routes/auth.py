@@ -22,13 +22,27 @@ DatabaseSession = Annotated[Session, Depends(get_db)]
 def _set_session_cookie(response: Response, token: str, request: Request) -> None:
     settings = request.app.state.settings
     cookie_days = min(settings.auth_session_days, settings.auth_inactivity_days)
+    secure = bool(settings.auth_cookie_secure)
     response.set_cookie(
         auth_service.SESSION_COOKIE,
         token,
         httponly=True,
-        secure=settings.auth_cookie_secure,
-        samesite="lax",
+        secure=secure,
+        # Cross-origin HTTPS deployments (*.pages.dev -> backend host) require SameSite=None;
+        # local HTTP dev keeps SameSite=Lax so localhost cookies work without TLS.
+        samesite="none" if secure else "lax",
         max_age=cookie_days * 86400,
+        path="/api/v1",
+    )
+
+
+def _clear_session_cookie(response: Response, request: Request) -> None:
+    secure = bool(request.app.state.settings.auth_cookie_secure)
+    response.delete_cookie(
+        auth_service.SESSION_COOKIE,
+        httponly=True,
+        secure=secure,
+        samesite="none" if secure else "lax",
         path="/api/v1",
     )
 
@@ -152,15 +166,16 @@ def me(user: CurrentUser, request: Request, response: Response) -> UserResponse:
 def logout(session: DatabaseSession, request: Request, response: Response) -> None:
     validate_origin(request)
     auth_service.logout(session, request.cookies.get(auth_service.SESSION_COOKIE))
-    response.delete_cookie(auth_service.SESSION_COOKIE, path="/api/v1")
+    _clear_session_cookie(response, request)
 
 
 @router.post("/logout-all", status_code=status.HTTP_204_NO_CONTENT)
 def logout_all(
     user: CurrentUser,
     session: DatabaseSession,
+    request: Request,
     response: Response,
 ) -> None:
     """Sign out of every device by revoking all of this user's sessions."""
     auth_service.logout_everywhere(session, user)
-    response.delete_cookie(auth_service.SESSION_COOKIE, path="/api/v1")
+    _clear_session_cookie(response, request)
