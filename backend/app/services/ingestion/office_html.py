@@ -2,16 +2,40 @@
 
 from __future__ import annotations
 
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from uuid import UUID
 
+from docx import Document as WordDocument
+from docx.oxml.table import CT_Tbl
+from docx.oxml.text.paragraph import CT_P
+from docx.table import Table
+from docx.text.paragraph import Paragraph
 import openpyxl
 from pptx import Presentation
 
 from app.domain.documents import MetadataProvenance
 from app.domain.ingestion import CanonicalMetadata, ParsedDocument, ParsedNode
 from app.services.ingestion.pipeline import DocumentIngestionError, stable_node_id
+from app.services.ingestion.text import _split_with_overlap, normalize_text
 from app.services.ingestion.web import chunk_web_sections, extract_clean_html_sections
+
+
+def _rows_to_markdown_table(raw_rows: list[list[str]]) -> str | None:
+    """Serialize rectangular cell rows into a compact Markdown table."""
+    formatted_rows: list[list[str]] = []
+    for row in raw_rows:
+        cells = [" ".join(str(cell or "").split()).replace("|", "\\|") for cell in row]
+        if any(cells):
+            formatted_rows.append(cells)
+    if not formatted_rows:
+        return None
+    col_count = max(len(r) for r in formatted_rows)
+    padded = [r + [""] * (col_count - len(r)) for r in formatted_rows]
+    lines = ["| " + " | ".join(padded[0]) + " |"]
+    lines.append("| " + " | ".join(["---"] * max(col_count, 1)) + " |")
+    lines.extend("| " + " | ".join(r) + " |" for r in padded[1:])
+    return "\n".join(lines)
 
 
 def _iter_slide_shapes(shapes):
@@ -55,15 +79,10 @@ def parse_pptx_document(
         figure_refs: list[str] = []
         for shape_idx, shape in enumerate(_iter_slide_shapes(slide.shapes)):
             if getattr(shape, "has_table", False):
-                rows = []
-                for row in shape.table.rows:
-                    cells = [" ".join(cell.text.split()) for cell in row.cells]
-                    if any(cells):
-                        rows.append("| " + " | ".join(cells) + " |")
-                if rows:
-                    cols = rows[0].count("|") - 1
-                    sep = "| " + " | ".join(["---"] * max(cols, 1)) + " |"
-                    table_md = "\n".join([rows[0], sep, *rows[1:]])
+                table_md = _rows_to_markdown_table(
+                    [[cell.text for cell in row.cells] for row in shape.table.rows]
+                )
+                if table_md:
                     idx = len(nodes)
                     sec_label = slide_title or f"Slide {slide_idx}"
                     sec_path = [p for p in (presentation_title, sec_label) if p]
@@ -289,6 +308,152 @@ def parse_html_document(
         parser_name="docling-html",
         parser_version="1.0",
         ingestion_version=f"{ingestion_version}:html",
+        nodes=nodes,
+    )
+
+
+def _heading_level(style_name: str) -> int | None:
+    lowered = style_name.strip().lower()
+    if not lowered.startswith("heading"):
+        return None
+    suffix = lowered[len("heading") :].strip()
+    if suffix.isdigit():
+        return max(1, min(int(suffix), 6))
+    return 1
+
+
+def parse_docx_document(
+    path: Path,
+    *,
+    document_id: UUID,
+    ingestion_version: str,
+    chunk_size: int = 2000,
+    overlap: int = 200,
+) -> ParsedDocument:
+    """Extract heading-aware sections and Markdown tables from a DOCX file without Docling/Torch."""
+    try:
+        doc = WordDocument(str(path))
+    except Exception as exc:
+        raise DocumentIngestionError(
+            "The DOCX document could not be parsed",
+            code="docx_processing_failed",
+            status_code=422,
+        ) from exc
+
+    title_prop = " ".join((doc.core_properties.title or "").split()).strip() or None
+    author_prop = " ".join((doc.core_properties.author or "").split()).strip() or None
+    doc_title: str | None = title_prop
+    heading_stack: dict[int, str] = {}
+    prose_buffer: list[str] = []
+    nodes: list[ParsedNode] = []
+
+    def current_section_info() -> tuple[str | None, list[str]]:
+        ordered_headings = [heading_stack[lvl] for lvl in sorted(heading_stack)]
+        section = ordered_headings[-1] if ordered_headings else None
+        path_items: list[str] = []
+        if doc_title:
+            path_items.append(doc_title)
+        for item in ordered_headings:
+            if not path_items or path_items[-1] != item:
+                path_items.append(item)
+        return section, path_items
+
+    def flush_prose() -> None:
+        if not prose_buffer:
+            return
+        combined = normalize_text("\n\n".join(prose_buffer))
+        prose_buffer.clear()
+        if not combined:
+            return
+        section, section_path = current_section_info()
+        for piece in _split_with_overlap(combined, chunk_size, overlap):
+            idx = len(nodes)
+            nodes.append(
+                ParsedNode(
+                    node_id=stable_node_id(document_id, idx, piece),
+                    text=piece,
+                    chunk_index=idx,
+                    page=None,
+                    page_end=None,
+                    section=section,
+                    section_path=section_path,
+                    token_count=len(piece.split()),
+                    metadata={"content_kind": "text", "legacy_parser": True},
+                )
+            )
+
+    for child in doc.element.body.iterchildren():
+        if isinstance(child, CT_P):
+            para = Paragraph(child, doc)
+            text = " ".join((para.text or "").split()).strip()
+            if not text:
+                continue
+            style_name = para.style.name if para.style is not None else ""
+            if style_name.strip().lower() == "title":
+                if doc_title is None:
+                    doc_title = text
+                continue
+            level = _heading_level(style_name)
+            if level is not None:
+                flush_prose()
+                for deeper in [k for k in heading_stack if k >= level]:
+                    del heading_stack[deeper]
+                heading_stack[level] = text
+                continue
+            prose_buffer.append(text)
+        elif isinstance(child, CT_Tbl):
+            flush_prose()
+            table = Table(child, doc)
+            table_md = _rows_to_markdown_table(
+                [[cell.text for cell in row.cells] for row in table.rows]
+            )
+            if table_md:
+                section, section_path = current_section_info()
+                idx = len(nodes)
+                nodes.append(
+                    ParsedNode(
+                        node_id=stable_node_id(document_id, idx, table_md),
+                        text=table_md,
+                        chunk_index=idx,
+                        page=None,
+                        page_end=None,
+                        section=section,
+                        section_path=section_path,
+                        token_count=len(table_md.split()),
+                        metadata={"content_kind": "table", "legacy_parser": True},
+                    )
+                )
+
+    flush_prose()
+
+    if not nodes:
+        raise DocumentIngestionError(
+            "The DOCX document contains no retrievable text or tables",
+            code="document_processing_failed",
+            status_code=422,
+        )
+
+    resolved_title = doc_title or path.stem
+    provenance = {"title": MetadataProvenance.EXTRACTED}
+    if author_prop:
+        provenance["authors"] = MetadataProvenance.EXTRACTED
+    try:
+        parser_version = version("python-docx")
+    except PackageNotFoundError:
+        parser_version = None
+
+    return ParsedDocument(
+        document_id=document_id,
+        metadata=CanonicalMetadata(
+            title=resolved_title,
+            authors=[author_prop] if author_prop else None,
+            values={"format": "docx", "legacy_parser": True},
+            provenance=provenance,
+        ),
+        page_count=None,
+        parser_name="python-docx",
+        parser_version=parser_version,
+        ingestion_version=f"{ingestion_version}:docx",
         nodes=nodes,
     )
 
