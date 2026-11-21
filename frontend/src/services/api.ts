@@ -25,7 +25,7 @@ export const resolveApiBaseUrl = (
   }
   const url = new URL(configured, page.origin);
   if (!isLoopbackHost(url.hostname)) {
-    return configured;
+    return configured.replace(/\/+$/, '');
   }
   // Older local .env files point at localhost. When the page is opened
   // through a LAN IP, that creates a cross-origin request blocked by CORS.
@@ -36,7 +36,7 @@ export const resolveApiBaseUrl = (
     url.hostname = page.hostname;
     return url.toString().replace(/\/$/, '');
   }
-  return configured;
+  return configured.replace(/\/+$/, '');
 };
 
 export const API_BASE_URL = resolveApiBaseUrl(window.location, import.meta.env.VITE_API_BASE_URL);

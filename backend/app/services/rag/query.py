@@ -1184,7 +1184,11 @@ def _build_followup_evidence(
             "vector_top_k": min(settings.vector_top_k, 10),
             "keyword_top_k": min(settings.keyword_top_k, 10),
             "hybrid_candidate_k": min(settings.hybrid_candidate_k, 10),
-            "reranker_provider": "lexical",
+            "reranker_provider": (
+                "lexical"
+                if settings.adaptive_fast_path_enabled
+                else settings.reranker_provider
+            ),
             "final_context_k": min(settings.final_context_k, 4),
         }
     )

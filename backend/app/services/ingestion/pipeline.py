@@ -268,15 +268,21 @@ def _reading_stage(document: Document, path: Path, settings: Settings) -> str:
     """'ocr' when the file has to be read from images (scans, photos), else 'reading'."""
     if document.file_type == DocumentType.IMAGE:
         return "ocr"
-    if (
-        document.file_type == DocumentType.PDF
-        and settings.document_ingestion_backend == "docling"
-        and settings.docling_ocr_mode != "disabled"
-    ):
-        from app.services.ingestion.pdf import pdf_has_text_layer
+    if document.file_type == DocumentType.PDF:
+        docling_ocr = (
+            settings.document_ingestion_backend == "docling"
+            and settings.docling_ocr_mode != "disabled"
+        )
+        legacy_gemini_ocr = (
+            settings.document_ingestion_backend == "legacy"
+            and settings.vision_enabled
+            and bool(settings.gemini_api_key)
+        )
+        if docling_ocr or legacy_gemini_ocr:
+            from app.services.ingestion.pdf import pdf_has_text_layer
 
-        if settings.docling_ocr_mode == "force" or not pdf_has_text_layer(path):
-            return "ocr"
+            if (docling_ocr and settings.docling_ocr_mode == "force") or not pdf_has_text_layer(path):
+                return "ocr"
     return "reading"
 
 

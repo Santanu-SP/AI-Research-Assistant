@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from io import BytesIO
 import logging
 from pathlib import Path
+import re
 from uuid import UUID
 
 import httpx
@@ -16,6 +17,7 @@ from PIL import Image
 from app.core.config import Settings
 from app.domain.documents import MetadataProvenance
 from app.domain.ingestion import CanonicalMetadata, ParsedDocument, ParsedNode
+from app.services.ingestion.pdf import slice_pdf_pages
 from app.services.ingestion.pipeline import DocumentIngestionError, stable_node_id
 
 logger = logging.getLogger(__name__)
@@ -26,6 +28,58 @@ VISION_SYSTEM_PROMPT = (
     "labels, metrics, trends, structural components, and text. Do not speculate beyond "
     "what is visually present."
 )
+
+PDF_OCR_SYSTEM_PROMPT = (
+    "You are an exact scientific document OCR engine. Transcribe ALL text from every attached "
+    "PDF page in natural reading order without summarizing, paraphrasing, or omitting details. "
+    "Preserve headings, equations (in LaTeX notation where appropriate), and render every table "
+    "as a clean Markdown table. For multi-page attachments, start each page with an exact marker "
+    "line in the form `=== PAGE N ===` matching the 1-based page number within this PDF attachment."
+)
+
+_PAGE_MARKER_RE = re.compile(r"^===\s*PAGE\s+(\d+)\s*===$", re.IGNORECASE | re.MULTILINE)
+
+
+def _map_ocr_output_to_pages(text: str, batch: list[int]) -> dict[int, str]:
+    cleaned = text.strip()
+    if not cleaned or not batch:
+        return {}
+    matches = list(_PAGE_MARKER_RE.finditer(cleaned))
+    if not matches:
+        return {batch[0]: cleaned}
+
+    segments: list[tuple[int, str]] = []
+    for idx, match in enumerate(matches):
+        start = match.end()
+        end = matches[idx + 1].start() if idx + 1 < len(matches) else len(cleaned)
+        body = cleaned[start:end].strip()
+        if body:
+            segments.append((int(match.group(1)), body))
+    if not segments:
+        return {batch[0]: cleaned}
+
+    marker_nums = {num for num, _ in segments}
+    batch_set = set(batch)
+    slice_indices = set(range(1, len(batch) + 1))
+    use_slice_index = marker_nums.issubset(slice_indices) and not (
+        len(batch) > 1 and marker_nums.issubset(batch_set) and batch != list(range(1, len(batch) + 1))
+    )
+
+    mapped: dict[int, str] = {}
+    for pos, (num, body) in enumerate(segments):
+        if use_slice_index and 1 <= num <= len(batch):
+            target_page = batch[num - 1]
+        elif num in batch_set:
+            target_page = num
+        elif pos < len(batch):
+            target_page = batch[pos]
+        else:
+            target_page = batch[-1]
+        if target_page in mapped:
+            mapped[target_page] = f"{mapped[target_page]}\n\n{body}"
+        else:
+            mapped[target_page] = body
+    return mapped
 
 
 @dataclass(frozen=True)
@@ -113,44 +167,23 @@ class GeminiVisionAnalyzer:
         response.raise_for_status()
         return response.json()
 
-    def analyze_image_bytes(
+    def _generate_text_with_inline_data(
         self,
-        image_bytes: bytes,
-        mime_type: str = "image/png",
         *,
-        context_hint: str | None = None,
+        prompt: str,
+        mime_type: str,
+        data_bytes: bytes,
+        max_output_tokens: int = 512,
+        missing_key_message: str = "GEMINI_API_KEY is required for Gemini vision analysis",
     ) -> str | None:
-        inspection = inspect_image_for_vision(
-            image_bytes, min_dimension=self.min_dimension
-        )
-        if not inspection.should_analyze:
-            logger.debug(
-                "Skipping uninformative image for vision model",
-                extra={"reason": inspection.reason, "width": inspection.width, "height": inspection.height},
-            )
-            return None
-
         if not self.api_key:
             raise DocumentIngestionError(
-                "GEMINI_API_KEY is required for image and diagram analysis",
+                missing_key_message,
                 code="vision_api_key_missing",
                 status_code=503,
             )
 
-        prompt = VISION_SYSTEM_PROMPT
-        if context_hint:
-            prompt = f"{prompt}\nContext: {context_hint}"
-
-        send_bytes = image_bytes
-        send_mime = mime_type
-        if mime_type not in {"image/png", "image/jpeg", "image/webp"}:
-            with Image.open(BytesIO(image_bytes)) as img:
-                png_buf = BytesIO()
-                img.convert("RGBA").save(png_buf, format="PNG")
-                send_bytes = png_buf.getvalue()
-                send_mime = "image/png"
-
-        encoded = base64.b64encode(send_bytes).decode("ascii")
+        encoded = base64.b64encode(data_bytes).decode("ascii")
         payload = {
             "contents": [
                 {
@@ -158,7 +191,7 @@ class GeminiVisionAnalyzer:
                         {"text": prompt},
                         {
                             "inline_data": {
-                                "mime_type": send_mime,
+                                "mime_type": mime_type,
                                 "data": encoded,
                             }
                         },
@@ -167,7 +200,7 @@ class GeminiVisionAnalyzer:
             ],
             "generationConfig": {
                 "temperature": 0.1,
-                "maxOutputTokens": 512,
+                "maxOutputTokens": max_output_tokens,
             },
         }
         candidate_models = [self.model_name]
@@ -221,6 +254,90 @@ class GeminiVisionAnalyzer:
         parts = candidates[0].get("content", {}).get("parts") or []
         text = "\n".join(p.get("text", "").strip() for p in parts if p.get("text")).strip()
         return text or None
+
+    def analyze_image_bytes(
+        self,
+        image_bytes: bytes,
+        mime_type: str = "image/png",
+        *,
+        context_hint: str | None = None,
+    ) -> str | None:
+        inspection = inspect_image_for_vision(
+            image_bytes, min_dimension=self.min_dimension
+        )
+        if not inspection.should_analyze:
+            logger.debug(
+                "Skipping uninformative image for vision model",
+                extra={"reason": inspection.reason, "width": inspection.width, "height": inspection.height},
+            )
+            return None
+
+        prompt = VISION_SYSTEM_PROMPT
+        if context_hint:
+            prompt = f"{prompt}\nContext: {context_hint}"
+
+        send_bytes = image_bytes
+        send_mime = mime_type
+        if mime_type not in {"image/png", "image/jpeg", "image/webp"}:
+            with Image.open(BytesIO(image_bytes)) as img:
+                png_buf = BytesIO()
+                img.convert("RGBA").save(png_buf, format="PNG")
+                send_bytes = png_buf.getvalue()
+                send_mime = "image/png"
+
+        return self._generate_text_with_inline_data(
+            prompt=prompt,
+            mime_type=send_mime,
+            data_bytes=send_bytes,
+            max_output_tokens=512,
+            missing_key_message="GEMINI_API_KEY is required for image and diagram analysis",
+        )
+
+    def ocr_pdf_pages(
+        self,
+        path: Path,
+        page_numbers: list[int],
+        *,
+        batch_size: int = 4,
+        max_batch_bytes: int = 8 * 1024 * 1024,
+    ) -> dict[int, str]:
+        """Run zero-RAM Gemini Flash OCR on scanned PDF pages in compact slice batches."""
+        if not page_numbers:
+            return {}
+        if not self.api_key:
+            raise DocumentIngestionError(
+                "GEMINI_API_KEY is required for scanned PDF OCR",
+                code="vision_api_key_missing",
+                status_code=503,
+            )
+
+        ordered_pages = sorted(set(page_numbers))
+        results: dict[int, str] = {}
+        index = 0
+        while index < len(ordered_pages):
+            batch = ordered_pages[index : index + batch_size]
+            pdf_slice = slice_pdf_pages(path, batch)
+            while len(pdf_slice) > max_batch_bytes and len(batch) > 1:
+                batch = batch[: max(1, len(batch) // 2)]
+                pdf_slice = slice_pdf_pages(path, batch)
+            index += len(batch)
+
+            prompt = (
+                f"{PDF_OCR_SYSTEM_PROMPT}\n"
+                f"Attached pages count: {len(batch)} (original document pages: {', '.join(str(p) for p in batch)})."
+            )
+            text = self._generate_text_with_inline_data(
+                prompt=prompt,
+                mime_type="application/pdf",
+                data_bytes=pdf_slice,
+                max_output_tokens=4096,
+                missing_key_message="GEMINI_API_KEY is required for scanned PDF OCR",
+            )
+            if not text:
+                continue
+
+            results.update(_map_ocr_output_to_pages(text, batch))
+        return results
 
     def parse_image_document(
         self,
