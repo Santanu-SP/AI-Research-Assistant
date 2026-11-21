@@ -293,6 +293,7 @@ def get_composed_report(
             id=report.id,
             research_id=report.research_id,
             title=report.title,
+            question=research.question,
             summary=report.summary,
             dossier_ref=report.dossier_ref,
             reading_time_minutes=report.reading_time_minutes,

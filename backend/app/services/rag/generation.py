@@ -41,6 +41,13 @@ components, endpoints, failure cases), not just the first block.
 commands, and identifiers. No tables, no headings above "###".
 - Return only the answer, never reasoning or chain-of-thought."""
 
+CHAT_TITLE_RULES = """Generate a concise chat sidebar title of 1 to 3 words summarizing the user's question.
+
+Rules:
+- Return ONLY a 1 to 3 word phrase.
+- No quotes, numbering, markdown, trailing punctuation, or explanation.
+- Capture the core topic (e.g. "Transformer Context Windows", "Lithium Side Effects", "Cool Roof Temperatures")."""
+
 _PROCESS_QUESTION = re.compile(
     r"\b(?:how (?:does|do|is|are|will|would|can|should|to)|how\b.*\b(?:work|happen|take place|flow)|"
     r"steps?|process|procedure|workflow|flow|sequence|lifecycle|pipeline|in order|walk ?through)\b",
@@ -361,6 +368,97 @@ class GenerationService:
             used_byok=False,
         )
         return answer
+
+    def generate_short_title(
+        self,
+        question: str,
+        *,
+        user_api_keys: dict[str, str] | None = None,
+        user_provider_models: dict[str, str] | None = None,
+        preferred_provider: str | None = None,
+        model_override: str | None = None,
+        local_fallback_enabled: bool | None = None,
+        allow_shared_providers: bool = True,
+        timeout_seconds: float = 5.0,
+    ) -> str | None:
+        """Best-effort short (<= 3 word) phrase title without affecting ``last_response`` or credits."""
+        cleaned_question = " ".join((question or "").split())
+        if not cleaned_question:
+            return None
+
+        effective_timeout = min(float(timeout_seconds), float(self.timeout_seconds))
+        prompt = f"Question: {cleaned_question[:400]}"
+
+        use_router = (
+            self.router is not None
+            or user_api_keys
+            or user_provider_models
+            or preferred_provider
+            or local_fallback_enabled is not None
+            or not allow_shared_providers
+        )
+        if use_router:
+            if (
+                not allow_shared_providers
+                and not user_api_keys
+                and not local_fallback_enabled
+            ):
+                return None
+            active_router = self.router
+            if active_router is None:
+                from app.core.config import get_settings
+
+                active_router = get_cached_router_for_settings(get_settings())
+            try:
+                response = active_router.generate(
+                    LLMRequest(
+                        system_prompt=CHAT_TITLE_RULES,
+                        user_prompt=prompt,
+                        max_tokens=20,
+                        temperature=0.1,
+                        timeout_seconds=effective_timeout,
+                        model_override=model_override,
+                        provider_timeout_seconds=effective_timeout,
+                        primary_timeout_seconds=effective_timeout,
+                        allow_sticky_fallback=True,
+                    ),
+                    user_api_keys=user_api_keys,
+                    user_provider_models=user_provider_models,
+                    preferred_provider=preferred_provider,
+                    local_fallback_enabled=local_fallback_enabled,
+                    allow_shared_providers=allow_shared_providers,
+                )
+            except Exception as exc:
+                logger.debug("Short chat title generation skipped: %s", exc)
+                return None
+            content = (response.content or "").strip()
+            return content or None
+
+        try:
+            if not self._model_verified:
+                return None
+            payload = {
+                "model": self.model_name,
+                "system": CHAT_TITLE_RULES,
+                "prompt": prompt,
+                "stream": False,
+                "think": False,
+                "options": {
+                    "temperature": 0.1,
+                    "num_predict": 20,
+                },
+            }
+            response = self._client.post(
+                "/api/generate",
+                json=payload,
+                timeout=effective_timeout,
+            )
+            response.raise_for_status()
+            content = str(response.json().get("response", "")).strip()
+            return content or None
+        except Exception as exc:
+            logger.debug("Local short chat title generation skipped: %s", exc)
+            return None
 
 
 class _RetryableStatus(Exception):

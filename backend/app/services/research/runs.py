@@ -33,6 +33,13 @@ from app.services.collaboration.access import (
     require_research_access,
 )
 from app.services.collaboration.service import attach_research_collab_metadata
+from app.services.research.titles import (
+    FALLBACK_TITLE_MAX_LENGTH,
+    build_fallback_title,
+    is_auto_generated_title,
+    legacy_fallback_title,
+    normalize_short_title,
+)
 
 
 def broadcast_research_event(
@@ -61,7 +68,6 @@ def broadcast_research_event(
         actor=actor_for_user(session, actor_id),
     )
 
-FALLBACK_TITLE_MAX_LENGTH = 80
 PROGRESS_STAGES: tuple[tuple[ResearchProgressStage, str], ...] = (
     (ResearchProgressStage.PLANNING, "Planning research"),
     (ResearchProgressStage.SEARCHING_SOURCES, "Searching sources"),
@@ -86,15 +92,6 @@ PROJECT_STATUS_STAGE_MAP: dict[ProjectStatus, ResearchProgressStage] = {
     ProjectStatus.REVIEW_READY: ResearchProgressStage.BUILDING_SYNTHESIS,
     ProjectStatus.REPORT_READY: ResearchProgressStage.BUILDING_SYNTHESIS,
 }
-
-
-def build_fallback_title(question: str) -> str:
-    normalized = " ".join(question.split())
-    if len(normalized) <= FALLBACK_TITLE_MAX_LENGTH:
-        return normalized
-
-    shortened = normalized[: FALLBACK_TITLE_MAX_LENGTH - 3].rstrip(" ,.;:-")
-    return f"{shortened}..."
 
 
 def _commit(session: Session) -> None:
@@ -751,6 +748,8 @@ def update_research(
     updates = payload.model_dump(exclude_unset=True, exclude={"version"})
     for field, value in updates.items():
         setattr(research, field, value)
+    if "title" in updates and research.report is not None:
+        research.report.title = research.title
     research.version += 1
     research.updated_at = utc_now()
 

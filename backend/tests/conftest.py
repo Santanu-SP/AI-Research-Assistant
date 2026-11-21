@@ -37,6 +37,7 @@ def test_settings(tmp_path: Path, upload_dir: Path) -> Settings:
         document_chunk_overlap=32,
         document_ingestion_backend="legacy",
         embedding_enabled=False,
+        chat_title_llm_enabled=False,
         google_client_id="test-google-client",
         google_client_secret="test-google-secret",
         ingestion_mode="inline",

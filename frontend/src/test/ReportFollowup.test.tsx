@@ -147,6 +147,7 @@ describe('ResearchReportPage follow-up questions', () => {
         id: 'rep-1',
         researchId: 'res-1',
         title: 'Lithium Carbonate Overview',
+        question: 'How does lithium carbonate work and what renal monitoring is needed?',
         summary: 'Lithium stabilizes mood by modulating second-messenger pathways [S1].',
         dossierRef: 'LOCAL RAG · RES1',
         readingTimeMinutes: 2,
@@ -208,6 +209,9 @@ describe('ResearchReportPage follow-up questions', () => {
     renderReport();
 
     expect(await screen.findByText('Follow-up questions')).toBeInTheDocument();
+    expect(
+      screen.getByText('How does lithium carbonate work and what renal monitoring is needed?'),
+    ).toBeInTheDocument();
     await waitFor(() => expect(getModelsSpy).toHaveBeenCalled());
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(screen.getByText('Uses report memory · 0.25× credits')).toBeInTheDocument();

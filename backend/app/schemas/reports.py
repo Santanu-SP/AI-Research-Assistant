@@ -139,6 +139,7 @@ class ResearchReportResponse(ApiSchema):
     id: UUID
     research_id: UUID
     title: str
+    question: str | None = None
     summary: str
     dossier_ref: str
     reading_time_minutes: int = Field(ge=1)

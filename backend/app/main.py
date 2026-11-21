@@ -1,9 +1,11 @@
 import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import inspect as sa_inspect
 
 from app.api.router import api_router
 from app.core.config import Settings, settings
@@ -19,6 +21,9 @@ from app.core.realtime_bus import clear_active_publisher, set_active_publisher
 from app.db.session import create_db_engine, create_session_factory
 from app.services.jobs.worker import JobWorker
 from app.services.realtime.hub import RealtimeHub
+from app.services.research.titles import backfill_legacy_research_titles
+
+logger = logging.getLogger(__name__)
 
 # Room for multipart boundaries and headers around the uploaded file.
 MULTIPART_OVERHEAD_BYTES = 1024 * 1024
@@ -42,6 +47,13 @@ def create_app(app_settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         active_settings.validate_production_startup()
+        if active_settings.app_environment != "test":
+            try:
+                if sa_inspect(engine).has_table("research"):
+                    with session_factory() as session:
+                        backfill_legacy_research_titles(session)
+            except Exception:
+                logger.debug("Skipping legacy chat title backfill on startup", exc_info=True)
         realtime_hub.set_loop(asyncio.get_running_loop())
         set_active_publisher(realtime_hub)
         if active_settings.worker_enabled:

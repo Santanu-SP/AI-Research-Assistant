@@ -47,6 +47,7 @@ export interface ResearchReportResponse {
   id: string;
   researchId: string;
   title: string;
+  question?: string | null;
   summary: string;
   dossierRef: string;
   readingTimeMinutes: number;

@@ -103,4 +103,10 @@ describe('AppSidebar research history', () => {
     fireEvent.change(search, { target: { value: 'no such thing' } });
     expect(screen.getByText(/No research matches/)).toBeInTheDocument();
   });
+
+  it('shows the full question in the hover tooltip when different from the short title', () => {
+    renderSidebar();
+    const link = screen.getByRole('link', { name: /Membrane protein folding/ });
+    expect(link).toHaveAttribute('title', 'Membrane protein folding — Membrane protein folding?');
+  });
 });
