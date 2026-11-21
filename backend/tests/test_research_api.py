@@ -46,7 +46,8 @@ def test_create_research_with_only_required_fields_uses_defaults(
 ) -> None:
     body = create_research(client, question="How do citations support claims?")
 
-    assert body["title"] == "How do citations support claims?"
+    assert body["title"] == "Citations Support Claims"
+    assert len(body["title"].split()) <= 3
     assert body["domain"] is None
     assert body["researchDepth"] == "standard"
     assert body["status"] == "draft"
@@ -59,8 +60,9 @@ def test_fallback_title_is_deterministic_and_shortened(client: TestClient) -> No
     second = create_research(client, question=question)
 
     assert first["title"] == second["title"]
+    assert first["title"] == "Evidence"
+    assert 1 <= len(first["title"].split()) <= 3
     assert len(first["title"]) <= 80
-    assert first["title"].endswith("...")
 
 
 def test_empty_question_is_rejected(client: TestClient) -> None:

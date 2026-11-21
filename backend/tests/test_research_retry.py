@@ -64,7 +64,8 @@ def test_retry_can_run_an_edited_question_on_the_same_item(client: TestClient, m
     body = retried.json()
     assert body["id"] == research_id
     assert body["question"] == "Which study reports the largest improvement?"
-    assert body["title"] == "Which study reports the largest improvement?"
+    assert body["title"] == "Study Reports Largest"
+    assert len(body["title"].split()) <= 3
     assert body["researchDepth"] == "deep"
     assert client.get("/api/v1/research").json()["total"] == 1
 
