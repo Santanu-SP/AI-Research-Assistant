@@ -224,6 +224,7 @@ class Settings(BaseSettings):
     generation_max_retries: int = Field(default=2, ge=0, le=5)
     generation_retry_backoff_seconds: float = Field(default=0.5, ge=0.0, le=30.0)
     generation_model_check_ttl_seconds: float = Field(default=300, ge=0)
+    chat_title_llm_enabled: bool = True
 
     # Optional client-side AI integrations (Puter.js, WebLLM).
     enable_puter_ai: bool = True

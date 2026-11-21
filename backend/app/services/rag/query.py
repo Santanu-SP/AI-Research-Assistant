@@ -57,6 +57,7 @@ from app.services.observability.usage import (
 )
 from app.services.research import reports
 from app.services.research import runs as research
+from app.services.research.titles import MAX_CHAT_TITLE_WORDS, normalize_short_title
 
 logger = logging.getLogger(__name__)
 
@@ -707,9 +708,14 @@ def retry_research(
         )
     new_question = payload.query.strip() if payload.query else None
     if new_question and new_question != record.question:
-        if record.title == research.build_fallback_title(record.question):
+        if research.is_auto_generated_title(record.title, record.question):
             record.title = research.build_fallback_title(new_question)
         record.question = new_question
+    elif (
+        record.title == research.legacy_fallback_title(record.question)
+        and len(record.title.split()) > MAX_CHAT_TITLE_WORDS
+    ):
+        record.title = research.build_fallback_title(record.question)
     if payload.research_depth is not None:
         record.research_depth = payload.research_depth
     reserved, quota_date = False, None
@@ -999,6 +1005,45 @@ def execute_research(
                         settings=runtime_settings,
                         commit=False,
                     )
+        if (
+            not insufficient
+            and settings.chat_title_llm_enabled
+            and research.is_auto_generated_title(record.title, record.question)
+            and hasattr(active_generator, "generate_short_title")
+        ):
+            title_provider = last_resp.provider if last_resp is not None else pref_provider
+            title_model = (
+                str(model_override)
+                if model_override and title_provider == pref_provider
+                else None
+            )
+            title_local = (
+                True
+                if (last_resp is not None and last_resp.provider == "ollama")
+                else (bool(local_fallback) if local_fallback is not None else None)
+            )
+            raw_title = active_generator.generate_short_title(
+                normalized_query,
+                user_api_keys=user_keys or None,
+                user_provider_models=user_models or None,
+                preferred_provider=title_provider,
+                model_override=title_model,
+                local_fallback_enabled=title_local,
+                allow_shared_providers=bool(record.allow_shared_providers),
+            )
+            if raw_title:
+                record.title = normalize_short_title(
+                    raw_title, fallback_question=record.question
+                )
+                session.add(record)
+
+        if (
+            record.title == research.legacy_fallback_title(record.question)
+            and len(record.title.split()) > MAX_CHAT_TITLE_WORDS
+        ):
+            record.title = research.build_fallback_title(record.question)
+            session.add(record)
+
         if insufficient:
             release_research_shared_quota(session, record.id, commit=False)
             answer = INSUFFICIENT_EVIDENCE_ANSWER
