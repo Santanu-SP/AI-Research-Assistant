@@ -161,7 +161,11 @@ export const ResearchHistoryItem: React.FC<ResearchHistoryItemProps> = ({
       <Link
         to={to}
         onClick={onNavigate}
-        title={item.title}
+        title={
+          item.question && item.question.trim() !== item.title.trim()
+            ? `${item.title} — ${item.question}`
+            : item.title
+        }
         aria-current={active ? 'page' : undefined}
         className={`flex h-8 items-center gap-2 rounded-md pl-2.5 text-[13px] transition-colors ${
           active || menuOpen

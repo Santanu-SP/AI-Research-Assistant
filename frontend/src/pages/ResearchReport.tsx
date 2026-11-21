@@ -46,6 +46,9 @@ const buildReportMarkdown = (
   followups: ReportFollowupResponse[] = [],
 ): string => {
   let markdown = `# ${report.title}\n\n`;
+  if (report.question && report.question.trim() !== report.title.trim()) {
+    markdown += `> **Question:** ${report.question}\n\n`;
+  }
   markdown += `${report.dossierRef} | ${report.readingTimeMinutes} min read\n\n`;
   const summaryAlreadyInFirstSection =
     report.sections.length > 0 && report.sections[0].content === report.summary;
@@ -358,6 +361,11 @@ export const ResearchReportPage: React.FC = () => {
               <h1 className="font-serif text-[30px] leading-[1.2] tracking-[-0.015em] text-ink sm:text-[36px]">
                 {report.title}
               </h1>
+              {report.question && report.question.trim() !== report.title.trim() && (
+                <p className="mt-2.5 text-[15px] leading-relaxed text-ink-soft">
+                  {report.question}
+                </p>
+              )}
             </header>
 
             <article className="space-y-10">
