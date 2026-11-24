@@ -1,6 +1,7 @@
 """PostgreSQL hybrid retrieval (pgvector + FTS + RRF) scoped by user and optional research project."""
 
 from dataclasses import dataclass, replace
+import logging
 import math
 import re
 from uuid import UUID
@@ -23,6 +24,8 @@ from app.services.collaboration.access import (
     require_project_access,
 )
 from app.services.rag.embeddings import EmbeddingService, embedding_service_for
+
+logger = logging.getLogger(__name__)
 
 # Standard reciprocal-rank fusion constant. A larger k softens the penalty
 # for a result that only one of the two lists ranked highly.
@@ -325,7 +328,7 @@ def _postgres_hybrid_search(
     session: Session,
     user_id: UUID,
     query: str,
-    query_vector: list[float],
+    query_vector: list[float] | None,
     vector_limit: int,
     keyword_limit: int,
     project_id: UUID | None = None,
@@ -337,20 +340,6 @@ def _postgres_hybrid_search(
         _active_project_filter(),
     ]
     base_filters.extend(_scope_filters(user_id, project_id, document_ids))
-
-    distance = DocumentChunk.embedding.cosine_distance(query_vector)
-    vec_q = (
-        select(
-            DocumentChunk.id.label("chunk_id"),
-            literal(1).label("kind"),
-            (1.0 - distance).label("score"),
-        )
-        .join(Document)
-        .outerjoin(ResearchProject, ResearchProject.id == Document.project_id)
-        .where(*base_filters, DocumentChunk.embedding.is_not(None))
-        .order_by(distance, DocumentChunk.id)
-        .limit(vector_limit)
-    )
 
     query_expression = _any_term_tsquery(query)
     ts_rank = func.ts_rank_cd(DocumentChunk.search_vector, query_expression)
@@ -365,6 +354,32 @@ def _postgres_hybrid_search(
         .where(*base_filters, DocumentChunk.search_vector.op("@@")(query_expression))
         .order_by(ts_rank.desc(), DocumentChunk.id)
         .limit(keyword_limit)
+    )
+
+    if query_vector is None:
+        rows = session.execute(
+            select(DocumentChunk, ts_rank.label("score"))
+            .options(joinedload(DocumentChunk.document))
+            .join(Document)
+            .outerjoin(ResearchProject, ResearchProject.id == Document.project_id)
+            .where(*base_filters, DocumentChunk.search_vector.op("@@")(query_expression))
+            .order_by(ts_rank.desc(), DocumentChunk.id)
+            .limit(keyword_limit)
+        ).all()
+        return [], [RankedChunk(chunk=chunk, keyword_score=float(score)) for chunk, score in rows]
+
+    distance = DocumentChunk.embedding.cosine_distance(query_vector)
+    vec_q = (
+        select(
+            DocumentChunk.id.label("chunk_id"),
+            literal(1).label("kind"),
+            (1.0 - distance).label("score"),
+        )
+        .join(Document)
+        .outerjoin(ResearchProject, ResearchProject.id == Document.project_id)
+        .where(*base_filters, DocumentChunk.embedding.is_not(None))
+        .order_by(distance, DocumentChunk.id)
+        .limit(vector_limit)
     )
 
     combined = union_all(vec_q, kw_q).alias("hybrid_hits")
@@ -420,7 +435,18 @@ def retrieve(
         _require_postgres(session)
 
     service = embeddings or embedding_service_for(settings)
-    query_vector = service.embed_query(normalized)
+    query_vector: list[float] | None
+    try:
+        query_vector = service.embed_query(normalized)
+    except AppError as exc:
+        if dialect == "postgresql" and settings.embedding_provider == "cloudflare":
+            logger.warning(
+                "Cloudflare query embedding failed (%s); falling back to PostgreSQL full-text search",
+                exc,
+            )
+            query_vector = None
+        else:
+            raise
 
     if dialect == "postgresql":
         vector_results, keyword_results = _postgres_hybrid_search(

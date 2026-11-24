@@ -646,3 +646,156 @@ def test_query_distillation_relevance_scoring_and_wikipedia_sections() -> None:
     headings = [node.section for node in parsed_wiki.nodes]
     assert "Medical uses" in headings
     assert "References" not in headings
+
+
+def test_reputable_news_rss_multi_part_distillation_and_contradiction_prompt(
+    tmp_path: Path,
+) -> None:
+    from app.schemas.rag import EvidenceItem
+    from app.services.documents.storage import R2DocumentStorage
+    from app.services.rag import query as query_mod
+    from app.services.rag.generation import build_grounding_prompt
+
+    # Multi-part news/historical question distills cleanly without conversational/temporal noise.
+    assert (
+        discovery_providers.distill_search_query(
+            "Why Israel and Iran war happening? What is the historical reason behind it? What is the latest news about it?"
+        )
+        == "israel iran war"
+    )
+
+    bing_rss = """<?xml version="1.0" encoding="utf-8"?>
+    <rss version="2.0" xmlns:News="http://schemas.microsoft.com/news/2008">
+      <channel>
+        <item>
+          <title>Israel and Iran trade strikes amid regional escalation</title>
+          <link>https://www.bing.com/news/apiclick.aspx?url=https%3A%2F%2Fwww.reuters.com%2Fworld%2Fmiddle-east%2Fisrael-iran-strikes&amp;tid=1</link>
+          <description>Officials gave conflicting casualty estimates following overnight strikes.</description>
+          <pubDate>Tue, 24 Nov 2026 01:00:00 GMT</pubDate>
+          <News:Source>Reuters</News:Source>
+        </item>
+        <item>
+          <title>Random Unverified Blog Post About Rumors</title>
+          <link>https://random-gossip-blog.example.com/post</link>
+          <description>Unverified rumor post that should be filtered out.</description>
+          <pubDate>Tue, 24 Nov 2026 01:00:00 GMT</pubDate>
+          <News:Source>Random Gossip Blog</News:Source>
+        </item>
+      </channel>
+    </rss>"""
+
+    google_rss = """<?xml version="1.0" encoding="utf-8"?>
+    <rss version="2.0">
+      <channel>
+        <item>
+          <title>Diplomatic rift deepens over Iran-Israel conflict - Al Jazeera</title>
+          <link>https://news.google.com/rss/articles/CBMiTestArticle</link>
+          <pubDate>Mon, 23 Nov 2026 12:00:00 GMT</pubDate>
+          <description>&lt;a href="https://news.google.com/rss/articles/CBMiTestArticle"&gt;Diplomatic rift deepens&lt;/a&gt; Al Jazeera</description>
+          <source url="https://www.aljazeera.com">Al Jazeera</source>
+        </item>
+      </channel>
+    </rss>"""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if url.startswith("https://www.bing.com/news/search"):
+            return httpx.Response(200, text=bing_rss)
+        if url.startswith("https://news.google.com/rss/search"):
+            return httpx.Response(200, text=google_rss)
+        return httpx.Response(404, text="Not found")
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as mock_client:
+        news_items = discovery_providers.search_reputable_news(
+            "israel iran war",
+            limit=4,
+            client=mock_client,
+        )
+
+    assert [item.publisher for item in news_items] == ["Reuters", "Al Jazeera"]
+    assert news_items[0].url == "https://www.reuters.com/world/middle-east/israel-iran-strikes"
+    assert "conflicting casualty estimates" in (news_items[0].abstract or "")
+    assert news_items[0].publication_year == 2026
+    assert news_items[1].title == "Diplomatic rift deepens over Iran-Israel conflict"
+
+    # Source selection interleaves scholarly, Wikipedia, and reputable news sources under scope="all".
+    wiki_cand = discovery_providers.DiscoveredSourceCandidate(
+        candidate_id="wiki-1",
+        provider="wikipedia",
+        trust_tier="institutional",
+        source_type=SourceType.WEB_PAGE,
+        content_level=ContentLevel.WEB_PAGE,
+        title="Iran-Israel proxy conflict",
+        publisher="Wikipedia",
+        abstract="Historical background on the Iran-Israel conflict.",
+        url="https://en.wikipedia.org/wiki/Iran%E2%80%93Israel_proxy_conflict",
+    )
+    scholarly_cands = [
+        discovery_providers.DiscoveredSourceCandidate(
+            candidate_id=f"oa-{i}",
+            provider="openalex",
+            trust_tier="peer-reviewed",
+            source_type=SourceType.OPENALEX,
+            content_level=ContentLevel.ABSTRACT,
+            title=f"Academic Paper {i}",
+            publisher="Journal",
+            abstract="Peer reviewed historical analysis.",
+            url=f"https://doi.org/10.1000/test.{i}",
+        )
+        for i in range(3)
+    ]
+    diversified = query_mod._select_diverse_discovery_candidates(
+        [*scholarly_cands, wiki_cand, *news_items],
+        scope="all",
+    )
+    first_three_publishers = [item.publisher for item in diversified[:3]]
+    assert "Reuters" in first_three_publishers
+    assert "Wikipedia" in first_three_publishers
+    assert "Journal" in first_three_publishers
+
+    # R2 endpoint normalization strips trailing /{bucket} and whitespace/quotes, and discovery keeps local copy on R2 error.
+    r2 = R2DocumentStorage(
+        tmp_path / "uploads",
+        1024 * 1024,
+        bucket_name="research-documents",
+        access_key_id="access-key",
+        secret_access_key="secret-key",
+        endpoint_url=' "https://acct123.r2.cloudflarestorage.com/research-documents/" ',
+        http_client=httpx.Client(
+            transport=httpx.MockTransport(lambda req: httpx.Response(403, text="Forbidden"))
+        ),
+    )
+    assert r2.endpoint_url == "https://acct123.r2.cloudflarestorage.com"
+    stored_name, backend_name, _checksum, size = discovery_service._save_stored_bytes(
+        r2, b"discovery evidence", extension=".web", content_type="text/plain"
+    )
+    assert backend_name == "local"
+    assert size == len(b"discovery evidence")
+    assert (r2.root / stored_name).is_file()
+
+    # Grounding prompt exposes publisher + year and instructs surfacing contradictions.
+    prompt = build_grounding_prompt(
+        "Why Israel and Iran war happening? What is the latest news?",
+        [
+            EvidenceItem(
+                source_id="S1",
+                node_id="n1",
+                document_id=UUID("11111111-1111-1111-1111-111111111111"),
+                source_type=SourceType.WEB_PAGE,
+                content_level=ContentLevel.WEB_PAGE,
+                chunk_id=UUID("22222222-2222-2222-2222-222222222222"),
+                paper_title="Reuters Report",
+                authors=None,
+                doi=None,
+                page=1,
+                section="Report",
+                publisher="Reuters",
+                year=2026,
+                text="Reuters reports casualty figure A.",
+                rerank_score=0.9,
+            ),
+        ],
+    )
+    assert 'publisher="Reuters"' in prompt
+    assert 'year="2026"' in prompt
+    assert "contradiction" in prompt.lower()

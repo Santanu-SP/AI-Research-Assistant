@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from email.utils import parsedate_to_datetime
 from html import unescape
 import hashlib
 import logging
 import math
 import re
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 import xml.etree.ElementTree as ET
 
 import httpx
@@ -42,15 +44,19 @@ _CONVERSATIONAL_TRAILER_RE = re.compile(
 )
 _QUERY_STOPWORDS: frozenset[str] = frozenset(
     {
-        "about", "all", "also", "an", "and", "are", "as", "at", "be", "between",
-        "by", "can", "could", "define", "describe", "detail", "details", "did",
-        "do", "does", "example", "examples", "explain", "for", "from", "give",
-        "how", "in", "into", "is", "it", "its", "many", "may", "me", "more",
-        "most", "of", "on", "or", "overview", "please", "role", "show", "simple",
-        "step", "summarize", "summarise", "tell", "term", "terms", "that", "the",
-        "their", "them", "these", "they", "this", "those", "to", "use", "used",
-        "usage", "using", "was", "were", "what", "when", "where", "which", "who",
-        "why", "with", "work", "works",
+        "about", "all", "also", "an", "and", "are", "as", "at", "background", "be",
+        "behind", "between", "by", "can", "cause", "caused", "causes", "causing",
+        "could", "current", "currently", "define", "describe", "detail", "details",
+        "did", "do", "does", "example", "examples", "explain", "for", "from", "give",
+        "going", "happen", "happened", "happening", "happens", "historical",
+        "history", "how", "in", "into", "is", "it", "its", "latest", "many", "may",
+        "me", "more", "most", "news", "of", "on", "or", "overview", "please",
+        "reason", "reasons", "recent", "recently", "role", "show", "simple",
+        "start", "started", "step", "summarize", "summarise", "tell", "term",
+        "terms", "that", "the", "their", "them", "these", "they", "this", "those",
+        "to", "today", "update", "updates", "use", "used", "usage", "using", "was",
+        "were", "what", "when", "where", "which", "who", "why", "with", "work",
+        "works",
     }
 )
 _WIKI_QUALIFIERS: frozenset[str] = frozenset(
@@ -104,7 +110,68 @@ TRUSTED_WEB_DOMAINS: frozenset[str] = frozenset(
         "fastapi.tiangolo.com",
         "pytorch.org",
         "huggingface.co",
+        # Reputable news wires, newspapers, and foreign-policy journals
+        "reuters.com",
+        "apnews.com",
+        "bbc.com",
+        "bbc.co.uk",
+        "theguardian.com",
+        "aljazeera.com",
+        "nytimes.com",
+        "washingtonpost.com",
+        "wsj.com",
+        "ft.com",
+        "economist.com",
+        "bloomberg.com",
+        "npr.org",
+        "pbs.org",
+        "thehindu.com",
+        "indianexpress.com",
+        "hindustantimes.com",
+        "timesofindia.indiatimes.com",
+        "cfr.org",
+        "chathamhouse.org",
+        "foreignaffairs.com",
+        "crisisgroup.org",
+        "dw.com",
+        "france24.com",
+        "news.google.com",
     }
+)
+
+REPUTABLE_NEWS_SITE_QUERY = (
+    "site:reuters.com OR site:apnews.com OR site:bbc.com OR site:theguardian.com "
+    "OR site:aljazeera.com OR site:thehindu.com OR site:indianexpress.com "
+    "OR site:nytimes.com OR site:cfr.org OR site:foreignaffairs.com "
+    "OR site:dw.com OR site:france24.com"
+)
+
+_REPUTABLE_NEWS_OUTLETS: tuple[str, ...] = (
+    "reuters",
+    "associated press",
+    "ap news",
+    "bbc",
+    "the guardian",
+    "al jazeera",
+    "new york times",
+    "washington post",
+    "wall street journal",
+    "financial times",
+    "the economist",
+    "bloomberg",
+    "npr",
+    "pbs",
+    "the hindu",
+    "indian express",
+    "hindustan times",
+    "times of india",
+    "council on foreign relations",
+    "chatham house",
+    "foreign affairs",
+    "crisis group",
+    "deutsche welle",
+    "dw",
+    "france 24",
 )
 
 
@@ -454,6 +521,216 @@ def search_arxiv(
     return candidates
 
 
+def _parse_news_pubdate(raw_date: str | None) -> tuple[int | None, str | None]:
+    if not raw_date:
+        return None, None
+    try:
+        parsed = parsedate_to_datetime(raw_date.strip())
+        return _year_from_int(parsed.year), parsed.strftime("%Y-%m-%d")
+    except Exception:
+        return None, None
+
+
+def _is_reputable_outlet(publisher: str | None, url: str | None) -> bool:
+    pub_lower = (publisher or "").lower()
+    if any(outlet in pub_lower for outlet in _REPUTABLE_NEWS_OUTLETS):
+        return True
+    if url:
+        host = urlparse(url).hostname
+        if host and is_trusted_domain(host) and not host.endswith("news.google.com"):
+            return True
+    return False
+
+
+def _clean_rss_summary(raw_html: str | None, headline: str) -> str:
+    text = strip_jats_xml(raw_html) or ""
+    # Google News RSS descriptions often repeat "<headline>  <publisher>".
+    if text.lower().startswith(headline.lower()):
+        text = text[len(headline) :].strip(" -|:\u00a0")
+    return " ".join(text.split()).strip()
+
+
+def _build_news_candidate(
+    *,
+    clean_title: str,
+    publisher: str,
+    article_url: str,
+    raw_pub_date: str | None,
+    raw_summary: str | None,
+) -> DiscoveredSourceCandidate:
+    year, date_label = _parse_news_pubdate(raw_pub_date)
+    summary = _clean_rss_summary(raw_summary, clean_title)
+    if summary.lower() == publisher.lower():
+        summary = ""
+    meta_date = f" ({date_label})" if date_label else ""
+    abstract = f"{clean_title}. Reported by {publisher}{meta_date}."
+    if summary:
+        abstract = f"{abstract} {summary}"
+    return DiscoveredSourceCandidate(
+        candidate_id=_candidate_id("news", f"{publisher}:{clean_title}"),
+        provider="wikipedia",
+        trust_tier="institutional",
+        source_type=SourceType.WEB_PAGE,
+        content_level=ContentLevel.WEB_PAGE,
+        title=clean_title[:1000],
+        authors=[],
+        publication_year=year,
+        publisher=publisher[:300],
+        abstract=abstract[:20_000],
+        url=article_url[:2048],
+        is_open_access=True,
+    )
+
+
+def _fetch_google_news_rss(
+    query: str,
+    *,
+    limit: int,
+    timeout_seconds: float,
+    client: httpx.Client | None,
+) -> list[DiscoveredSourceCandidate]:
+    own_client = client is None
+    active = client or httpx.Client(timeout=httpx.Timeout(timeout_seconds, connect=4.0))
+    try:
+        resp = active.get(
+            "https://news.google.com/rss/search",
+            params={
+                "q": f"{query.strip()} ({REPUTABLE_NEWS_SITE_QUERY})",
+                "hl": "en-US",
+                "gl": "US",
+                "ceid": "US:en",
+            },
+            headers={"User-Agent": "Mozilla/5.0", "Accept": "application/rss+xml, application/xml, text/xml"},
+        )
+        if resp.status_code != 200:
+            return []
+        root = ET.fromstring(resp.text)
+    except Exception:
+        return []
+    finally:
+        if own_client:
+            active.close()
+
+    candidates: list[DiscoveredSourceCandidate] = []
+    for item in root.findall("./channel/item"):
+        raw_title = " ".join((item.findtext("title") or "").split()).strip()
+        link = (item.findtext("link") or "").strip()
+        if not raw_title or not link.startswith("https://"):
+            continue
+        source_el = item.find("source")
+        publisher = " ".join((source_el.text or "").split()).strip() if source_el is not None else ""
+        source_url = (source_el.attrib.get("url") or "").strip() if source_el is not None else ""
+        clean_title = raw_title
+        if publisher and raw_title.endswith(f" - {publisher}"):
+            clean_title = raw_title[: -len(publisher) - 3].strip()
+        elif " - " in raw_title and not publisher:
+            maybe_title, maybe_pub = raw_title.rsplit(" - ", 1)
+            clean_title, publisher = maybe_title.strip(), maybe_pub.strip()
+        if not publisher or not _is_reputable_outlet(publisher, source_url):
+            continue
+
+        candidates.append(
+            _build_news_candidate(
+                clean_title=clean_title,
+                publisher=publisher,
+                article_url=link,
+                raw_pub_date=item.findtext("pubDate"),
+                raw_summary=item.findtext("description"),
+            )
+        )
+        if len(candidates) >= limit:
+            break
+    return candidates
+
+
+def _fetch_bing_news_rss(
+    query: str,
+    *,
+    limit: int,
+    timeout_seconds: float,
+    client: httpx.Client | None,
+) -> list[DiscoveredSourceCandidate]:
+    own_client = client is None
+    active = client or httpx.Client(timeout=httpx.Timeout(timeout_seconds, connect=4.0))
+    try:
+        resp = active.get(
+            "https://www.bing.com/news/search",
+            params={"q": query.strip(), "format": "rss"},
+            headers={"User-Agent": "Mozilla/5.0", "Accept": "application/rss+xml, application/xml, text/xml"},
+        )
+        if resp.status_code != 200:
+            return []
+        root = ET.fromstring(resp.text)
+    except Exception:
+        return []
+    finally:
+        if own_client:
+            active.close()
+
+    candidates: list[DiscoveredSourceCandidate] = []
+    for item in root.findall("./channel/item"):
+        title = " ".join((item.findtext("title") or "").split()).strip()
+        raw_link = (item.findtext("link") or "").strip()
+        if not title or not raw_link:
+            continue
+        direct_urls = parse_qs(urlparse(raw_link).query).get("url") or []
+        article_url = direct_urls[0] if direct_urls else raw_link
+        if not article_url.startswith("https://"):
+            continue
+
+        publisher = ""
+        for child in item:
+            if child.tag.endswith("Source") and child.text:
+                publisher = " ".join(child.text.split()).strip()
+                break
+        if not publisher:
+            publisher = urlparse(article_url).hostname or ""
+        if not _is_reputable_outlet(publisher, article_url):
+            continue
+
+        candidates.append(
+            _build_news_candidate(
+                clean_title=title,
+                publisher=publisher,
+                article_url=article_url,
+                raw_pub_date=item.findtext("pubDate"),
+                raw_summary=item.findtext("description"),
+            )
+        )
+        if len(candidates) >= limit:
+            break
+    return candidates
+
+
+def search_reputable_news(
+    query: str,
+    *,
+    limit: int = 4,
+    timeout_seconds: float = 8.0,
+    client: httpx.Client | None = None,
+) -> list[DiscoveredSourceCandidate]:
+    """Discover recent reporting from curated reputable news organizations via RSS."""
+    bing_items = _fetch_bing_news_rss(
+        query,
+        limit=max(limit, 4),
+        timeout_seconds=timeout_seconds,
+        client=client,
+    )
+    google_items = _fetch_google_news_rss(
+        query,
+        limit=max(limit, 4),
+        timeout_seconds=timeout_seconds,
+        client=client,
+    )
+    merged: dict[str, DiscoveredSourceCandidate] = {}
+    for item in [*bing_items, *google_items]:
+        key = _title_key(item.title)
+        existing = merged.get(key)
+        if existing is None or len(item.abstract or "") > len(existing.abstract or ""):
+            merged[key] = item
+    return list(merged.values())[:limit]
+
+
 def search_wikipedia(
     query: str,
     *,
@@ -643,7 +920,7 @@ def search_curated_sources(
     mailto = settings.discovery_mailto if settings else None
     per_provider = min(max(limit, 3), 8)
 
-    tasks: dict[DiscoveryProviderName, Any] = {}
+    tasks: dict[str, Any] = {}
     if scope in {"all", "scholarly"}:
         tasks["openalex"] = lambda: search_openalex(
             distilled, limit=per_provider, timeout_seconds=timeout, mailto=mailto, client=client
@@ -656,6 +933,9 @@ def search_curated_sources(
         )
     if scope in {"all", "web"}:
         tasks["wikipedia"] = lambda: search_wikipedia(
+            wiki_query, limit=min(per_provider, 4), timeout_seconds=timeout, client=client
+        )
+        tasks["news"] = lambda: search_reputable_news(
             wiki_query, limit=min(per_provider, 4), timeout_seconds=timeout, client=client
         )
 

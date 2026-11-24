@@ -34,7 +34,9 @@ Rules:
 components, endpoints, failure cases), not just the first block.
 - If the evidence does not cover part of the question, end with a line starting \
 "Not covered in the sources:" that says what is missing.
-- If sources disagree, describe the disagreement.
+- If sources disagree or offer competing perspectives, claims, numbers, or attributions, \
+explicitly highlight the contradiction and attribute each viewpoint to its respective source \
+(for example, "- **Competing accounts**: ... [S1][S2].").
 - Prefer concise synthesis and avoid long copied passages.
 - Format with Markdown: one short opening sentence, then one item per line using \
 "- " bullets or "1." numbered steps, **bold** for short labels, `code` for endpoints, \
@@ -72,10 +74,22 @@ def answer_format_hint(question: str) -> str:
     if _LIST_QUESTION.search(question):
         return (
             "This asks for a set of things. Answer as a bullet list, one item per line, "
-            "with the name in **bold** followed by its details and citation."
+            "with the name in **bold** followed by its details and citation. "
+            "If sources disagree on any point, add a bullet noting the contradiction."
+        )
+    if question.count("?") > 1 or re.search(
+        r"\b(?:why|compar(?:e|ing|ison)|contradict|disagree|versus|vs\.?|history|historical|latest|news)\b",
+        question,
+        re.IGNORECASE,
+    ):
+        return (
+            "Cover each part of the question clearly using concise bullets with citations. "
+            "Where sources report differing accounts, causes, figures, or timelines, add a "
+            "bullet highlighting the contradiction and which source reports each view."
         )
     return (
-        "Answer in a few short sentences or bullets, each with its citation."
+        "Answer in a few short sentences or bullets, each with its citation. "
+        "If sources disagree, explicitly note the conflicting claims."
     )
 
 
@@ -109,6 +123,10 @@ def build_grounding_prompt(
             attributes.append(f'page="{page_label}"')
         if item.paper_title:
             attributes.append(f'paper_title="{_attribute(item.paper_title)}"')
+        if item.publisher:
+            attributes.append(f'publisher="{_attribute(item.publisher)}"')
+        if item.year is not None:
+            attributes.append(f'year="{item.year}"')
         if item.authors:
             attributes.append(f'authors="{_attribute("; ".join(item.authors))}"')
         if item.doi:

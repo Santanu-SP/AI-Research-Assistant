@@ -356,17 +356,27 @@ def _embed_nodes(
             )
 
     texts = [node.text for node in parsed.nodes]
-    if len(texts) <= EMBEDDING_PROGRESS_BATCH:
-        generated = embedding_service.embed_documents(texts)
-    else:
-        # Large files are embedded in batches so the library can show progress.
-        generated = []
-        for start in range(0, len(texts), EMBEDDING_PROGRESS_BATCH):
-            generated.extend(
-                embedding_service.embed_documents(texts[start : start + EMBEDDING_PROGRESS_BATCH])
+    try:
+        if len(texts) <= EMBEDDING_PROGRESS_BATCH:
+            generated = embedding_service.embed_documents(texts)
+        else:
+            # Large files are embedded in batches so the library can show progress.
+            generated = []
+            for start in range(0, len(texts), EMBEDDING_PROGRESS_BATCH):
+                generated.extend(
+                    embedding_service.embed_documents(texts[start : start + EMBEDDING_PROGRESS_BATCH])
+                )
+                done = min(len(texts), start + EMBEDDING_PROGRESS_BATCH)
+                _set_stage(session, document, "embedding", round(done * 100 / len(texts)))
+    except AppError as exc:
+        if dialect == "postgresql" and settings.embedding_provider == "cloudflare":
+            logger.warning(
+                "Cloudflare Workers AI embedding failed for document %s (%s); saving chunks for full-text search",
+                document.id,
+                exc,
             )
-            done = min(len(texts), start + EMBEDDING_PROGRESS_BATCH)
-            _set_stage(session, document, "embedding", round(done * 100 / len(texts)))
+            return vectors, None, None
+        raise
     if len(generated) != len(parsed.nodes):
         raise AppError(
             "Embedding generation returned an invalid batch",
