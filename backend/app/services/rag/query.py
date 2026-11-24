@@ -444,6 +444,11 @@ def prepare_discovered_documents_if_requested(
     """When ``auto_discover`` is opted in with no picked documents, discover & ingest curated sources."""
     if not _wants_discovery(payload):
         return payload
+    if payload.project_id is not None:
+        # Project runs keep reading the whole project; the run itself adds
+        # the sources it finds (see _discover_project_sources_for_run).
+        _ensure_discovery_enabled(payload, settings)
+        return payload
     doc_ids = discover_documents(
         session,
         user_id,
@@ -478,6 +483,9 @@ def _discover_sources_for_run(
     """
     from app.services.documents.storage import storage_for_settings
 
+    if record.project_id is not None:
+        _discover_project_sources_for_run(session, record, user_id, settings)
+        return
     research.advance_research_progress(
         session,
         record.id,
@@ -506,6 +514,164 @@ def _discover_sources_for_run(
         project_status=ProjectStatus.PROCESSING,
         commit=True,
     )
+
+
+# New sources are downloaded and read this many at a time, so a project
+# question never holds more than a couple of PDFs in memory at once.
+PROJECT_DISCOVERY_BATCH_SIZE = 2
+
+
+def discover_project_sources(
+    session: Session,
+    user_id: UUID,
+    *,
+    query: str,
+    scope: str,
+    project_id: UUID,
+    storage,
+    settings: Settings,
+) -> list[UUID]:
+    """Find sources online for a project question and add them to the project.
+
+    Sources the project already has are not downloaded again. At most
+    ``project_discovery_source_limit`` new ones are added. Returns the ids of
+    the new files plus the matching files the project already had.
+    """
+    from app.services.discovery import service as discovery_service
+
+    search_result = discovery_service.search_and_annotate(
+        session,
+        user_id=user_id,
+        query=query,
+        scope=scope,
+        limit=settings.discovery_max_results,
+        project_id=project_id,
+        settings=settings,
+    )
+    if not search_result.items:
+        raise AppError(
+            "No trustworthy external sources were found for this question.",
+            status_code=422,
+            code="no_discoverable_sources",
+        )
+    ordered = _select_diverse_discovery_candidates(search_result.items, scope=scope)
+    already_there = [
+        item.existing_document_id
+        for item in ordered
+        if item.already_in_library and item.existing_document_id is not None
+    ]
+    fresh = [item for item in ordered if not item.already_in_library]
+
+    limit = settings.project_discovery_source_limit
+    new_ids: list[UUID] = []
+    position = 0
+    while len(new_ids) < limit and position < len(fresh):
+        size = min(PROJECT_DISCOVERY_BATCH_SIZE, limit - len(new_ids))
+        batch = fresh[position : position + size]
+        position += size
+        imported = discovery_service.import_discovered_sources(
+            session,
+            batch,
+            storage=storage,
+            settings=settings,
+            user_id=user_id,
+            project_id=project_id,
+            fetch_full_text=True,
+        )
+        for doc in imported.documents:
+            if doc.id not in new_ids and doc.id not in already_there:
+                new_ids.append(doc.id)
+
+    found = list(dict.fromkeys([*new_ids, *already_there]))
+    if not found:
+        raise AppError(
+            "Found external references could not be extracted into readable evidence.",
+            status_code=422,
+            code="no_discoverable_sources",
+        )
+    return found
+
+
+def _project_has_ready_documents(session: Session, project_id: UUID) -> bool:
+    from app.domain.documents import DocumentStatus
+
+    return (
+        session.scalar(
+            select(Document.id)
+            .where(
+                Document.project_id == project_id,
+                Document.status == DocumentStatus.INDEXED,
+            )
+            .limit(1)
+        )
+        is not None
+    )
+
+
+def _discover_project_sources_for_run(
+    session: Session,
+    record: Research,
+    user_id: UUID,
+    settings: Settings,
+) -> None:
+    """Add sources found online to the run's project before answering.
+
+    The found files are linked to the run (so the Library shows which
+    research found them), but the run still reads every file in the project.
+    If nothing usable is found and the project already has ready files, the
+    run carries on with those instead of failing.
+    """
+    from app.services.documents.storage import storage_for_settings
+
+    research.advance_research_progress(
+        session,
+        record.id,
+        project_status=ProjectStatus.PAPERS_DISCOVERED,
+        commit=True,
+    )
+    project_id = record.project_id
+    if project_id is None:
+        return
+    try:
+        doc_ids = discover_project_sources(
+            session,
+            user_id,
+            query=record.question,
+            scope=record.discovery_scope or "all",
+            project_id=project_id,
+            storage=storage_for_settings(settings),
+            settings=settings,
+        )
+    except AppError as exc:
+        if exc.code != "no_discoverable_sources" or not _project_has_ready_documents(
+            session, project_id
+        ):
+            raise
+        logger.info("No new online sources for project research %s; using project files", record.id)
+        doc_ids = []
+    record = research.get_research(session, record.id, user_id)
+    if doc_ids:
+        documents = list(session.scalars(select(Document).where(Document.id.in_(doc_ids))))
+        order = {doc_id: index for index, doc_id in enumerate(doc_ids)}
+        documents.sort(key=lambda doc: order[doc.id])
+        record.attached_documents = documents
+        session.add(record)
+    research.advance_research_progress(
+        session,
+        record.id,
+        project_status=ProjectStatus.PROCESSING,
+        commit=True,
+    )
+
+
+def _needs_discovery(record: Research) -> bool:
+    """Whether the run still has to look for sources online."""
+    if not record.discovery_scope:
+        return False
+    if record.project_id is not None:
+        # Project runs stay unscoped; linked files mean the search already ran.
+        return not record.attached_documents
+    return not record.documents_scoped
 
 
 def run_query(
@@ -766,6 +932,9 @@ def retry_research(
         if research.is_auto_generated_title(record.title, record.question):
             record.title = research.build_fallback_title(new_question)
         record.question = new_question
+        if record.discovery_scope and record.project_id is not None:
+            # A new question gets its own search for sources online.
+            record.attached_documents = []
     elif (
         record.title == research.legacy_fallback_title(record.question)
         and len(record.title.split()) > MAX_CHAT_TITLE_WORDS
@@ -889,7 +1058,7 @@ def execute_research(
     )
     runtime_settings = profile.settings
     try:
-        if record.discovery_scope and not record.documents_scoped:
+        if _needs_discovery(record):
             _discover_sources_for_run(session, record, user_id, settings)
             record = research.get_research(session, research_id, user_id)
         doc_scope = scoped_document_ids(record)
