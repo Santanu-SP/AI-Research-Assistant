@@ -52,7 +52,7 @@ export class ApiError extends Error {
   }
 }
 
-export const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+export const DEFAULT_REQUEST_TIMEOUT_MS = 75_000;
 export const UPLOAD_REQUEST_TIMEOUT_MS = 5 * 60_000;
 
 interface ErrorEnvelope {

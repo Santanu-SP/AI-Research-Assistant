@@ -63,6 +63,7 @@ def _check_llm_router(request: Request) -> ReadinessCheck:
     key_by_provider = {
         "cerebras": bool(settings.cerebras_api_key),
         "gemini": bool(settings.gemini_api_key),
+        "groq": bool(settings.groq_api_key),
         "mistral": bool(settings.mistral_api_key),
         "openrouter": bool(settings.openrouter_api_key),
         "ollama": True,

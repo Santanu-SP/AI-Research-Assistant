@@ -150,8 +150,12 @@ def _save_stored_bytes(
             if response.status_code not in {200, 201, 204}:
                 raise AppError("Failed to persist discovered source in R2 storage", status_code=502, code="r2_upload_failed")
         except Exception:
-            destination.unlink(missing_ok=True)
-            raise
+            logger.warning(
+                "R2 upload failed for discovered source %s; retaining local copy so research can proceed",
+                stored_name,
+                exc_info=True,
+            )
+            backend_name = "local"
 
     return stored_name, backend_name, checksum, len(payload)
 
@@ -527,7 +531,13 @@ def _ingest_single_candidate(
                 content_level = ContentLevel.WEB_PAGE
 
     # 2b. Try curated Web article / fallback HTML extraction when PDF/API text wasn't obtained
-    if parsed is None and fetch_full_text and (candidate.provider == "wikipedia" or not candidate.abstract):
+    is_google_news_wrapper = "news.google.com/" in validated_url and bool(candidate.abstract)
+    if (
+        parsed is None
+        and fetch_full_text
+        and not is_google_news_wrapper
+        and (candidate.provider == "wikipedia" or not candidate.abstract)
+    ):
         try:
             web_adapter = WebsiteIngestionAdapter(
                 jina_reader_base_url=settings.jina_reader_base_url,
@@ -702,6 +712,12 @@ def import_discovered_sources(
                         actor=actor_for_user(session, user_id),
                     )
         except (AppError, DocumentIngestionError) as exc:
+            logger.warning(
+                "Failed to import discovered source %s (%s): %s",
+                candidate.title,
+                candidate.url,
+                exc,
+            )
             failed.append(
                 DiscoveryImportFailure(
                     title=candidate.title,

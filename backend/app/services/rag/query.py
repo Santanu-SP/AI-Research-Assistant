@@ -330,6 +330,44 @@ def _wants_discovery(payload: ResearchQueryRequest) -> bool:
     return payload.auto_discover and not payload.document_ids
 
 
+def _select_diverse_discovery_candidates(
+    items: list,
+    *,
+    scope: str,
+) -> list:
+    """Interleave news, encyclopedia, and scholarly hits when ``scope == 'all'``."""
+    if scope != "all" or len(items) <= 1:
+        return list(items)
+
+    news_items = [
+        item
+        for item in items
+        if item.provider == "wikipedia" and item.publisher and item.publisher != "Wikipedia"
+    ]
+    wiki_items = [
+        item
+        for item in items
+        if item.provider == "wikipedia" and (not item.publisher or item.publisher == "Wikipedia")
+    ]
+    scholarly_items = [item for item in items if item.provider != "wikipedia"]
+
+    ordered: list = []
+    seen_ids: set[str] = set()
+    max_len = max(len(news_items), len(wiki_items), len(scholarly_items))
+    for index in range(max_len):
+        for bucket in (news_items, wiki_items, scholarly_items):
+            if index < len(bucket):
+                cand = bucket[index]
+                if cand.candidate_id not in seen_ids:
+                    seen_ids.add(cand.candidate_id)
+                    ordered.append(cand)
+    for cand in items:
+        if cand.candidate_id not in seen_ids:
+            seen_ids.add(cand.candidate_id)
+            ordered.append(cand)
+    return ordered
+
+
 def discover_documents(
     session: Session,
     user_id: UUID,
@@ -340,7 +378,7 @@ def discover_documents(
     storage,
     settings: Settings,
 ) -> list[UUID]:
-    """Search the trusted providers, import the best matches and return their ids."""
+    """Search the trusted providers, import the best diverse matches and return their ids."""
     from app.services.discovery import service as discovery_service
 
     search_result = discovery_service.search_and_annotate(
@@ -352,31 +390,48 @@ def discover_documents(
         project_id=project_id,
         settings=settings,
     )
-    selected = search_result.items[: settings.discovery_auto_import_limit]
-    if not selected:
+    if not search_result.items:
         raise AppError(
             "No trustworthy external sources were found for this question.",
             status_code=422,
             code="no_discoverable_sources",
         )
 
-    imported = discovery_service.import_discovered_sources(
-        session,
-        selected,
-        storage=storage,
-        settings=settings,
-        user_id=user_id,
-        project_id=project_id,
-        fetch_full_text=True,
+    ordered = _select_diverse_discovery_candidates(search_result.items, scope=scope)
+    target_count = (
+        max(settings.discovery_auto_import_limit, 4)
+        if scope == "all"
+        else settings.discovery_auto_import_limit
     )
-    doc_ids = list(dict.fromkeys(doc.id for doc in imported.documents))
+
+    doc_ids: list[UUID] = []
+    seen_doc_ids: set[UUID] = set()
+    # First batch up to target_count, then fall back through remaining ranked items if any fail.
+    batches = [ordered[:target_count]] + [[item] for item in ordered[target_count:]]
+    for batch in batches:
+        if not batch or len(doc_ids) >= target_count:
+            break
+        imported = discovery_service.import_discovered_sources(
+            session,
+            batch,
+            storage=storage,
+            settings=settings,
+            user_id=user_id,
+            project_id=project_id,
+            fetch_full_text=True,
+        )
+        for doc in imported.documents:
+            if doc.id not in seen_doc_ids:
+                seen_doc_ids.add(doc.id)
+                doc_ids.append(doc.id)
+
     if not doc_ids:
         raise AppError(
             "Found external references could not be extracted into readable evidence.",
             status_code=422,
             code="no_discoverable_sources",
         )
-    return doc_ids
+    return doc_ids[:target_count]
 
 
 def prepare_discovered_documents_if_requested(

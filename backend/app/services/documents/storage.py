@@ -497,16 +497,22 @@ class R2DocumentStorage(LocalDocumentStorage):
         http_client: httpx.Client | None = None,
     ) -> None:
         super().__init__(upload_dir, max_upload_bytes)
-        if not bucket_name or not access_key_id or not secret_access_key or not endpoint_url:
+        clean_bucket = bucket_name.strip().strip("'\"")
+        clean_access = access_key_id.strip().strip("'\"")
+        clean_secret = secret_access_key.strip().strip("'\"")
+        clean_endpoint = endpoint_url.strip().strip("'\"").rstrip("/")
+        if clean_bucket and clean_endpoint.endswith(f"/{clean_bucket}"):
+            clean_endpoint = clean_endpoint[: -len(clean_bucket) - 1].rstrip("/")
+        if not clean_bucket or not clean_access or not clean_secret or not clean_endpoint:
             raise AppError(
                 "Cloudflare R2 credentials and bucket configuration are required",
                 status_code=500,
                 code="r2_configuration_invalid",
             )
-        self.bucket_name = bucket_name
-        self.access_key_id = access_key_id
-        self.secret_access_key = secret_access_key
-        self.endpoint_url = endpoint_url.rstrip("/")
+        self.bucket_name = clean_bucket
+        self.access_key_id = clean_access
+        self.secret_access_key = clean_secret
+        self.endpoint_url = clean_endpoint
         self.region = region or "auto"
         self.signed_url_ttl_seconds = signed_url_ttl_seconds
         self._client = http_client or httpx.Client(timeout=httpx.Timeout(60.0, connect=10.0))

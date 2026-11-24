@@ -319,7 +319,9 @@ export const SourceDiscoveryDialog: React.FC<SourceDiscoveryDialogProps> = ({
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
                           <span className={`rounded border px-1.5 py-0.5 font-medium ${badge.className}`}>
-                            {PROVIDER_LABELS[item.provider]} · {badge.label}
+                            {item.provider === 'wikipedia' && item.publisher && item.publisher !== 'Wikipedia'
+                              ? `${item.publisher} · News`
+                              : `${PROVIDER_LABELS[item.provider]} · ${badge.label}`}
                           </span>
                           <span className="rounded border border-line bg-panel px-1.5 py-0.5 text-ink-soft">
                             {contentBadge}
