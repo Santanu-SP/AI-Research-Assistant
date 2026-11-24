@@ -4,7 +4,7 @@
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Send, RotateCcw, AlertTriangle, Info, Clock } from 'lucide-react';
+import { Send, RotateCcw, AlertTriangle, Info, Clock, Globe } from 'lucide-react';
 import { ResearchProject } from '../../types/project';
 import {
   Citation,
@@ -17,9 +17,11 @@ import {
   queryResearch,
   researchIdFromError,
   retryResearch,
+  startResearchJob,
 } from '../../services/research.service';
+import { getDiscoveryErrorMessage } from '../../services/discovery.service';
 import * as researchServiceNs from '../../services/research.service';
-import { ApiError } from '../../services/api';
+import { ApiError, apiErrorCode } from '../../services/api';
 import { shortcutLabel } from '../../lib/shortcuts';
 import { SafeMarkdown } from '../common/SafeMarkdown';
 import { CitationPanel } from '../research/CitationPanel';
@@ -27,6 +29,7 @@ import { ModelControlBar } from '../research/ModelControlBar';
 import { PrimaryButton } from '../common/PrimaryButton';
 import { LoadingOrb } from '../common/LoadingOrb';
 import { getDefaultModel } from '../../lib/defaultModel';
+import { loadFindOnline, saveFindOnline } from '../../lib/projectDiscovery';
 
 interface ProjectResearchPanelProps {
   project: ResearchProject;
@@ -60,6 +63,8 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
   const [preferredProvider, setPreferredProvider] = useState<string | null>(() => getDefaultModel().provider);
   const [modelOverride, setModelOverride] = useState<string | null>(() => getDefaultModel().model);
   const [localFallbackEnabled, setLocalFallbackEnabled] = useState<boolean | undefined>(undefined);
+  // "Also find sources online": off by default, remembered per project.
+  const [findOnline, setFindOnline] = useState(() => loadFindOnline(project.id));
   const [researchState, setResearchState] = useState<ResearchState>('idle');
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [result, setResult] = useState<ResearchQueryResponse | null>(null);
@@ -107,7 +112,14 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
     setSelectedCitationId(null);
     setFailedResearchId(null);
     setRecentRuns([]);
+    setFindOnline(loadFindOnline(project.id));
   }, [project.id]);
+
+  const toggleFindOnline = () => {
+    const next = !findOnline;
+    setFindOnline(next);
+    saveFindOnline(project.id, next);
+  };
 
   useEffect(() => {
     void loadRecentRuns();
@@ -134,9 +146,10 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
 
   const noReadyDocuments = readyCount === 0;
   const effectiveReadOnly = isArchived || readOnly;
+  // With "find sources online" on, an empty project can still be asked.
   const isDisabled =
     effectiveReadOnly ||
-    noReadyDocuments ||
+    (noReadyDocuments && !findOnline) ||
     researchState === 'submitting' ||
     !question.trim() ||
     question.trim().length > MAX_QUESTION_LENGTH;
@@ -198,6 +211,40 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
     setResult(null);
     setSelectedCitationId(null);
 
+    if (findOnline) {
+      // Finding and reading sources takes a while, so this runs in the
+      // background and the progress page shows each step.
+      try {
+        const research = await startResearchJob({
+          query: question.trim(),
+          projectId: currentProjectId,
+          autoDiscover: true,
+          discoveryScope: 'all',
+          ...runOptions(),
+        });
+        if (isStaleSubmission()) return;
+        openRun(research.id);
+      } catch (err) {
+        if (isStaleSubmission()) return;
+        const researchId = researchIdFromError(err);
+        if (err instanceof ApiError && err.status === 409 && researchId) {
+          openRun(researchId);
+          return;
+        }
+        const code = apiErrorCode(err);
+        setError(
+          code === 'discovery_disabled' || code === 'no_discoverable_sources'
+            ? getDiscoveryErrorMessage(err, 'Sources online could not be searched.')
+            : friendlyResearchError(err, 'Research could not be started. Please try again.'),
+        );
+        setResearchState('failed');
+      } finally {
+        inFlight.current = false;
+        onActivity?.('idle');
+      }
+      return;
+    }
+
     try {
       const response = await queryResearch({
         query: question.trim(),
@@ -250,11 +297,15 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
     <div className="space-y-6">
       <div className="rounded-lg border border-line bg-panel p-4 shadow-xs sm:p-5">
         <p className="mb-3 text-xs text-ink-muted">
-          {noReadyDocuments && !isArchived
-            ? preparingCount > 0
-              ? 'Your files are almost ready. You can ask as soon as one is ready.'
-              : 'Upload a file to this project to start asking questions.'
-            : <>Answers come only from files in <span className="font-medium text-ink-soft">{project.name}</span>.</>}
+          {findOnline && !effectiveReadOnly
+            ? <>Answers use files in <span className="font-medium text-ink-soft">{project.name}</span> plus trusted sources found online. New sources are saved to this project&rsquo;s Files.</>
+            : noReadyDocuments && !isArchived
+              ? preparingCount > 0
+                ? 'Your files are almost ready. You can ask as soon as one is ready.'
+                : effectiveReadOnly
+                  ? 'This project has no files yet.'
+                  : 'Upload a file, or turn on “Also find sources online”, to start asking questions.'
+              : <>Answers come only from files in <span className="font-medium text-ink-soft">{project.name}</span>.</>}
         </p>
 
         {isArchived ? (
@@ -265,7 +316,7 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
         ) : effectiveReadOnly ? (
           <div className="flex items-start gap-2.5 rounded-lg border border-line bg-subtle/40 px-4 py-3 text-[13px] text-ink-soft">
             <Info className="w-4 h-4 mt-0.5 shrink-0 text-ink-muted" />
-            <p>View-only collaborators can read existing research reports and follow-ups, but cannot start new research.</p>
+            <p>View-only collaborators can read existing research reports and follow-ups, but cannot start new research or add sources found online.</p>
           </div>
         ) : (
           <form onSubmit={(e) => void handleSubmit(e)} className="space-y-3">
@@ -282,7 +333,7 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
                 value={question}
                 onChange={(e) => setQuestion(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Ask something these files can answer"
+                placeholder={findOnline ? 'Ask anything; sources will be found online' : 'Ask something these files can answer'}
                 rows={3}
                 maxLength={MAX_QUESTION_LENGTH}
                 disabled={researchState === 'submitting'}
@@ -300,6 +351,34 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
                   {question.length}/{MAX_QUESTION_LENGTH}
                 </span>
               </div>
+            </div>
+
+            <div className="flex items-start justify-between gap-3 rounded-lg border border-line bg-canvas/70 px-3 py-2.5">
+              <div className="min-w-0">
+                <p className="flex items-center gap-1.5 text-xs font-medium text-ink">
+                  <Globe className="h-3.5 w-3.5 shrink-0 text-accent" />
+                  <span id="find-online-label">Also find sources online</span>
+                </p>
+                <p className="mt-0.5 text-[11px] leading-snug text-ink-muted">
+                  Searches OpenAlex, Crossref, arXiv, Wikipedia and trusted news, then adds the best new sources to this project&rsquo;s Files.
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={findOnline}
+                aria-labelledby="find-online-label"
+                disabled={researchState === 'submitting'}
+                onClick={toggleFindOnline}
+                className={`relative mt-0.5 inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${findOnline
+                  ? 'border-accent bg-solid'
+                  : 'border-line-strong bg-subtle'
+                  }`}
+              >
+                <span
+                  className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow-xs transition-transform ${findOnline ? 'translate-x-4' : 'translate-x-0.5'}`}
+                />
+              </button>
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -349,7 +428,9 @@ export const ProjectResearchPanel: React.FC<ProjectResearchPanelProps> = ({
             Researching your question…{elapsedSeconds > 0 ? ` (${elapsedSeconds}s)` : ''}
           </p>
           <p className="text-xs text-ink-muted max-w-xs">
-            {researchDepth === 'quick'
+            {findOnline
+              ? 'Starting the search for sources online…'
+              : researchDepth === 'quick'
               ? 'Fast retrieval and synthesis from top passages.'
               : 'Reading through your files and writing an answer with citations.'}
           </p>

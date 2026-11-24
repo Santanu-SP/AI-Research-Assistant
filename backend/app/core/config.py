@@ -237,6 +237,10 @@ class Settings(BaseSettings):
     discovery_auto_import_limit: int = Field(default=3, ge=1, le=8)
     discovery_timeout_seconds: float = Field(default=12.0, gt=1.0, le=60.0)
     discovery_mailto: str | None = None
+    # Most new sources one project question may add when "Also find sources
+    # online" is on. Each one is downloaded and read, so keep it small on
+    # low-memory servers (Render's free plan has 512 MB).
+    project_discovery_source_limit: int = Field(default=6, ge=1, le=10)
 
     # Observability (Langfuse & internal telemetry).
     telemetry_enabled: bool = True
