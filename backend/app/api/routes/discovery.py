@@ -29,7 +29,7 @@ def discovery_status(request: Request, user: CurrentUser) -> DiscoveryStatusResp
     return DiscoveryStatusResponse(
         enabled=bool(settings.discovery_enabled),
         scopes=["all", "scholarly", "web"],
-        providers=["openalex", "crossref", "arxiv", "wikipedia"],
+        providers=["openalex", "crossref", "arxiv", "wikipedia", "news"],
         auto_import_limit=settings.discovery_auto_import_limit,
     )
 

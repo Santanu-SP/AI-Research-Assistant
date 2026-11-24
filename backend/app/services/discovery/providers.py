@@ -604,8 +604,8 @@ def _build_news_candidate(
         abstract = f"{abstract} {summary}"
     return DiscoveredSourceCandidate(
         candidate_id=_candidate_id("news", f"{publisher}:{clean_title}"),
-        provider="wikipedia",
-        trust_tier="institutional",
+        provider="news",
+        trust_tier="news",
         source_type=SourceType.WEB_PAGE,
         content_level=ContentLevel.WEB_PAGE,
         title=clean_title[:1000],
@@ -870,7 +870,7 @@ def _merge_candidates(
 
 
 def _provider_priority(provider: DiscoveryProviderName) -> int:
-    return {"openalex": 4, "crossref": 3, "arxiv": 2, "wikipedia": 1}.get(provider, 0)
+    return {"openalex": 4, "crossref": 3, "arxiv": 2, "wikipedia": 1, "news": 1}.get(provider, 0)
 
 
 def _score_candidate(
@@ -884,6 +884,7 @@ def _score_candidate(
         "preprint": 3.0,
         "official-documentation": 2.5,
         "institutional": 2.0,
+        "news": 2.0,
     }.get(candidate.trust_tier, 1.0)
     full_text_bonus = (
         2.0
@@ -910,7 +911,7 @@ def _score_candidate(
     )
 
     wiki_topic_bonus = 0.0
-    if candidate.provider == "wikipedia" and active_subject:
+    if candidate.provider in {"wikipedia", "news"} and active_subject:
         if subject_title_hits == len(active_subject):
             wiki_topic_bonus = 5.5
         elif subject_title_hits >= 1 and subject_any_hits == len(active_subject):

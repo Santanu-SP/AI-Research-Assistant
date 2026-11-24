@@ -10,12 +10,13 @@ from app.schemas.base import ApiSchema
 from app.schemas.documents import DocumentResponse
 
 DiscoveryScope = Literal["all", "scholarly", "web"]
-DiscoveryProviderName = Literal["openalex", "crossref", "arxiv", "wikipedia"]
+DiscoveryProviderName = Literal["openalex", "crossref", "arxiv", "wikipedia", "news"]
 DiscoveryTrustTier = Literal[
     "peer-reviewed",
     "preprint",
     "institutional",
     "official-documentation",
+    "news",
 ]
 
 

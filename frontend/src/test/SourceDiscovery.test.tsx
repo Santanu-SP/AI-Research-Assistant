@@ -149,6 +149,60 @@ describe('Controlled Discovery UI', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it('labels news articles as news from their publisher', async () => {
+    const news = makeCandidate({
+      candidateId: 'news-1',
+      provider: 'news',
+      trustTier: 'news',
+      sourceType: 'web_page',
+      contentLevel: 'web_page',
+      title: 'Strikes reported overnight',
+      publisher: 'Reuters',
+      authors: [],
+      doi: null,
+      openalexId: null,
+      openAccessPdfUrl: null,
+      citationCount: null,
+      url: 'https://www.reuters.com/world/strikes',
+    });
+    const wiki = makeCandidate({
+      candidateId: 'wiki-1',
+      provider: 'wikipedia',
+      trustTier: 'institutional',
+      sourceType: 'web_page',
+      contentLevel: 'web_page',
+      title: 'Proxy conflict',
+      publisher: 'Wikipedia',
+      authors: [],
+      doi: null,
+      openalexId: null,
+      openAccessPdfUrl: null,
+      citationCount: null,
+      url: 'https://en.wikipedia.org/wiki/Proxy_conflict',
+    });
+    vi.spyOn(discoveryService, 'search').mockResolvedValue({
+      query: 'strikes',
+      scope: 'all',
+      items: [news, wiki],
+      providerErrors: [],
+    });
+
+    render(
+      <ToastProvider>
+        <SourceDiscoveryDialog isOpen onClose={vi.fn()} onImported={vi.fn()} />
+      </ToastProvider>,
+    );
+
+    const dialog = screen.getByRole('dialog', { name: 'Discover trusted sources' });
+    fireEvent.change(within(dialog).getByLabelText('Search trusted sources'), {
+      target: { value: 'strikes' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: /^Search$/i }));
+
+    expect(await within(dialog).findByText('Reuters · News')).toBeInTheDocument();
+    expect(within(dialog).getByText('Wikipedia · Encyclopedia')).toBeInTheDocument();
+  });
+
   it('supports opting into trusted online auto-discovery with scope selection on NewResearch', async () => {
     const startSpy = vi
       .spyOn(researchService, 'startResearchJob')

@@ -713,6 +713,9 @@ def test_reputable_news_rss_multi_part_distillation_and_contradiction_prompt(
         )
 
     assert [item.publisher for item in news_items] == ["Reuters", "Al Jazeera"]
+    # News is labelled as news, not as Wikipedia or an institution.
+    assert {item.provider for item in news_items} == {"news"}
+    assert {item.trust_tier for item in news_items} == {"news"}
     assert news_items[0].url == "https://www.reuters.com/world/middle-east/israel-iran-strikes"
     assert "conflicting casualty estimates" in (news_items[0].abstract or "")
     assert news_items[0].publication_year == 2026
