@@ -223,6 +223,23 @@ def _title_key(title: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", title.lower()).strip()
 
 
+_ARXIV_PDF_SUFFIX_RE = re.compile(r"^(https?://(?:export\.)?arxiv\.org/pdf/[^?#]+?)\.pdf$", re.IGNORECASE)
+
+
+def canonical_arxiv_pdf_url(url: str | None) -> str | None:
+    """arXiv answers ``/pdf/<id>.pdf`` with a relative redirect to ``/pdf/<id>``.
+
+    The PDF fetcher refuses relative redirects, so the full text was lost and
+    only the abstract was saved. Asking for ``/pdf/<id>`` directly avoids the
+    redirect.
+    """
+    if not url:
+        return url
+    cleaned = url.strip().replace("http://arxiv.org/", "https://arxiv.org/")
+    match = _ARXIV_PDF_SUFFIX_RE.match(cleaned)
+    return match.group(1) if match else cleaned
+
+
 def _candidate_id(provider: str, identifier: str) -> str:
     digest = hashlib.sha256(f"{provider}:{identifier}".encode("utf-8")).hexdigest()[:16]
     return f"{provider}-{digest}"
@@ -335,7 +352,7 @@ def search_openalex(
                 doi=doi,
                 openalex_id=openalex_id,
                 url=str(landing_url)[:2048],
-                open_access_pdf_url=str(pdf_url)[:2048] if pdf_url else None,
+                open_access_pdf_url=(canonical_arxiv_pdf_url(str(pdf_url)) or "")[:2048] if pdf_url else None,
                 citation_count=int(work.get("cited_by_count")) if work.get("cited_by_count") is not None else None,
                 is_open_access=is_oa,
             )
@@ -505,10 +522,10 @@ def search_arxiv(
             if rel == "alternate" and href:
                 html_url = href
             elif (link_title == "pdf" or "/pdf/" in href) and href:
-                pdf_url = href if href.endswith(".pdf") else f"{href}.pdf"
+                pdf_url = canonical_arxiv_pdf_url(href)
         html_url = html_url.replace("http://arxiv.org/", "https://arxiv.org/")
         if not pdf_url and "/abs/" in html_url:
-            pdf_url = html_url.replace("/abs/", "/pdf/") + ".pdf"
+            pdf_url = html_url.replace("/abs/", "/pdf/")
 
         authors = [
             " ".join((name_el.text or "").split()).strip()
