@@ -15,6 +15,10 @@ const AuthContext = createContext<AuthState | null>(null);
 
 const INACTIVITY_RECHECK_INTERVAL_MS = 60_000;
 
+export const SESSION_COOKIE_BLOCKED = 'session_cookie_blocked';
+export const SESSION_COOKIE_BLOCKED_MESSAGE =
+  'Your password was correct, but this browser blocked the sign-in cookie. Allow cookies for this site (or turn off cross-site tracking prevention for it) and try again.';
+
 export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) => {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
@@ -75,6 +79,20 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
 
   const login = useCallback(async (email: string, password: string) => {
     const current = await authService.login(email, password);
+    // Some browsers (Safari, Brave, private windows) silently drop a session
+    // cookie that comes from another site. Check that the cookie was kept, so
+    // the user gets a clear message now instead of being signed out on the
+    // next page load.
+    try {
+      await authService.me();
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        throw new ApiError('Sign-in cookie was blocked', 401, {
+          error: { code: SESSION_COOKIE_BLOCKED, message: SESSION_COOKIE_BLOCKED_MESSAGE },
+        });
+      }
+      // A network blip here should not undo a successful sign-in.
+    }
     lastCheckedRef.current = Date.now();
     setUser(current);
   }, []);
