@@ -3,6 +3,7 @@ import { Menu, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useOptionalAuth } from '../../app/AuthContext';
 import { BrandMark } from '../common/BrandMark';
+import { AccountAvatar, AccountMenu, accountName } from './AccountBits';
 import { scrollToHash } from './Motion';
 
 const NAV_ITEMS = [
@@ -54,26 +55,13 @@ export const LandingNav: React.FC = () => {
         <div className="hidden items-center gap-2 md:flex">
           {user ? (
             <>
-              <span
-                className="inline-flex h-8 max-w-[220px] items-center gap-1.5 rounded-full border border-line bg-panel px-2.5 text-[12px] text-ink-soft"
-                title={`Signed in as ${user.email}`}
-              >
-                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" aria-hidden="true" />
-                <span className="truncate font-medium text-ink">{user.email}</span>
-              </span>
               <Link
                 to="/research/new"
                 className="landing-btn inline-flex h-9 items-center rounded-md bg-solid px-3.5 text-[13px] font-medium text-on-solid shadow-xs transition-colors hover:bg-solid-hover"
               >
                 Open workspace
               </Link>
-              <button
-                type="button"
-                onClick={() => { void handleSignOut(); }}
-                className="inline-flex h-9 items-center rounded-md px-3 text-[13px] font-medium text-ink-soft transition-colors hover:bg-subtle hover:text-ink"
-              >
-                Sign out
-              </button>
+              <AccountMenu user={user} onSignOut={() => { void handleSignOut(); }} />
             </>
           ) : (
             <>
@@ -93,6 +81,13 @@ export const LandingNav: React.FC = () => {
           )}
         </div>
 
+        <div className="flex items-center gap-1 md:hidden">
+          {user && (
+            <span className="inline-flex items-center" title={`Signed in as ${user.email}`}>
+              <AccountAvatar user={user} />
+              <span className="sr-only">Signed in as {accountName(user)}</span>
+            </span>
+          )}
         <button
           type="button"
           className="-mr-2 inline-flex h-10 w-10 items-center justify-center rounded-md text-ink-soft hover:bg-subtle md:hidden"
@@ -103,6 +98,7 @@ export const LandingNav: React.FC = () => {
         >
           {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
         </button>
+        </div>
       </nav>
 
       {open && (
@@ -124,9 +120,13 @@ export const LandingNav: React.FC = () => {
           </div>
           {user ? (
             <div className="mt-4 space-y-2.5">
-              <p className="truncate text-xs text-ink-soft">
-                Signed in as <span className="font-medium text-ink">{user.email}</span>
-              </p>
+              <div className="flex items-center gap-3 rounded-lg border border-line bg-panel p-3">
+                <AccountAvatar user={user} size="lg" />
+                <div className="min-w-0">
+                  <p className="truncate text-[15px] font-semibold text-ink">{accountName(user)}</p>
+                  <p className="truncate text-xs text-ink-muted">{user.email}</p>
+                </div>
+              </div>
               <div className="grid grid-cols-2 gap-2">
                 <Link to="/research/new" className="inline-flex h-10 items-center justify-center rounded-md bg-solid text-sm font-medium text-on-solid">
                   Open workspace
