@@ -225,3 +225,33 @@ def has_active_job(session: Session, kind: str | tuple[str, ...], target_id: UUI
         )
         is not None
     )
+
+
+def cancel_jobs(
+    session: Session,
+    kind: str,
+    target_id: UUID,
+    *,
+    reason: str = "paused_by_user",
+    commit: bool = True,
+) -> int:
+    """Mark queued or running jobs for ``target_id`` as stopped."""
+    result = session.execute(
+        update(BackgroundJob)
+        .where(
+            BackgroundJob.kind == kind,
+            BackgroundJob.target_id == target_id,
+            BackgroundJob.state.in_((QUEUED, RUNNING)),
+        )
+        .values(
+            state=FAILED,
+            locked_at=None,
+            last_error=reason[:2000],
+            updated_at=utc_now(),
+        )
+    )
+    if commit:
+        session.commit()
+    else:
+        session.flush()
+    return int(result.rowcount or 0)

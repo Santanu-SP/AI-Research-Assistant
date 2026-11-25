@@ -238,3 +238,42 @@ def test_query_rejects_foreign_and_archived_projects(
     )
     assert archived.status_code == 404
     assert archived.json()["error"]["code"] == "research_project_not_found"
+
+
+def test_query_endpoint_splits_multi_section_markdown_into_report_sections(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    items = candidates()
+
+    class StructuredGenerator:
+        def generate(self, question, evidence):
+            return (
+                "Both papers show clear gains across measured outcomes [S1][S2].\n\n"
+                "### Primary Trial\n"
+                "- First uploaded paper improved the primary endpoint [S1].\n\n"
+                "### Follow-up Evidence\n"
+                "- Follow-up study confirmed similar improvements [S2]."
+            )
+
+    monkeypatch.setattr(rag_service.retrieval, "retrieve", lambda *a, **kw: items)
+    monkeypatch.setattr(rag_service, "reranker_service_for", lambda *_: FakeReranker())
+    monkeypatch.setattr(rag_service, "generation_service_for", lambda *_: StructuredGenerator())
+
+    res = client.post(
+        "/api/v1/research/query",
+        json={"query": "Summarize the findings across both papers", "researchDepth": "standard"},
+    )
+    assert res.status_code == 201, res.text
+    research_id = res.json()["researchId"]
+
+    report_res = client.get(f"/api/v1/research/{research_id}/report")
+    assert report_res.status_code == 200
+    report = report_res.json()["report"]
+    assert report["summary"] == "Both papers show clear gains across measured outcomes [S1][S2]."
+    assert [s["heading"] for s in report["sections"]] == [
+        "Primary Trial",
+        "Follow-up Evidence",
+    ]
+    assert report["sections"][0]["citationIds"] == [1]
+    assert report["sections"][1]["citationIds"] == [2]
