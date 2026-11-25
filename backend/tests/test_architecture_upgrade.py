@@ -281,7 +281,7 @@ def test_e2e_2_youtube_research_workflow(
 
     monkeypatch.setattr(
         YouTubeIngestionAdapter,
-        "_fetch_segments",
+        "_fetch_transcript",
         lambda self, video_id: (
             [
                 TranscriptSegment(
@@ -296,6 +296,7 @@ def test_e2e_2_youtube_research_workflow(
                 ),
             ],
             "Transformer Attention Lecture",
+            {},
         ),
     )
 
