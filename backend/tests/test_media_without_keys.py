@@ -120,3 +120,42 @@ def test_video_sound_is_extracted_and_transcribed_with_a_fake_service(tmp_path: 
         video, document_id=uuid4(), ingestion_version="v1", original_name="clip.mp4"
     )
     assert "Photosynthesis turns light" in " ".join(node.text for node in parsed.nodes)
+
+
+def test_gemini_audio_moves_to_the_backup_model_when_the_main_one_is_busy(tmp_path: Path) -> None:
+    audio = tmp_path / "talk.mp3"
+    audio.write_bytes(b"ID3fake-audio")
+    asked: list[str] = []
+
+    def busy_then_ok(request: httpx.Request) -> httpx.Response:
+        asked.append(request.url.path)
+        if "main-model" in request.url.path:
+            return httpx.Response(503, json={"error": {"message": "overloaded"}})
+        return httpx.Response(
+            200, json={"candidates": [{"content": {"parts": [{"text": "Plants make sugar from light."}]}}]}
+        )
+
+    transcriber = GroqAudioTranscriber(
+        api_key=None,
+        gemini_api_key="test-key-not-real",
+        gemini_model_name="main-model",
+        gemini_fallback_model_name="backup-model",
+        client=httpx.Client(transport=httpx.MockTransport(busy_then_ok)),
+    )
+    parsed = transcriber.parse(audio, document_id=uuid4(), ingestion_version="v1", original_name="talk.mp3")
+    assert "Plants make sugar" in " ".join(node.text for node in parsed.nodes)
+    assert [p.rsplit("/", 1)[-1] for p in asked] == ["main-model:generateContent", "backup-model:generateContent"]
+
+
+def test_gemini_audio_says_retry_later_when_every_model_is_busy(tmp_path: Path) -> None:
+    audio = tmp_path / "talk.mp3"
+    audio.write_bytes(b"ID3fake-audio")
+    transcriber = GroqAudioTranscriber(
+        api_key=None,
+        gemini_api_key="test-key-not-real",
+        client=httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(503))),
+    )
+    with pytest.raises(DocumentIngestionError) as caught:
+        transcriber.parse(audio, document_id=uuid4(), ingestion_version="v1")
+    assert caught.value.code == "audio_transcription_failed"
+    assert "busy right now" in str(caught.value)
