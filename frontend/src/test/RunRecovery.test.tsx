@@ -85,4 +85,19 @@ describe('RunRecovery', () => {
     expect(screen.getByText(/No trusted sources online could be found or read/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument();
   });
+
+  it('shows calm paused controls with Resume and Edit question', async () => {
+    retryMock.mockResolvedValue({});
+    const onRestarted = renderRecovery(failed({ failureReason: 'paused' }));
+
+    expect(screen.getByText('Research paused')).toBeInTheDocument();
+    expect(
+      screen.getByText(/Edit your question or resume whenever you’re ready/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /switch model/i })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /^resume$/i }));
+    await waitFor(() => expect(onRestarted).toHaveBeenCalledTimes(1));
+    expect(retryMock).toHaveBeenCalledWith('run-1', {});
+  });
 });

@@ -9,6 +9,7 @@ export type ResearchProgressStage =
 export type ResearchProgressStepStatus = 'completed' | 'active' | 'pending' | 'failed';
 /** Why a run stopped, in terms the UI can explain. */
 export type ResearchFailureReason =
+  | 'paused'
   | 'model_unavailable'
   | 'quota_reached'
   | 'no_ready_documents'

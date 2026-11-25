@@ -577,7 +577,7 @@ const ResearchResult: React.FC<ResearchResultProps> = ({
                 onClick={() =>
                   onSelectCitation(selectedCitationId === citationId ? null : citationId)
                 }
-                className="mx-0.5 inline-flex h-[18px] min-w-[18px] -translate-y-px items-center justify-center rounded bg-accent-soft px-1 align-middle font-mono text-[11px] font-medium leading-none text-accent hover:bg-accent-muted"
+                className="ml-0.5 inline-flex h-4 min-w-[16px] items-center justify-center rounded bg-accent-soft px-1 align-super font-mono text-[10px] font-medium leading-none text-accent hover:bg-accent-muted"
               >
                 {sourceNumber}
               </button>

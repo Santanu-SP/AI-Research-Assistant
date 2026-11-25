@@ -120,4 +120,83 @@ describe('SafeMarkdown', () => {
     render(<SafeMarkdown content="Plain marker [S2]" />);
     expect(screen.getByText('Plain marker [S2]')).toBeInTheDocument();
   });
+
+  it('renders Markdown tables safely with inline formatting and citations', () => {
+    const content = [
+      '| Mode | Latency | Best for |',
+      '| --- | --- | --- |',
+      '| **Quick** | Fast [S1] | Simple *lookups* |',
+      '| Deep | `<script>alert(1)</script>` | Thorough synthesis [S2] |',
+    ].join('\n');
+    const { container } = render(
+      <SafeMarkdown
+        content={content}
+        renderCitation={(n, key) => (
+          <button key={key} data-testid={`tbl-cite-${n}`}>
+            {n}
+          </button>
+        )}
+      />
+    );
+    const table = container.querySelector('table');
+    expect(table).not.toBeNull();
+    expect(table!.querySelectorAll('thead th')).toHaveLength(3);
+    expect(table!.querySelectorAll('tbody tr')).toHaveLength(2);
+    expect(table!.querySelector('strong')!.textContent).toBe('Quick');
+    expect(table!.querySelector('em')!.textContent).toBe('lookups');
+    expect(table!.querySelector('code')!.textContent).toBe('<script>alert(1)</script>');
+    expect(container.querySelector('script')).toBeNull();
+    expect(screen.getByTestId('tbl-cite-1')).toBeInTheDocument();
+    expect(screen.getByTestId('tbl-cite-2')).toBeInTheDocument();
+  });
+
+  it('keeps isolated pipe text as a paragraph when no separator row follows', () => {
+    const { container } = render(<SafeMarkdown content="| left | right |" />);
+    expect(container.querySelector('table')).toBeNull();
+    expect(container.querySelector('p')!.textContent).toBe('| left | right |');
+  });
+
+  it('nests indented sub-bullets inside the parent list item', () => {
+    const content = '- **Primary rule**: check tokens\n  - nested explanation\n  1. sub-step one';
+    const { container } = render(<SafeMarkdown content={content} />);
+    const topItems = container.querySelectorAll('div > ul > li');
+    expect(topItems).toHaveLength(1);
+    expect(topItems[0].querySelector('ul li')!.textContent).toBe('nested explanation');
+    expect(topItems[0].querySelector('ol li')!.textContent).toBe('sub-step one');
+  });
+
+  it('renders *italic* spans without mangling spaced multiplication operators', () => {
+    const { container } = render(
+      <SafeMarkdown content="This *key point* holds when 2 * 3 * 4 applies." />
+    );
+    const ems = container.querySelectorAll('em');
+    expect(ems).toHaveLength(1);
+    expect(ems[0].textContent).toBe('key point');
+  });
+
+  it('highlights gap and competing accounts lines as accessible note callouts', () => {
+    const content = [
+      '- Primary mechanism verified [S1].',
+      '- **Competing accounts**: Sources disagree on dosing [S1][S2].',
+      '  - Study A reports 600 mg/day [S1].',
+      '  - Study B reports 900 mg/day [S2].',
+      'Not covered in the sources: long-term pediatric safety.',
+    ].join('\n');
+    const { container } = render(
+      <SafeMarkdown
+        content={content}
+        renderCitation={(n, key) => (
+          <button key={key} data-testid={`callout-cite-${n}`}>
+            {n}
+          </button>
+        )}
+      />
+    );
+    const notes = container.querySelectorAll('[role="note"]');
+    expect(notes).toHaveLength(2);
+    expect(notes[0].textContent).toContain('Competing accounts:');
+    expect(notes[0].querySelectorAll('li')).toHaveLength(2);
+    expect(notes[1].textContent).toContain('Not covered in the sources:');
+    expect(notes[1].textContent).toContain('long-term pediatric safety.');
+  });
 });

@@ -18,7 +18,7 @@ export const CitationChip: React.FC<CitationChipProps> = ({
   const triggerRef = useRef<HTMLButtonElement>(null);
 
   return (
-    <span className="relative inline-block mx-0.5 align-baseline">
+    <span className="relative inline-block ml-0.5 align-baseline">
       <button
         ref={triggerRef}
         type="button"
@@ -31,7 +31,7 @@ export const CitationChip: React.FC<CitationChipProps> = ({
         onFocus={() => setIsHovered(true)}
         onBlur={() => setIsHovered(false)}
         aria-label={`Citation [S${number}] - ${source?.title || 'Source reference'}`}
-        className={`inline-flex h-[18px] min-w-[18px] -translate-y-px cursor-pointer select-none items-center justify-center rounded px-1 align-middle font-mono text-[11px] font-medium leading-none transition-colors duration-150 ${
+        className={`inline-flex h-4 min-w-[16px] cursor-pointer select-none items-center justify-center rounded px-1 align-super font-mono text-[10px] font-medium leading-none transition-colors duration-150 ${
           isSelected
             ? 'bg-solid text-on-solid'
             : 'bg-accent-soft text-accent hover:bg-accent-muted'

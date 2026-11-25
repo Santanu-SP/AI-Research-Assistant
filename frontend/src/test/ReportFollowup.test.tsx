@@ -234,4 +234,64 @@ describe('ResearchReportPage follow-up questions', () => {
     expect(screen.getByText(/Typical maintenance range is 0\.6 to 1\.0 mmol\/L/)).toBeInTheDocument();
     expect(screen.getByText('Lithium Renal Safety')).toBeInTheDocument();
   });
+
+  it('displays separate executive summary and multi-section headings when distinct', async () => {
+    const source1 = makeSource({ id: 'src-1', number: 1, title: 'Lithium Clinical Trial' });
+    vi.spyOn(reportService, 'getResearchReport').mockResolvedValue({
+      report: {
+        id: 'rep-multi',
+        researchId: 'res-multi',
+        title: 'Multi-Section Synthesis',
+        question: 'How does it work and what are the risks?',
+        summary: 'Concise executive takeaway [S1].',
+        dossierRef: 'LOCAL RAG · MULTI',
+        readingTimeMinutes: 3,
+        sourceCount: 1,
+        status: 'completed',
+        version: 1,
+        sections: [
+          {
+            id: 'sec-1',
+            heading: 'How It Works',
+            content: '- Modulates signaling [S1].',
+            quote: null,
+            position: 0,
+            citationIds: [1],
+            citations: [{ id: 'cit-1', sourceId: 'src-1', number: 1, position: 0 }],
+            createdAt: '2026-11-18T00:00:00Z',
+            updatedAt: '2026-11-18T00:00:00Z',
+          },
+          {
+            id: 'sec-2',
+            heading: 'Risks & Gaps',
+            content: 'Not covered in the sources: long-term outcomes.',
+            quote: null,
+            position: 1,
+            citationIds: [],
+            citations: [],
+            createdAt: '2026-11-18T00:00:00Z',
+            updatedAt: '2026-11-18T00:00:00Z',
+          },
+        ],
+        createdAt: '2026-11-18T00:00:00Z',
+        updatedAt: '2026-11-18T00:00:00Z',
+      },
+      sources: [source1],
+      followups: [],
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/research/res-multi/report']}>
+        <Routes>
+          <Route path="/research/:id/report" element={<ResearchReportPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Summary')).toBeInTheDocument();
+    expect(screen.getByText(/Concise executive takeaway/)).toBeInTheDocument();
+    expect(screen.getByText('How It Works')).toBeInTheDocument();
+    expect(screen.getByText('Risks & Gaps')).toBeInTheDocument();
+    expect(screen.getByText('Not covered in the sources:')).toBeInTheDocument();
+  });
 });
