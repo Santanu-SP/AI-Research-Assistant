@@ -24,3 +24,4 @@ python-pptx>=1.0
 requests>=2.32
 sqlalchemy>=2.0
 uvicorn[standard]>=0.32
+yt-dlp>=2025.10.22
