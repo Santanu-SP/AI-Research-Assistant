@@ -39,20 +39,29 @@ from test_rag_api import candidates, install_pipeline_fakes
         ("What is market research?", "Market Research"),
         (
             "How do transformers handle long context windows in recent LLM architectures?",
-            "Transformers Long Context",
+            "Transformers Long Context Windows LLM",
         ),
         (
             "Can you please explain how hybrid RAG retrieval works?",
             "Hybrid RAG Retrieval",
         ),
-        ("Compare PostgreSQL vs SQLite for search", "PostgreSQL vs SQLite"),
-        ("What are the side effects of lithium carbonate?", "Side Effects Lithium"),
+        ("Compare PostgreSQL vs SQLite for search", "PostgreSQL vs SQLite for Search"),
+        ("What are the side effects of lithium carbonate?", "Side Effects of Lithium Carbonate"),
+        ("What happened in the latest news about OpenAI and Apple?", "OpenAI and Apple"),
+        (
+            "Tell me everything you know about quantum computing applications",
+            "Quantum Computing Applications",
+        ),
+        (
+            "Please write a detailed report on climate change impact on agriculture",
+            "Climate Change Impact on Agriculture",
+        ),
         ("Anything at all?", "Anything"),
         ("   ???   ", "New Research"),
         ("WHAT IS POSTGRESQL FTS?", "Postgresql Fts"),
     ],
 )
-def test_build_fallback_title_caps_at_three_words(question: str, expected: str) -> None:
+def test_build_fallback_title_caps_at_five_words(question: str, expected: str) -> None:
     result = build_fallback_title(question)
     assert 1 <= len(result.split()) <= MAX_CHAT_TITLE_WORDS
     assert result == expected
@@ -70,9 +79,20 @@ def test_build_fallback_title_always_bounds_words_and_length() -> None:
     [
         ("Transformer Context Windows", "How do transformers handle long context windows?", "Transformer Context Windows"),
         ("Title: \"Lithium Side Effects.\"", "What are side effects of lithium?", "Lithium Side Effects"),
+        (
+            "Sure! Here is a concise title for your question: Climate Change Impact",
+            "How does climate change impact farming?",
+            "Climate Change Impact",
+        ),
+        (
+            "I cannot answer without reading the full research paper context provided.",
+            "How does lithium stabilize mood?",
+            "Lithium Stabilize Mood",
+        ),
+        ("Effects of", "What are effects of aspirin?", "Effects"),
         ("<think>thinking...</think>\nCool Roof Temperatures!", "Do cool roofs cool?", "Cool Roof Temperatures"),
         ("<think>truncated thinking without answer", "What is market research?", "Market Research"),
-        ("1. Overview of Hybrid RAG Retrieval Performance", "Explain hybrid RAG retrieval", "Hybrid RAG Retrieval"),
+        ("1. Overview of Hybrid RAG Retrieval Performance", "Explain hybrid RAG retrieval", "Hybrid RAG Retrieval Performance"),
         ("   ", "What is market research?", "Market Research"),
     ],
 )
@@ -119,7 +139,7 @@ def test_generation_service_generate_short_title_router_and_resilience() -> None
     )
     assert short == "Transformer Context Windows"
     assert len(seen_requests) == 1
-    assert seen_requests[0].max_tokens == 20
+    assert seen_requests[0].max_tokens == 40
     # Must preserve last_response for main RAG answer accounting.
     assert service.last_response.content == "Grounded [S1]."
 
@@ -170,7 +190,7 @@ def test_execute_research_uses_llm_short_title_when_enabled_and_respects_custom_
             return True
 
         def generate(self, request: LLMRequest) -> LLMResponse:
-            if "1 to 3 word" in request.system_prompt:
+            if "2 to 5 word" in request.system_prompt:
                 return LLMResponse(
                     provider="gemini",
                     model="gemini-3.8-flash",
@@ -204,7 +224,7 @@ def test_execute_research_uses_llm_short_title_when_enabled_and_respects_custom_
 
     detail = client.get(f"/api/v1/research/{research_id}").json()
     assert detail["title"] == "Evidence Impact Summary"
-    assert len(detail["title"].split()) <= 3
+    assert len(detail["title"].split()) <= MAX_CHAT_TITLE_WORDS
 
     report = client.get(f"/api/v1/research/{research_id}/report").json()
     assert report["report"]["title"] == "Evidence Impact Summary"
@@ -276,10 +296,10 @@ def test_backfill_legacy_research_titles_shortens_only_legacy_auto_titles_and_pr
     refreshed_custom = db_session.get(Research, custom_id)
 
     assert refreshed_legacy is not None
-    assert refreshed_legacy.title == "Transformers Long Context"
-    assert len(refreshed_legacy.title.split()) <= 3
+    assert refreshed_legacy.title == "Transformers Long Context Windows LLM"
+    assert len(refreshed_legacy.title.split()) <= MAX_CHAT_TITLE_WORDS
     assert refreshed_legacy.updated_at == old_time
     assert refreshed_report is not None
-    assert refreshed_report.title == "Transformers Long Context"
+    assert refreshed_report.title == "Transformers Long Context Windows LLM"
     assert refreshed_custom is not None
     assert refreshed_custom.title == "My Custom Four Word Title"

@@ -14,6 +14,8 @@ import { ShareDialog } from '../components/collaboration/ShareDialog';
 import { useAuth } from '../app/AuthContext';
 import { useRealtimeRoom } from '../hooks/useRealtimeRoom';
 import { reportService } from '../services/report.service';
+import { editResearchQuestion, friendlyResearchError } from '../services/research.service';
+import { useResearchHistory } from '../app/ResearchHistoryContext';
 import {
   ReportFollowupResponse,
   ResearchReportResponse,
@@ -33,6 +35,8 @@ import {
   Download,
   Link2,
   MessageSquarePlus,
+  PencilLine,
+  RotateCcw,
   Send,
   Sparkles,
   Users,
@@ -85,12 +89,18 @@ export const ResearchReportPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const history = useResearchHistory();
+  const reloadHistory = history?.reload;
   const [report, setReport] = useState<ResearchReportResponse | null>(null);
   const [sources, setSources] = useState<SourceResponse[]>([]);
   const [followups, setFollowups] = useState<ReportFollowupResponse[]>([]);
   const [followupQuestion, setFollowupQuestion] = useState('');
   const [followupSubmitting, setFollowupSubmitting] = useState(false);
   const [followupError, setFollowupError] = useState<string | null>(null);
+  const [editingQuestion, setEditingQuestion] = useState(false);
+  const [draftQuestion, setDraftQuestion] = useState('');
+  const [editSubmitting, setEditSubmitting] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
   const [researchDepth, setResearchDepth] = useState<ResearchDepth>('quick');
   const [preferredProvider, setPreferredProvider] = useState<string | null>(() => getDefaultModel().provider);
   const [modelOverride, setModelOverride] = useState<string | null>(() => getDefaultModel().model);
@@ -267,6 +277,31 @@ export const ResearchReportPage: React.FC = () => {
 
   const myRole = report.myRole ?? 'owner';
   const canEdit = myRole === 'owner' || myRole === 'editor';
+  const currentQuestionText = (report.question || report.title).trim();
+  const trimmedEditQuestion = draftQuestion.trim();
+
+  const handleEditQuestionSubmit = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!report.researchId || !trimmedEditQuestion || editSubmitting) return;
+    setEditSubmitting(true);
+    setEditError(null);
+    try {
+      await editResearchQuestion(report.researchId, { query: trimmedEditQuestion });
+      setEditingQuestion(false);
+      reloadHistory?.();
+      navigate(`/research/${report.researchId}/progress`, { replace: true });
+    } catch (err) {
+      setEditError(
+        friendlyResearchError(
+          err,
+          'Could not update the research question right now. Please try again.',
+        ),
+      );
+    } finally {
+      setEditSubmitting(false);
+    }
+  };
+
   const getSourceByNum = (n: number) => sources.find((s) => s.number === n);
   const renderCitation = (sourceNumber: number, key: string) => (
     <CitationChip
@@ -366,24 +401,100 @@ export const ResearchReportPage: React.FC = () => {
                   {report.question}
                 </p>
               )}
+
+              {canEdit && !editingQuestion && (
+                <div className="mt-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditError(null);
+                      setDraftQuestion(currentQuestionText);
+                      setEditingQuestion(true);
+                    }}
+                    className="btn-secondary"
+                  >
+                    <PencilLine className="h-3.5 w-3.5" />
+                    Edit question
+                  </button>
+                </div>
+              )}
+
+              {canEdit && editingQuestion && (
+                <form
+                  onSubmit={(e) => void handleEditQuestionSubmit(e)}
+                  className="mt-4 rounded-xl border border-line bg-subtle/30 p-4"
+                >
+                  <label htmlFor="report-edit-question-input" className="field-label">
+                    Edit question
+                  </label>
+                  <textarea
+                    id="report-edit-question-input"
+                    rows={3}
+                    maxLength={2000}
+                    disabled={editSubmitting}
+                    value={draftQuestion}
+                    onChange={(e) => setDraftQuestion(e.target.value)}
+                    onKeyDown={(e) => {
+                      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                        e.preventDefault();
+                        void handleEditQuestionSubmit();
+                      }
+                      if (e.key === 'Escape') {
+                        setEditingQuestion(false);
+                        setEditError(null);
+                      }
+                    }}
+                    className="field resize-none bg-panel"
+                  />
+                  {editError && (
+                    <p role="alert" className="mt-2 text-xs text-danger">
+                      {editError}
+                    </p>
+                  )}
+                  <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingQuestion(false);
+                        setEditError(null);
+                      }}
+                      disabled={editSubmitting}
+                      className="btn-secondary"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={editSubmitting || !trimmedEditQuestion}
+                      className="btn-primary"
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" />
+                      {editSubmitting ? 'Restarting…' : 'Save & restart'}
+                    </button>
+                  </div>
+                </form>
+              )}
             </header>
 
-            <article className="space-y-10">
+            <article className="space-y-9">
               {report.summary && showSummary && (
-                <section>
-                  <h2 className="mb-3 text-[13px] font-semibold uppercase tracking-[0.06em] text-ink-muted">
+                <section className="rounded-xl border border-line bg-subtle/40 px-5 py-4 sm:px-6 sm:py-5">
+                  <h2 className="mb-2.5 text-[12px] font-semibold uppercase tracking-[0.06em] text-accent">
                     Summary
                   </h2>
                   <SafeMarkdown
                     content={report.summary}
-                    className="font-serif text-[18px] leading-[1.75]"
+                    className="font-serif text-[17px] leading-[1.75] sm:text-[18px]"
                     renderCitation={renderCitation}
                   />
                 </section>
               )}
 
-              {report.sections.map((section) => (
-                <section key={section.id}>
+              {report.sections.map((section, sectionIdx) => (
+                <section
+                  key={section.id}
+                  className={sectionIdx > 0 ? 'border-t border-line/70 pt-8' : undefined}
+                >
                   <h2 className="mb-3 text-lg font-semibold tracking-[-0.01em] text-ink">
                     {section.heading}
                   </h2>

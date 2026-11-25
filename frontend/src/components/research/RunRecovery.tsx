@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, ArrowRight, Cpu, PencilLine, RotateCcw } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Cpu, PauseCircle, PencilLine, RotateCcw } from 'lucide-react';
 import { ResearchProgressResponse } from '../../types/progress';
 import { friendlyResearchError, retryResearch } from '../../services/research.service';
 import { ApiError } from '../../services/api';
@@ -61,8 +61,10 @@ export const RunRecovery: React.FC<RunRecoveryProps> = ({ progress, onRestarted 
 
   const ready = progress.documentsReady ?? 0;
   const preparing = progress.documentsPreparing ?? 0;
+  const isPaused = progress.failureReason === 'paused';
   const documentsHref = progress.projectId ? `/projects/${progress.projectId}?tab=documents` : '/research/new';
-  const showDocuments = preparing > 0 || ready === 0 || progress.failureReason === 'no_ready_documents';
+  const showDocuments =
+    !isPaused && (preparing > 0 || ready === 0 || progress.failureReason === 'no_ready_documents');
   const trimmed = question.trim();
 
   const restart = async (edited?: string) => {
@@ -99,18 +101,32 @@ export const RunRecovery: React.FC<RunRecoveryProps> = ({ progress, onRestarted 
   return (
     <section
       aria-labelledby="run-recovery-title"
-      className="mt-5 max-w-3xl rounded-xl border border-danger-line bg-panel shadow-xs"
+      className={`mt-5 max-w-3xl rounded-xl border bg-panel shadow-xs ${
+        isPaused ? 'border-line' : 'border-danger-line'
+      }`}
     >
       <div className="flex gap-3 px-4 py-4 sm:px-5">
-        <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-danger-soft text-danger">
-          <AlertTriangle className="h-3.5 w-3.5" />
+        <span
+          className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${
+            isPaused ? 'bg-subtle text-ink-soft' : 'bg-danger-soft text-danger'
+          }`}
+        >
+          {isPaused ? <PauseCircle className="h-3.5 w-3.5" /> : <AlertTriangle className="h-3.5 w-3.5" />}
         </span>
         <div className="min-w-0 flex-1">
           <h2 id="run-recovery-title" className="text-sm font-medium text-ink">
-            {modelFailure ? modelFailure.title : 'This run stopped before an answer was written'}
+            {isPaused
+              ? 'Research paused'
+              : modelFailure
+                ? modelFailure.title
+                : 'This run stopped before an answer was written'}
           </h2>
           <p className="mt-1 text-[13px] leading-relaxed text-ink-soft">
-            {modelFailure ? modelFailure.detail : explanation(progress)}
+            {isPaused
+              ? 'This run is paused. Edit your question or resume whenever you’re ready.'
+              : modelFailure
+                ? modelFailure.detail
+                : explanation(progress)}
           </p>
           {preparing > 0 && (
             <p className="mt-2 text-[13px] text-ink-soft">
@@ -192,9 +208,10 @@ export const RunRecovery: React.FC<RunRecoveryProps> = ({ progress, onRestarted 
         <div className="flex flex-wrap items-center gap-2 border-t border-line px-4 py-3 sm:px-5">
           <button type="button" onClick={() => void restart()} disabled={busy} className="btn-primary">
             <RotateCcw className={`h-3.5 w-3.5 ${busy ? 'animate-spin [animation-direction:reverse]' : ''}`} />
-            {busy ? 'Starting…' : 'Try again'}
+            {busy ? 'Starting…' : isPaused ? 'Resume' : 'Try again'}
           </button>
-          {(modelFailure || progress.failureReason === 'model_unavailable' || progress.failureReason === 'quota_reached') &&
+          {!isPaused &&
+            (modelFailure || progress.failureReason === 'model_unavailable' || progress.failureReason === 'quota_reached') &&
             !switching && (
               <button type="button" onClick={() => setSwitching(true)} disabled={busy} className="btn-secondary">
                 <Cpu className="h-3.5 w-3.5" />

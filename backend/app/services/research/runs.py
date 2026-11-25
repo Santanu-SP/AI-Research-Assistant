@@ -421,6 +421,7 @@ def _document_readiness(session: Session, research: Research) -> tuple[int, int]
 
 # Error codes from the pipeline mapped to the few reasons the UI explains.
 _FAILURE_REASONS = {
+    "paused_by_user": "paused",
     "generation_unavailable": "model_unavailable",
     "generation_invalid_request": "model_unavailable",
     "generation_timeout": "model_unavailable",
@@ -457,6 +458,47 @@ def _failure_reason(session: Session, research: Research, documents_ready: int) 
     return "unexpected"
 
 
+def pause_research(
+    session: Session,
+    research_id: UUID,
+    user_id: UUID,
+) -> Research:
+    """Pause an active research run so the user can edit the question or resume."""
+    from app.services.jobs import queue as job_queue
+    from app.services.observability.usage import release_research_shared_quota
+
+    research = get_research(
+        session, research_id, user_id, min_role=CollaboratorRole.EDITOR
+    )
+    if research.status not in (ResearchStatus.DRAFT, ResearchStatus.RESEARCHING):
+        raise AppError(
+            "Only active research runs can be paused",
+            status_code=409,
+            code="research_not_pausable",
+        )
+    job_queue.cancel_jobs(
+        session,
+        job_queue.RUN_RESEARCH,
+        research.id,
+        reason="paused_by_user",
+        commit=False,
+    )
+    release_research_shared_quota(session, research.id, commit=False)
+    timestamp = utc_now()
+    research.status = ResearchStatus.FAILED
+    research.project_status = ProjectStatus.PROCESSING_FAILED
+    research.failed_at = timestamp
+    research.failure_provider = None
+    research.failure_model = None
+    research.failure_type = None
+    research.updated_at = timestamp
+    _commit(session)
+    session.refresh(research)
+    attach_research_collab_metadata(session, [research], user_id)
+    broadcast_research_event(session, research, "research.failed", actor_id=user_id)
+    return research
+
+
 def restart_research(session: Session, research_id: UUID, *, commit: bool = True) -> Research:
     """Put a failed run back to the start so it can be run again in place."""
     research = get_research(session, research_id)
@@ -481,16 +523,7 @@ def restart_research(session: Session, research_id: UUID, *, commit: bool = True
     if commit:
         _commit(session)
         session.refresh(research)
-        event_type = (
-            "research.completed"
-            if project_status == ProjectStatus.REPORT_READY
-            else (
-                "research.failed"
-                if project_status == ProjectStatus.PROCESSING_FAILED
-                else "research.progress"
-            )
-        )
-        broadcast_research_event(session, research, event_type)
+        broadcast_research_event(session, research, "research.started")
     else:
         session.flush()
     return research

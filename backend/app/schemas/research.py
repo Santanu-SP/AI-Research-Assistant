@@ -120,6 +120,7 @@ class ResearchProgressResponse(ApiSchema):
     failed_at: datetime | None
     # Only set for failed runs: a short, safe reason the UI can explain.
     failure_reason: Literal[
+        "paused",
         "model_unavailable",
         "quota_reached",
         "no_ready_documents",

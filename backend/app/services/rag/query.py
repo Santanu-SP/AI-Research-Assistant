@@ -9,7 +9,7 @@ import re
 from time import monotonic
 from uuid import UUID, uuid4, uuid5
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -20,7 +20,7 @@ from app.core.time import utc_now
 from app.domain.collaboration import CollaboratorRole
 from app.domain.documents import SourceType as DocumentSourceType
 from app.domain.reports import SourceType
-from app.domain.research import ResearchDepth, ResearchStatus
+from app.domain.research import ResearchDepth, ResearchProgressStage, ResearchStatus
 from app.domain.states import ProjectStatus
 from app.schemas.rag import (
     EvidenceItem,
@@ -259,6 +259,118 @@ def _truncate_str(value: str | None, limit: int) -> str | None:
     return cleaned[:limit] or None
 
 
+_REPORT_HEADING = re.compile(r"^(#{1,3})\s+(.+?)\s*$")
+_SUMMARY_HEADING = re.compile(
+    r"^(?:executive\s+summary|summary|bottom\s+line|overview|tl\s*;?\s*dr|direct\s+answer|quick\s+answer|key\s+takeaway)$",
+    re.IGNORECASE,
+)
+_NOT_COVERED_BLOCK = re.compile(r"^\s*(?:[-*+]\s+)?(?:\*\*)?not covered in the sources\b", re.IGNORECASE)
+
+
+def _clean_section_heading(raw: str) -> str:
+    cleaned = SOURCE_REFERENCE.sub("", raw).replace("**", "").replace("__", "").strip()
+    cleaned = re.sub(r"\s{2,}", " ", cleaned).strip(" :-")
+    if len(cleaned) > 200:
+        cleaned = f"{cleaned[:197].rstrip()}..."
+    return cleaned or "Section"
+
+
+def _extract_lead_summary(content: str, max_chars: int = 420) -> str:
+    """Extract a crisp 1-2 sentence lead summary from the first section."""
+    paragraphs = [p.strip() for p in re.split(r"\n\s*\n", content) if p.strip()]
+    first_para = paragraphs[0] if paragraphs else content.strip()
+    lines = [line.strip() for line in first_para.splitlines() if line.strip()]
+    if lines and re.match(r"^(?:[-*+]|\d+[.)])\s+", lines[0]):
+        chosen = lines[:2]
+        lead = "\n".join(chosen)
+    else:
+        sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", first_para) if s.strip()]
+        chosen_sentences: list[str] = []
+        length = 0
+        for sentence in sentences[:2]:
+            if chosen_sentences and length + len(sentence) + 1 > max_chars:
+                break
+            chosen_sentences.append(sentence)
+            length += len(sentence) + 1
+        lead = " ".join(chosen_sentences) if chosen_sentences else first_para
+    return lead[:max_chars].rstrip() if len(lead) > max_chars and not SOURCE_REFERENCE.search(lead) else lead
+
+
+def _split_report_sections(answer: str) -> tuple[str, list[tuple[str, str]]]:
+    """Split a Markdown grounded answer into (executive_summary, sections).
+
+    Short single-block answers keep the unified single section (`Grounded answer`)
+    so simple one-sentence answers are not over-structured. Multi-section answers
+    with `##`/`###` headings promote the opening takeaway into `summary` and
+    turn each heading into its own `ReportSection`.
+    """
+    display_answer = answer.strip()
+    lines = display_answer.split("\n")
+    in_fence = False
+    headings: list[tuple[int, int, str]] = []
+    for idx, line in enumerate(lines):
+        if line.lstrip().startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        match = _REPORT_HEADING.match(line.strip())
+        if match:
+            headings.append((idx, len(match.group(1)), match.group(2)))
+
+    if headings:
+        levels = sorted({lvl for _, lvl, _ in headings})
+        split_level = levels[0]
+        # If line 0 has a lone outer `# Title` followed by deeper `##`/`###` headings, unwrap it.
+        if (
+            headings[0][0] == 0
+            and sum(1 for _, lvl, _ in headings if lvl == split_level) == 1
+            and len(levels) > 1
+        ):
+            headings = headings[1:]
+            lines = lines[1:]
+            headings = [(idx - 1, lvl, title) for idx, lvl, title in headings]
+            split_level = levels[1]
+
+        top_headings = [(idx, title) for idx, lvl, title in headings if lvl == split_level]
+        intro = "\n".join(lines[: top_headings[0][0]]).strip() if top_headings else ""
+        parsed_sections: list[tuple[str, str]] = []
+        for pos, (start_idx, raw_title) in enumerate(top_headings):
+            end_idx = (
+                top_headings[pos + 1][0] if pos + 1 < len(top_headings) else len(lines)
+            )
+            body = "\n".join(lines[start_idx + 1 : end_idx]).strip()
+            if not body:
+                continue
+            parsed_sections.append((_clean_section_heading(raw_title), body))
+
+        if parsed_sections:
+            if intro:
+                return intro, parsed_sections
+            if len(parsed_sections) >= 2 and _SUMMARY_HEADING.match(parsed_sections[0][0]):
+                return parsed_sections[0][1], parsed_sections[1:]
+            if len(parsed_sections) >= 2:
+                return _extract_lead_summary(parsed_sections[0][1]), parsed_sections
+            return parsed_sections[0][1], parsed_sections
+
+    blocks = [block.strip() for block in re.split(r"\n\s*\n", display_answer) if block.strip()]
+    if (
+        len(blocks) >= 2
+        and len(display_answer) > 240
+        and not re.match(r"^(?:[-*+]|\d+[.)]|\||>)\s*", blocks[0].lstrip())
+        and (len(blocks) > 2 or not _NOT_COVERED_BLOCK.match(blocks[1]))
+    ):
+        rest = "\n\n".join(blocks[1:])
+        heading = (
+            "Step-by-step details"
+            if re.match(r"^\d+[.)]\s", blocks[1].lstrip())
+            else "Detailed findings"
+        )
+        return blocks[0], [(heading, rest)]
+
+    return display_answer, [("Grounded answer", display_answer)]
+
+
 def _report_payload(
     *,
     research_id: UUID,
@@ -270,9 +382,11 @@ def _report_payload(
     evidence_by_id = {item.source_id: item for item in evidence}
     source_payloads = []
     citation_payloads = []
+    source_uuid_by_id: dict[str, UUID] = {}
     for position, citation in enumerate(citations):
         source_number = int(citation.citation_id[1:])
         source_uuid = uuid5(research_id, citation.citation_id)
+        source_uuid_by_id[citation.citation_id.upper()] = source_uuid
         item = evidence_by_id[citation.citation_id]
         raw_authors = [
             name.strip()[:200]
@@ -308,21 +422,40 @@ def _report_payload(
     # Keep the [S1] markers: the report page turns them into clickable
     # source chips next to the sentence they support.
     display_answer = answer.strip()
+    summary, section_specs = _split_report_sections(display_answer)
+    section_payloads = []
+    for position, (heading, content) in enumerate(section_specs):
+        section_sids = list(
+            dict.fromkeys(
+                f"S{int(number)}"
+                for number in SOURCE_REFERENCE.findall(content)
+                if f"S{int(number)}" in source_uuid_by_id
+            )
+        )
+        if not section_sids and len(section_specs) == 1:
+            section_citations = list(citation_payloads)
+        else:
+            section_citations = [
+                {"sourceId": source_uuid_by_id[sid], "position": cit_pos}
+                for cit_pos, sid in enumerate(section_sids)
+            ]
+        section_payloads.append(
+            {
+                "heading": heading,
+                "content": content,
+                "position": position,
+                "citations": section_citations,
+            }
+        )
+
     reading_minutes = max(1, len(_plain_answer(answer).split()) // 200 + 1)
     return ResearchReportCreate(
         title=title,
-        summary=display_answer,
+        summary=summary,
         dossier_ref=f"LOCAL RAG · {str(research_id)[:8].upper()}",
         reading_time_minutes=reading_minutes,
         sources=source_payloads,
-        sections=[
-            {
-                "heading": "Grounded answer",
-                "content": display_answer,
-                "position": 0,
-                "citations": citation_payloads,
-            }
-        ],
+        sections=section_payloads,
     )
 
 
@@ -984,6 +1117,131 @@ def retry_research(
     return reloaded
 
 
+def edit_and_restart_research(
+    session: Session,
+    user_id: UUID,
+    research_id: UUID,
+    payload: ResearchRetryRequest,
+    settings: Settings | None = None,
+) -> Research:
+    """Replace the question on an active, paused, failed, or completed run and restart it."""
+    from app.services.auth import api_keys as api_key_service
+
+    new_question = (payload.query or "").strip()
+    if not new_question:
+        raise AppError(
+            "Please enter a research question",
+            status_code=422,
+            code="empty_research_question",
+        )
+    runtime_settings = settings or get_settings()
+    record = research.get_research(
+        session, research_id, user_id, min_role=CollaboratorRole.EDITOR
+    )
+    job_queue.cancel_jobs(
+        session,
+        job_queue.RUN_RESEARCH,
+        record.id,
+        reason="edited_by_user",
+        commit=False,
+    )
+    release_research_shared_quota(session, record.id, commit=False)
+
+    existing_report = session.scalar(
+        select(ResearchReport).where(ResearchReport.research_id == record.id)
+    )
+    if existing_report is not None:
+        session.delete(existing_report)
+    session.execute(delete(Source).where(Source.research_id == record.id))
+    session.flush()
+
+    if new_question != record.question:
+        if research.is_auto_generated_title(record.title, record.question):
+            record.title = research.build_fallback_title(new_question)
+        record.question = new_question
+        if record.discovery_scope and record.project_id is not None:
+            record.attached_documents = []
+    if payload.research_depth is not None:
+        record.research_depth = payload.research_depth
+
+    reserved, quota_date = False, None
+    try:
+        reserved, quota_date = _apply_run_options(
+            session,
+            record,
+            user_id,
+            preferred_provider=(
+                payload.preferred_provider
+                if "preferred_provider" in payload.model_fields_set
+                else record.preferred_provider
+            ),
+            model_override=(
+                payload.model_override
+                if "model_override" in payload.model_fields_set
+                else record.model_override
+            ),
+            local_fallback_enabled=_first_set(
+                payload.local_fallback_enabled,
+                api_key_service.get_local_fallback_pref(session, user_id),
+                record.local_fallback_enabled,
+            ),
+            settings=runtime_settings,
+        )
+        now = utc_now()
+        record.status = ResearchStatus.RESEARCHING
+        record.project_status = ProjectStatus.DRAFT
+        record.progress_stage = ResearchProgressStage.PLANNING
+        record.sources_discovered = 0
+        record.sources_reviewed = 0
+        record.documents_found = 0
+        record.started_at = now
+        record.stage_started_at = now
+        record.completed_at = None
+        record.failed_at = None
+        record.failure_provider = None
+        record.failure_model = None
+        record.failure_type = None
+        record.updated_at = now
+        session.add(record)
+        job_queue.enqueue(session, job_queue.RUN_RESEARCH, record.id, commit=False)
+        session.commit()
+    except Exception:
+        _release_on_error(session, user_id, reserved, quota_date, record.id)
+        raise
+    reloaded = research.get_research(session, record.id, user_id)
+    attach_research_collab_metadata(session, [reloaded], user_id)
+    research.broadcast_research_event(
+        session, reloaded, "research.started", actor_id=user_id
+    )
+    return reloaded
+
+
+def _run_stop_state(
+    session: Session,
+    research_id: UUID,
+    *,
+    expected_question: str,
+    expected_started_at,
+) -> tuple[bool, bool]:
+    """Return ``(stopped, should_release_quota)`` if paused, failed, or edited mid-run."""
+    session.expire_all()
+    row = session.execute(
+        select(Research.status, Research.question, Research.started_at)
+        .where(Research.id == research_id)
+        .execution_options(populate_existing=True)
+    ).first()
+    if row is None:
+        return True, False
+    db_status, db_question, db_started_at = row
+    if db_status != ResearchStatus.RESEARCHING:
+        return True, True
+    if (db_question or "").strip() != expected_question:
+        return True, False
+    if expected_started_at is not None and db_started_at != expected_started_at:
+        return True, False
+    return False, False
+
+
 _MODEL_ERROR_CODES = {
     "generation_unavailable",
     "generation_invalid_request",
@@ -1051,15 +1309,40 @@ def execute_research(
     started_at = monotonic()
     record = research.get_research(session, research_id, user_id)
     normalized_query = record.question.strip()
+    expected_started_at = record.started_at
     profile = resolve_execution_profile(
         normalized_query,
         record.research_depth,
         settings,
     )
     runtime_settings = profile.settings
+
+    def _aborted() -> ResearchQueryResponse | None:
+        stopped, release_quota = _run_stop_state(
+            session,
+            record.id,
+            expected_question=normalized_query,
+            expected_started_at=expected_started_at,
+        )
+        if not stopped:
+            return None
+        if release_quota:
+            release_research_shared_quota(session, record.id, commit=True)
+        return ResearchQueryResponse(
+            research_id=record.id,
+            project_id=record.project_id,
+            answer="",
+            citations=[],
+            hybrid_candidate_count=0,
+            evidence_count=0,
+            insufficient_evidence=True,
+        )
+
     try:
         if _needs_discovery(record):
             _discover_sources_for_run(session, record, user_id, settings)
+            if (early := _aborted()) is not None:
+                return early
             record = research.get_research(session, research_id, user_id)
         doc_scope = scoped_document_ids(record)
         candidates = retrieval.retrieve(
@@ -1077,6 +1360,8 @@ def execute_research(
         else:
             ranked = []
         evidence = build_evidence(ranked, runtime_settings, profile.mode)
+        if (early := _aborted()) is not None:
+            return early
         insufficient = not evidence_is_sufficient(
             evidence,
             minimum_count=runtime_settings.minimum_evidence_count,
@@ -1121,6 +1406,11 @@ def execute_research(
                 )
 
             gen_kwargs: dict[str, object] = {
+                "research_depth": (
+                    str(getattr(record.research_depth, "value", record.research_depth))
+                    if record.research_depth
+                    else None
+                ),
                 "user_api_keys": user_keys or None,
                 "preferred_provider": (str(pref_provider) if pref_provider else None),
                 "model_override": (str(model_override) if model_override else None),
@@ -1150,6 +1440,9 @@ def execute_research(
                     )
                 except TypeError:
                     generated = active_generator.generate(normalized_query, evidence)
+
+            if (early := _aborted()) is not None:
+                return early
 
             validated = CitationValidator().validate(generated, evidence)
             if not validated.citations:
@@ -1597,6 +1890,7 @@ def ask_report_followup(
 
             gen_kwargs: dict[str, object] = {
                 "report_memory": compact_memory,
+                "research_depth": "quick",
                 "user_api_keys": user_keys or None,
                 "preferred_provider": pref_provider or None,
                 "model_override": model_override or None,
@@ -1620,7 +1914,11 @@ def ask_report_followup(
                 )
             except TypeError:
                 try:
-                    fallback_kwargs = {k: v for k, v in gen_kwargs.items() if k != "report_memory"}
+                    fallback_kwargs = {
+                        k: v
+                        for k, v in gen_kwargs.items()
+                        if k not in {"report_memory", "research_depth"}
+                    }
                     generated = active_generator.generate(
                         normalized_question,
                         evidence,

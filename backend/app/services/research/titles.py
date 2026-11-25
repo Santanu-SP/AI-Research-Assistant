@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, selectinload
 
 logger = logging.getLogger(__name__)
 
-MAX_CHAT_TITLE_WORDS = 3
+MAX_CHAT_TITLE_WORDS = 5
 FALLBACK_TITLE_MAX_LENGTH = 80
 DEFAULT_CHAT_TITLE = "New Research"
 
@@ -18,13 +18,21 @@ _LEADING_SCAFFOLD_RE = re.compile(
     r"^(?:"
     r"(?:can|could|would|will)\s+you\s+(?:please\s+)?|"
     r"please\s+|"
-    r"(?:help\s+me|tell\s+me\s+about|tell\s+me|show\s+me|find\s+out)\s+|"
+    r"does\s+anyone\s+know\s+(?:if\s+|whether\s+|about\s+)?|"
+    r"tell\s+me\s+(?:everything|all|more)?\s*(?:you\s+know\s+)?(?:about\s+)?|"
+    r"(?:help\s+me|show\s+me|find\s+out)\s+|"
+    r"i(?:'m|\s+am)\s+looking\s+(?:for|to\s+(?:find|understand|learn))\s+(?:about\s+)?|"
     r"i\s+(?:want|need|would\s+like)\s+to\s+(?:know|understand|learn)\s+(?:about\s+)?|"
-    r"give\s+me\s+(?:an?\s+)?(?:overview|summary|explanation|list)\s+of\s+|"
+    r"write\s+(?:me\s+)?(?:an?\s+)?(?:detailed|short|brief|full|comprehensive)?\s*(?:report|summary|essay|overview|analysis)\s+(?:on|about|of)\s+|"
+    r"give\s+me\s+(?:an?|some)?\s*(?:detailed\s+)?(?:overview|summary|explanation|list|details|info|information|breakdown)\s+(?:of|on|about)\s+|"
+    r"what\s+happened\s+(?:in|with|to)\s+(?:the\s+)?|"
+    r"(?:is|are)\s+there\s+(?:an?|any)\s+|"
+    r"(?:latest|recent|current)\s+news\s+(?:about|on)\s+|"
     r"(?:explain|describe|summarize|summarise|compare|contrast|analyze|analyse|evaluate|outline|list|define|discuss)\s+|"
     r"(?:what|how|why|when|where|which|who)\s+(?:is|are|was|were|does|do|did|can|could|would|should|to)\s+(?:the\s+|a\s+|an\s+)?|"
     r"(?:what|how|why|when|where|which|who)\s+|"
-    r"(?:is|are|was|were|do|does|did|can|could|would|should)\s+(?:the\s+|a\s+|an\s+)?"
+    r"(?:is|are|was|were|do|does|did|can|could|would|should)\s+(?:the\s+|a\s+|an\s+)?|"
+    r"whether\s+"
     r")+",
     re.IGNORECASE,
 )
@@ -141,7 +149,28 @@ _STOPWORDS = frozenset(
     }
 )
 
-# Dropped only when at least MAX_CHAT_TITLE_WORDS stronger tokens remain.
+# Minor connector words kept lowercase when in non-initial title positions.
+_MINOR_TITLE_WORDS = frozenset(
+    {
+        "a",
+        "an",
+        "the",
+        "and",
+        "or",
+        "of",
+        "in",
+        "on",
+        "for",
+        "to",
+        "with",
+        "vs",
+        "by",
+        "at",
+        "from",
+    }
+)
+
+# Dropped when stronger topic tokens remain so titles are not stuffed with meta chatter.
 _WEAK_FILLER_WORDS = frozenset(
     {
         "handle",
@@ -151,6 +180,7 @@ _WEAK_FILLER_WORDS = frozenset(
         "working",
         "happen",
         "happens",
+        "happened",
         "exist",
         "exists",
         "occur",
@@ -168,6 +198,45 @@ _WEAK_FILLER_WORDS = frozenset(
         "differences",
         "overview",
         "summary",
+        "tell",
+        "know",
+        "everything",
+        "something",
+        "anything",
+        "detailed",
+        "report",
+        "information",
+        "details",
+        "question",
+        "answer",
+        "write",
+        "make",
+        "create",
+        "find",
+        "check",
+        "latest",
+        "recent",
+        "current",
+        "today",
+        "paper",
+        "papers",
+        "document",
+        "documents",
+        "uploaded",
+        "sources",
+        "file",
+        "files",
+        "whether",
+        "possible",
+        "need",
+        "want",
+        "looking",
+        "help",
+        "please",
+        "understand",
+        "learn",
+        "really",
+        "actually",
     }
 )
 
@@ -175,7 +244,17 @@ _EDGE_PUNCTUATION = "\"'`“”‘’()[]{}<>.,!?;:–—-*#"
 _THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.IGNORECASE | re.DOTALL)
 _UNCLOSED_THINK_RE = re.compile(r"<think>.*$", re.IGNORECASE | re.DOTALL)
 _TITLE_PREFIX_RE = re.compile(
-    r"^(?:(?:here\s+is\s+(?:a|the)?\s*(?:short|concise)?\s*)?(?:chat\s+)?(?:title|topic|summary|name|heading)\s*[:\-–—]\s*)",
+    r"^(?:"
+    r"(?:sure|certainly|of\s+course)[,!.]*\s+"
+    r")?"
+    r"(?:(?:here\s+(?:is|are)\s+(?:a|an|the)?\s*(?:short|concise|brief|suggested)?\s*(?:sidebar|chat)?\s*(?:title|topic|summary|name|heading)?\s*(?:for\s+(?:your|the)\s+question)?\s*[:\-–—]\s*)|"
+    r"(?:(?:chat|sidebar)\s+)?(?:title|topic|summary|name|heading)\s*[:\-–—]\s*)",
+    re.IGNORECASE,
+)
+_INVALID_TITLE_RE = re.compile(
+    r"\b(?:cannot\s+answer|can't\s+answer|unable\s+to\s+answer|please\s+provide|more\s+context|"
+    r"as\s+an\s+ai|i\s+am\s+sorry|i'm\s+sorry|sorry,|no\s+question|untitled|"
+    r"not\s+enough\s+information)\b|^error\s*:",
     re.IGNORECASE,
 )
 _LIST_PREFIX_RE = re.compile(r"^(?:[-*•]+|\d+[.)])\s+")
@@ -198,9 +277,17 @@ def _clean_token(raw: str) -> str:
     return cleaned
 
 
-def _format_title_word(word: str, *, is_all_caps_input: bool) -> str:
-    if word.lower() == "vs":
+def _format_title_word(
+    word: str,
+    *,
+    is_all_caps_input: bool,
+    is_first: bool = True,
+) -> str:
+    lower = word.lower()
+    if lower == "vs":
         return "vs"
+    if not is_first and lower in _MINOR_TITLE_WORDS:
+        return lower
     if not is_all_caps_input and (
         any(ch.isupper() for ch in word[1:])
         or (word.isupper() and len(word) <= 6)
@@ -208,10 +295,14 @@ def _format_title_word(word: str, *, is_all_caps_input: bool) -> str:
         return word
     if "-" in word:
         return "-".join(
-            _format_title_word(part, is_all_caps_input=is_all_caps_input)
+            _format_title_word(
+                part,
+                is_all_caps_input=is_all_caps_input,
+                is_first=is_first and index == 0,
+            )
             if part
             else ""
-            for part in word.split("-")
+            for index, part in enumerate(word.split("-"))
         )
     for index, ch in enumerate(word):
         if ch.isalpha():
@@ -221,6 +312,8 @@ def _format_title_word(word: str, *, is_all_caps_input: bool) -> str:
 
 def _join_within_limit(words: list[str], max_length: int = FALLBACK_TITLE_MAX_LENGTH) -> str:
     capped = words[:MAX_CHAT_TITLE_WORDS]
+    while len(capped) > 1 and capped[-1].lower() in _STOPWORDS:
+        capped.pop()
     while capped:
         joined = " ".join(capped)
         if len(joined) <= max_length:
@@ -228,11 +321,13 @@ def _join_within_limit(words: list[str], max_length: int = FALLBACK_TITLE_MAX_LE
         if len(capped) == 1:
             return capped[0][:max_length].rstrip(" -") or DEFAULT_CHAT_TITLE
         capped.pop()
+        while len(capped) > 1 and capped[-1].lower() in _STOPWORDS:
+            capped.pop()
     return DEFAULT_CHAT_TITLE
 
 
 def build_fallback_title(question: str) -> str:
-    """Derive a deterministic phrase of at most 3 words from a research question."""
+    """Derive a natural, coherent phrase of at most 5 words from a research question."""
     normalized = " ".join((question or "").split())
     if not normalized:
         return DEFAULT_CHAT_TITLE
@@ -246,7 +341,23 @@ def build_fallback_title(question: str) -> str:
     stripped_tokens = [tok for raw in stripped.split() if (tok := _clean_token(raw))]
     active_tokens = stripped_tokens if stripped_tokens else raw_tokens
 
-    # Preserve "X vs Y" comparisons when "vs"/"versus" sits cleanly at position 1.
+    # Trim leading/trailing filler & stopwords while keeping short natural phrasing intact.
+    trim_mask = _STOPWORDS | _WEAK_FILLER_WORDS
+    trimmed_tokens = list(active_tokens)
+    while trimmed_tokens and trimmed_tokens[0].lower() in trim_mask:
+        trimmed_tokens.pop(0)
+    while trimmed_tokens and trimmed_tokens[-1].lower() in trim_mask:
+        trimmed_tokens.pop()
+
+    strong_count = sum(1 for tok in trimmed_tokens if tok.lower() not in trim_mask)
+    if 1 <= len(trimmed_tokens) <= MAX_CHAT_TITLE_WORDS and strong_count >= 1:
+        formatted = [
+            _format_title_word(word, is_all_caps_input=is_all_caps, is_first=(index == 0))
+            for index, word in enumerate(trimmed_tokens)
+        ]
+        return _join_within_limit(formatted)
+
+    # Longer questions: pick key content tokens (preserving "X vs Y" at position 1).
     content_words: list[str] = []
     seen_lower: set[str] = set()
     kept_vs = False
@@ -267,9 +378,9 @@ def build_fallback_title(question: str) -> str:
         seen_lower.add(lower)
         content_words.append(token)
 
-    if len(content_words) > MAX_CHAT_TITLE_WORDS and not kept_vs:
+    if not kept_vs:
         stronger = [w for w in content_words if w.lower() not in _WEAK_FILLER_WORDS]
-        if len(stronger) >= MAX_CHAT_TITLE_WORDS:
+        if len(stronger) >= 2:
             content_words = stronger
 
     if not content_words:
@@ -283,14 +394,14 @@ def build_fallback_title(question: str) -> str:
         content_words = deduped_raw
 
     formatted = [
-        _format_title_word(word, is_all_caps_input=is_all_caps)
-        for word in content_words[:MAX_CHAT_TITLE_WORDS]
+        _format_title_word(word, is_all_caps_input=is_all_caps, is_first=(index == 0))
+        for index, word in enumerate(content_words[:MAX_CHAT_TITLE_WORDS])
     ]
     return _join_within_limit(formatted)
 
 
 def normalize_short_title(raw: str, *, fallback_question: str | None = None) -> str:
-    """Clean model output and guarantee a non-empty phrase of at most 3 words."""
+    """Clean model output and guarantee a coherent phrase of at most 5 words."""
     text = _THINK_BLOCK_RE.sub(" ", raw or "")
     text = _UNCLOSED_THINK_RE.sub(" ", text).strip()
 
@@ -302,7 +413,7 @@ def normalize_short_title(raw: str, *, fallback_question: str | None = None) -> 
     cleaned = _TITLE_PREFIX_RE.sub("", cleaned)
     cleaned = cleaned.replace("**", "").replace("__", "").replace("`", "")
     cleaned = cleaned.strip(_EDGE_PUNCTUATION + " ")
-    if not cleaned:
+    if not cleaned or _INVALID_TITLE_RE.search(cleaned):
         return build_fallback_title(fallback_question) if fallback_question else DEFAULT_CHAT_TITLE
 
     tokens = [tok for part in cleaned.split() if (tok := _clean_token(part))]
@@ -310,13 +421,21 @@ def normalize_short_title(raw: str, *, fallback_question: str | None = None) -> 
         return build_fallback_title(fallback_question) if fallback_question else DEFAULT_CHAT_TITLE
 
     if len(tokens) > MAX_CHAT_TITLE_WORDS:
+        if len(tokens) > 8 and fallback_question:
+            return build_fallback_title(fallback_question)
         return build_fallback_title(cleaned)
 
-    is_all_caps = any(ch.isalpha() for ch in cleaned) and cleaned == cleaned.upper()
-    if all(tok.lower() in _STOPWORDS for tok in tokens) and fallback_question:
-        return build_fallback_title(fallback_question)
+    while len(tokens) > 1 and tokens[-1].lower() in _STOPWORDS:
+        tokens.pop()
 
-    formatted = [_format_title_word(tok, is_all_caps_input=is_all_caps) for tok in tokens]
+    is_all_caps = any(ch.isalpha() for ch in cleaned) and cleaned == cleaned.upper()
+    if all(tok.lower() in _STOPWORDS for tok in tokens):
+        return build_fallback_title(fallback_question) if fallback_question else DEFAULT_CHAT_TITLE
+
+    formatted = [
+        _format_title_word(tok, is_all_caps_input=is_all_caps, is_first=(index == 0))
+        for index, tok in enumerate(tokens)
+    ]
     return _join_within_limit(formatted)
 
 

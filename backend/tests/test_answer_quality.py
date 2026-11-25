@@ -192,3 +192,143 @@ def test_citation_after_full_stop_counts_for_that_sentence() -> None:
 def test_not_covered_note_is_not_a_claim() -> None:
     answer = "Agent A signs the card first [S1].\n- Not covered in the sources: the key rotation schedule."
     assert citation_coverage(answer) == (1, 1)
+
+
+def test_prompt_encourages_plain_english_and_depth_calibrated_hints() -> None:
+    quick_hint = answer_format_hint("How does agent handoff work?", depth="quick")
+    deep_hint = answer_format_hint("How does agent handoff work?", depth="deep")
+    compare_hint = answer_format_hint("Compare REST vs gRPC for transport")
+
+    assert "plain-English" in quick_hint
+    assert "endpoints" not in quick_hint
+    assert "numbered steps" in deep_hint and "endpoints" in deep_hint
+    assert "Markdown table" in compare_hint
+
+    prompt = build_grounding_prompt(
+        "Compare REST vs gRPC", [_evidence("S1")], research_depth="quick"
+    )
+    assert "plain, direct language" in prompt
+    assert "Markdown table" in prompt
+
+
+def test_tidy_normalizes_unicode_bullets_and_preserves_multiple_tables() -> None:
+    raw = (
+        "###Overview\n"
+        "• First bullet item here [S1]\n"
+        "  ‣ Nested bullet item stays indented [S1]\n\n"
+        "| Option | Summary |\n"
+        "| --- | --- |\n"
+        "| Alpha | Good for quick checks [S1] |\n\n"
+        "###Second table\n"
+        "| Option | Summary |\n"
+        "| --- | --- |\n"
+        "| Beta | Good for deep dives [S1] |"
+    )
+    cleaned = tidy_answer_lines(raw)
+    assert "### Overview" in cleaned
+    assert "- First bullet item here [S1]" in cleaned
+    assert "  - Nested bullet item stays indented [S1]" in cleaned
+    assert cleaned.count("| --- | --- |") == 2
+    assert cleaned.count("| Option | Summary |") == 2
+
+
+def test_citation_validator_handles_markdown_tables_and_nested_indentation() -> None:
+    answer = (
+        "Here is the summary [S1].\n\n"
+        "- Primary step [S1]\n"
+        "  - Nested detail stays indented [S1]\n\n"
+        "| Feature | Details | Status |\n"
+        "| --- | --- | --- |\n"
+        "| Delegation | Agent A signs cards [S1] | Active. [S1] |\n"
+        "| Fake row | Invented feature [S9] | Unknown [S9] |\n"
+        "| Mixed row | Valid note [S1] | Dropped note. [S9] |"
+    )
+    result = CitationValidator().validate(answer, [_evidence("S1")])
+    assert "  - Nested detail stays indented [S1]" in result.answer
+    assert "Fake row" not in result.answer
+    assert "| Delegation | Agent A signs cards [S1] | Active [S1]. |" in result.answer
+    assert "| Mixed row | Valid note [S1] |  |" in result.answer or "| Mixed row | Valid note [S1] | |" in result.answer
+    assert result.cited_claims == result.total_claims == 4
+
+
+def test_validator_deduplicates_same_doc_page_clusters_and_repeated_refs() -> None:
+    shared_doc = uuid4()
+    other_doc = uuid4()
+    same_doc_chunk1 = _evidence("S1", "Chunk 1 text").model_copy(
+        update={"document_id": shared_doc, "page": 2}
+    )
+    same_doc_chunk2 = _evidence("S2", "Chunk 2 text").model_copy(
+        update={"document_id": shared_doc, "page": 2}
+    )
+    same_doc_page5 = _evidence("S3", "Page 5 text").model_copy(
+        update={"document_id": shared_doc, "page": 5}
+    )
+    other_doc_chunk = _evidence("S4", "Other paper").model_copy(
+        update={"document_id": other_doc, "page": 1}
+    )
+
+    answer = (
+        "Delegation [S1] uses signed capability cards [S1][S2][S3][S4].\n"
+        "It isolates retries cleanly [S2]."
+    )
+    # In line 1: earlier [S1] is superseded by sentence-end [S1]; [S2] shares (shared_doc, page 2)
+    # with [S1] in the same cluster so it collapses, while [S3] (page 5) and [S4] (other_doc) stay.
+    # Line 2 still cites S2 legitimately in its own sentence.
+    result = CitationValidator().validate(
+        answer, [same_doc_chunk1, same_doc_chunk2, same_doc_page5, other_doc_chunk]
+    )
+    lines = result.answer.split("\n")
+    assert lines[0] == "Delegation uses signed capability cards [S1][S3][S4]."
+    assert lines[1] == "It isolates retries cleanly [S2]."
+    assert [c.citation_id for c in result.citations] == ["S1", "S3", "S4", "S2"]
+
+
+def test_split_report_sections_promotes_summary_and_splits_subheadings() -> None:
+    from app.services.rag.query import _report_payload, _split_report_sections
+
+    answer = (
+        "Lithium calms overactive nerve signaling and needs regular blood tests [S1][S2].\n\n"
+        "### **How It Works:**\n"
+        "- Slows excessive intracellular cascades [S1].\n\n"
+        "### Monitoring & Safety\n"
+        "- Check serum levels periodically [S2]."
+    )
+    summary, sections = _split_report_sections(answer)
+    assert summary == "Lithium calms overactive nerve signaling and needs regular blood tests [S1][S2]."
+    assert [heading for heading, _ in sections] == ["How It Works", "Monitoring & Safety"]
+    assert "Slows excessive intracellular cascades [S1]." in sections[0][1]
+
+    ev1 = _evidence("S1")
+    ev2 = _evidence("S2")
+    validated = CitationValidator().validate(answer, [ev1, ev2])
+    payload = _report_payload(
+        research_id=uuid4(),
+        title="Lithium overview",
+        answer=validated.answer,
+        citations=validated.citations,
+        evidence=[ev1, ev2],
+    )
+    assert payload.summary == summary
+    assert [sec.heading for sec in payload.sections] == ["How It Works", "Monitoring & Safety"]
+    assert len(payload.sections[0].citations) == 1
+    assert len(payload.sections[1].citations) == 1
+
+
+def test_split_report_sections_unwraps_summary_heading_and_keeps_short_flat_answer() -> None:
+    from app.services.rag.query import _split_report_sections
+
+    headed = (
+        "### Bottom Line\n"
+        "Short direct answer [S1].\n\n"
+        "### Key Findings\n"
+        "- Detail A [S1].\n\n"
+        "### Caveats\n"
+        "- Detail B [S2]."
+    )
+    summary, sections = _split_report_sections(headed)
+    assert summary == "Short direct answer [S1]."
+    assert [heading for heading, _ in sections] == ["Key Findings", "Caveats"]
+
+    flat_short_summary, flat_short_sections = _split_report_sections("One sentence answer [S1].")
+    assert flat_short_summary == "One sentence answer [S1]."
+    assert flat_short_sections == [("Grounded answer", "One sentence answer [S1].")]

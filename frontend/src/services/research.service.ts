@@ -112,6 +112,39 @@ export const retryResearch = async (
   }
 };
 
+/** Pauses an active research run so the user can edit the question or resume later. */
+export const pauseResearch = async (researchId: string): Promise<ResearchResponse> => {
+  try {
+    return await apiRequest<ResearchResponse>(
+      `/research/${encodeURIComponent(researchId)}/pause`,
+      { method: 'POST' }
+    );
+  } finally {
+    notifyUsageUpdated();
+    notifyResearchHistoryUpdated();
+  }
+};
+
+/** Replaces a run's question and restarts research from the beginning in place. */
+export const editResearchQuestion = async (
+  researchId: string,
+  payload: Partial<ResearchQueryRequest> & { query: string }
+): Promise<ResearchResponse> => {
+  try {
+    return await apiRequest<ResearchResponse>(
+      `/research/${encodeURIComponent(researchId)}/edit-question`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }
+    );
+  } finally {
+    notifyUsageUpdated();
+    notifyResearchHistoryUpdated();
+  }
+};
+
 /** The research id the server attached to an error, if any (failed or already running). */
 export const researchIdFromError = (error: unknown): string | null => {
   if (!(error instanceof ApiError)) return null;

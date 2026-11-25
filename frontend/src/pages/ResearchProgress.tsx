@@ -1,14 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, Pause, PencilLine, RotateCcw } from 'lucide-react';
 import { StatusBadge } from '../components/common/StatusBadge';
-import { useCallback } from 'react';
 import { TopBar } from '../components/layout/TopBar';
 import { useRealtimeRoom } from '../hooks/useRealtimeRoom';
 import { PresenceBar } from '../components/collaboration/PresenceBar';
 import type { RealtimeEventEnvelope } from '../types/collaboration';
 import { ProgressStepper } from '../components/research/ProgressStepper';
 import { progressService } from '../services/progress.service';
+import {
+  editResearchQuestion,
+  friendlyResearchError,
+  pauseResearch,
+} from '../services/research.service';
 import { ResearchProgressResponse } from '../types/progress';
 import { CenteredLoadingState } from '../components/common/LoadingState';
 import { ErrorState } from '../components/common/ErrorState';
@@ -17,6 +21,7 @@ import { RunRecovery } from '../components/research/RunRecovery';
 import { useResearchHistory } from '../app/ResearchHistoryContext';
 
 const PROGRESS_POLL_DELAYS_MS = [400, 600, 900, 1400, 2000] as const;
+const MAX_QUESTION_LENGTH = 2000;
 
 export const ResearchProgressPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -25,8 +30,19 @@ export const ResearchProgressPage: React.FC = () => {
   const [error, setError] = useState<Error | null>(null);
   // Bumped after "Try again" so polling starts over for the same run.
   const [runKey, setRunKey] = useState(0);
+  const [pausing, setPausing] = useState(false);
+  const [editingQuestion, setEditingQuestion] = useState(false);
+  const [draftQuestion, setDraftQuestion] = useState('');
+  const [editBusy, setEditBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const history = useResearchHistory();
   const reloadHistory = history?.reload;
+
+  useEffect(() => {
+    if (progress && !editingQuestion) {
+      setDraftQuestion(progress.question);
+    }
+  }, [progress, editingQuestion]);
 
   const handleRealtimeEvent = useCallback(
     (event: RealtimeEventEnvelope) => {
@@ -127,14 +143,67 @@ export const ResearchProgressPage: React.FC = () => {
 
   const isCompleted = progress.status === 'completed';
   const isFailed = progress.status === 'failed';
+  const isPaused = isFailed && progress.failureReason === 'paused';
+  const isActive = progress.status === 'researching' || progress.status === 'draft';
+  const trimmedDraft = draftQuestion.trim();
 
   const statusLabel = isCompleted
     ? 'Completed'
-    : isFailed
-      ? 'Failed'
-      : progress.status === 'draft'
-        ? 'Draft'
-        : 'Researching';
+    : isPaused
+      ? 'Paused'
+      : isFailed
+        ? 'Failed'
+        : progress.status === 'draft'
+          ? 'Draft'
+          : 'Researching';
+
+  const handlePause = async () => {
+    if (!id || pausing || editBusy) return;
+    setPausing(true);
+    setActionError(null);
+    try {
+      await pauseResearch(id);
+      setProgress((current) =>
+        current ? { ...current, status: 'failed', failureReason: 'paused' } : current,
+      );
+      reloadHistory?.();
+    } catch (err) {
+      setActionError(
+        friendlyResearchError(err, 'Could not pause this run right now. Please try again.'),
+      );
+    } finally {
+      setPausing(false);
+    }
+  };
+
+  const handleEditSubmit = async (event?: React.FormEvent) => {
+    event?.preventDefault();
+    if (!id || !trimmedDraft || editBusy || pausing) return;
+    setEditBusy(true);
+    setActionError(null);
+    try {
+      await editResearchQuestion(id, { query: trimmedDraft });
+      setEditingQuestion(false);
+      setProgress((current) =>
+        current
+          ? {
+              ...current,
+              question: trimmedDraft,
+              status: 'researching',
+              failureReason: null,
+            }
+          : current,
+      );
+      reloadHistory?.();
+      setRunKey((value) => value + 1);
+    } catch (err) {
+      setActionError(
+        friendlyResearchError(err, 'Could not update the question right now. Please try again.'),
+      );
+    } finally {
+      setEditBusy(false);
+    }
+  };
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -179,6 +248,87 @@ export const ResearchProgressPage: React.FC = () => {
             <h1 className="max-w-3xl font-serif text-2xl leading-snug tracking-[-0.01em] text-ink sm:text-[28px]">
               {progress.question}
             </h1>
+
+            {isActive && !editingQuestion && (
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void handlePause()}
+                  disabled={pausing || editBusy}
+                  className="btn-secondary"
+                >
+                  <Pause className="h-3.5 w-3.5" />
+                  {pausing ? 'Pausing…' : 'Pause'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActionError(null);
+                    setDraftQuestion(progress.question);
+                    setEditingQuestion(true);
+                  }}
+                  disabled={pausing || editBusy}
+                  className="btn-secondary"
+                >
+                  <PencilLine className="h-3.5 w-3.5" />
+                  Edit question
+                </button>
+              </div>
+            )}
+
+            {isActive && editingQuestion && (
+              <form
+                onSubmit={(event) => void handleEditSubmit(event)}
+                className="mt-4 max-w-2xl rounded-xl border border-line bg-panel p-4 shadow-xs"
+              >
+                <label htmlFor="active-question-input" className="field-label">
+                  Edit question
+                </label>
+                <textarea
+                  id="active-question-input"
+                  rows={3}
+                  maxLength={MAX_QUESTION_LENGTH}
+                  value={draftQuestion}
+                  disabled={editBusy}
+                  onChange={(event) => setDraftQuestion(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+                      event.preventDefault();
+                      void handleEditSubmit();
+                    }
+                    if (event.key === 'Escape') {
+                      setEditingQuestion(false);
+                      setDraftQuestion(progress.question);
+                    }
+                  }}
+                  className="field resize-none"
+                />
+                <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingQuestion(false);
+                      setDraftQuestion(progress.question);
+                    }}
+                    disabled={editBusy}
+                    className="btn-secondary"
+                  >
+                    Cancel
+                  </button>
+                  <button type="submit" disabled={editBusy || !trimmedDraft} className="btn-primary">
+                    <RotateCcw className="h-3.5 w-3.5" />
+                    {editBusy ? 'Restarting…' : 'Save & restart'}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {actionError && (
+              <p role="alert" className="mt-3 text-[13px] text-danger">
+                {actionError}
+              </p>
+            )}
+
             {isFailed && (
               <RunRecovery
                 key={progress.updatedAt}

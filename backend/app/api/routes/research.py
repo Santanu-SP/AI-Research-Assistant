@@ -143,6 +143,45 @@ def retry_research(
     return research_service.attach_source_counts(session, [record])[0]
 
 
+@router.post(
+    "/{research_id}/pause",
+    response_model=ResearchResponse,
+)
+def pause_research(
+    research_id: UUID,
+    session: DatabaseSession,
+    user: CurrentUser,
+) -> ResearchResponse:
+    """Pause an active research run so it can be edited or resumed later."""
+    record = research_service.pause_research(session, research_id, user.id)
+    return research_service.attach_source_counts(session, [record])[0]
+
+
+@router.post(
+    "/{research_id}/edit-question",
+    response_model=ResearchResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def edit_research_question(
+    research_id: UUID,
+    payload: ResearchRetryRequest,
+    session: DatabaseSession,
+    user: CurrentUser,
+    request: Request,
+) -> ResearchResponse:
+    """Replace the question on an active, paused, failed, or completed run and restart it."""
+    _enforce_query_rate_limit(request, user.id)
+    record = rag_service.edit_and_restart_research(
+        session,
+        user.id,
+        research_id,
+        payload,
+        request.app.state.settings,
+    )
+    request.app.state.job_worker.wake()
+    return research_service.attach_source_counts(session, [record])[0]
+
+
 @router.post("", response_model=ResearchResponse, status_code=status.HTTP_201_CREATED)
 def create_research(
     payload: ResearchCreate,

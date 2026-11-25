@@ -64,8 +64,8 @@ def test_retry_can_run_an_edited_question_on_the_same_item(client: TestClient, m
     body = retried.json()
     assert body["id"] == research_id
     assert body["question"] == "Which study reports the largest improvement?"
-    assert body["title"] == "Study Reports Largest"
-    assert len(body["title"].split()) <= 3
+    assert body["title"] == "Study Reports the Largest Improvement"
+    assert len(body["title"].split()) <= 5
     assert body["researchDepth"] == "deep"
     assert client.get("/api/v1/research").json()["total"] == 1
 
@@ -158,3 +158,64 @@ def test_retry_uses_a_local_model_switched_on_after_the_failure(
     record = db_session.get(Research, UUID(research_id))
     db_session.refresh(record)
     assert record.local_fallback_enabled is True
+
+
+def test_pause_and_resume_research_in_place(
+    client: TestClient, monkeypatch, db_session: Session
+) -> None:
+    install_pipeline_fakes(monkeypatch, candidates())
+    queued = client.post("/api/v1/research/jobs", json={"query": "What does the evidence show?"})
+    assert queued.status_code == 202
+    research_id = queued.json()["id"]
+
+    paused = client.post(f"/api/v1/research/{research_id}/pause")
+    assert paused.status_code == 200, paused.text
+    assert paused.json()["status"] == "failed"
+
+    progress = client.get(f"/api/v1/research/{research_id}/status").json()
+    assert progress["failureReason"] == "paused"
+    job = db_session.scalar(
+        select(BackgroundJob).where(BackgroundJob.target_id == UUID(research_id))
+    )
+    assert job is not None and job.state == "failed" and job.last_error == "paused_by_user"
+
+    resumed = client.post(f"/api/v1/research/{research_id}/retry", json={})
+    assert resumed.status_code == 202
+    assert resumed.json()["status"] == "researching"
+    assert client.app.state.job_worker.run_until_empty() == 1
+    assert client.get(f"/api/v1/research/{research_id}/status").json()["status"] == "completed"
+
+    cannot_pause = client.post(f"/api/v1/research/{research_id}/pause")
+    assert cannot_pause.status_code == 409
+    assert cannot_pause.json()["error"]["code"] == "research_not_pausable"
+
+
+def test_edit_question_restarts_active_and_completed_runs_in_place(
+    client: TestClient, monkeypatch
+) -> None:
+    install_pipeline_fakes(monkeypatch, candidates())
+    queued = client.post("/api/v1/research/jobs", json={"query": "What does the evidence show?"})
+    assert queued.status_code == 202
+    research_id = queued.json()["id"]
+
+    edited_active = client.post(
+        f"/api/v1/research/{research_id}/edit-question",
+        json={"query": "How do agents verify signed cards?"},
+    )
+    assert edited_active.status_code == 202, edited_active.text
+    assert edited_active.json()["question"] == "How do agents verify signed cards?"
+    assert edited_active.json()["title"] == "Agents Verify Signed Cards"
+    assert client.app.state.job_worker.run_until_empty() >= 1
+    assert client.get(f"/api/v1/research/{research_id}/status").json()["status"] == "completed"
+
+    edited_completed = client.post(
+        f"/api/v1/research/{research_id}/edit-question",
+        json={"query": "What side effects occur with lithium?"},
+    )
+    assert edited_completed.status_code == 202, edited_completed.text
+    assert edited_completed.json()["status"] == "researching"
+    assert client.app.state.job_worker.run_until_empty() >= 1
+
+    report = client.get(f"/api/v1/research/{research_id}/report").json()
+    assert report["report"]["question"] == "What side effects occur with lithium?"
+    assert client.get("/api/v1/research").json()["total"] == 1
