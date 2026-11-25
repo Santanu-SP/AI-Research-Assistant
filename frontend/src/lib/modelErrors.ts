@@ -84,6 +84,7 @@ export const describeModelFailure = (
 
 const SECRET_PATTERNS: RegExp[] = [
   /AIza[0-9A-Za-z_-]{10,}/g,
+  /\bAQ\.[0-9A-Za-z_-]{10,}/g,
   /\b(?:sk|pk|gsk|csk|xai)[-_][0-9A-Za-z_-]{8,}/g,
   /Bearer\s+[0-9A-Za-z._-]{8,}/gi,
   /\b(key|token|secret)=([^&\s]{6,})/gi,

@@ -52,6 +52,7 @@ class GroqAudioTranscriber:
         gemini_api_key: str | None = None,
         gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta",
         gemini_model_name: str = "gemini-3.8-flash",
+        gemini_fallback_model_name: str | None = "gemini-3.1-flash-lite",
         client: httpx.Client | None = None,
     ) -> None:
         self.api_key = api_key
@@ -64,6 +65,7 @@ class GroqAudioTranscriber:
         self.gemini_api_key = gemini_api_key
         self.gemini_base_url = gemini_base_url.rstrip("/")
         self.gemini_model_name = gemini_model_name
+        self.gemini_fallback_model_name = gemini_fallback_model_name
         self._client = client or httpx.Client(
             timeout=httpx.Timeout(timeout_seconds, connect=10.0)
         )
@@ -71,7 +73,6 @@ class GroqAudioTranscriber:
     def _transcribe_with_gemini(self, path: Path) -> list[TranscriptSegment]:
         mime_type = AUDIO_MIME_TYPES.get(path.suffix.lower(), "audio/mpeg")
         encoded = base64.b64encode(path.read_bytes()).decode("ascii")
-        url = f"{self.gemini_base_url}/models/{self.gemini_model_name}:generateContent"
         payload = {
             "contents": [
                 {
@@ -93,26 +94,54 @@ class GroqAudioTranscriber:
             ],
             "generationConfig": {"temperature": 0.0, "maxOutputTokens": 4096},
         }
-        try:
-            response = self._client.post(
-                url,
-                headers={"x-goog-api-key": self.gemini_api_key or ""},
-                json=payload,
-            )
-            response.raise_for_status()
-            data = response.json()
-        except httpx.HTTPStatusError as exc:
-            raise DocumentIngestionError(
-                f"Gemini audio fallback failed with HTTP {exc.response.status_code}",
-                code="audio_transcription_failed",
-                status_code=503 if exc.response.status_code >= 500 else 422,
-            ) from exc
-        except (httpx.HTTPError, ValueError) as exc:
-            raise DocumentIngestionError(
-                "The speech-to-text service could not be reached. Please retry in a few minutes.",
-                code="audio_transcription_unavailable",
-                status_code=503,
-            ) from exc
+        models = [self.gemini_model_name]
+        if self.gemini_fallback_model_name and self.gemini_fallback_model_name != self.gemini_model_name:
+            models.append(self.gemini_fallback_model_name)
+        data: dict = {}
+        for idx, model_name in enumerate(models):
+            has_next = idx + 1 < len(models)
+            try:
+                response = self._client.post(
+                    f"{self.gemini_base_url}/models/{model_name}:generateContent",
+                    headers={"x-goog-api-key": self.gemini_api_key or ""},
+                    json=payload,
+                )
+                response.raise_for_status()
+                data = response.json()
+                break
+            except httpx.HTTPStatusError as exc:
+                status = exc.response.status_code
+                if has_next and (status in (404, 429) or status >= 500):
+                    logger.warning(
+                        "Gemini audio model %s returned HTTP %s; falling back to %s",
+                        model_name,
+                        status,
+                        models[idx + 1],
+                    )
+                    continue
+                if status == 429 or status >= 500:
+                    message = (
+                        "The speech-to-text service is busy right now "
+                        f"(HTTP {status}). Please retry in a few minutes."
+                    )
+                else:
+                    message = (
+                        "The speech-to-text service could not read this recording "
+                        f"(HTTP {status}). Try a different file or format."
+                    )
+                raise DocumentIngestionError(
+                    message,
+                    code="audio_transcription_failed",
+                    status_code=503 if status == 429 or status >= 500 else 422,
+                ) from exc
+            except (httpx.HTTPError, ValueError) as exc:
+                if has_next:
+                    continue
+                raise DocumentIngestionError(
+                    "The speech-to-text service could not be reached. Please retry in a few minutes.",
+                    code="audio_transcription_unavailable",
+                    status_code=503,
+                ) from exc
 
         candidates = data.get("candidates") or []
         parts = candidates[0].get("content", {}).get("parts") if candidates else []
@@ -288,6 +317,7 @@ def audio_transcriber_for(
         gemini_api_key=settings.gemini_api_key,
         gemini_base_url=settings.gemini_base_url,
         gemini_model_name=settings.gemini_model_name,
+        gemini_fallback_model_name=settings.gemini_fallback_model_name,
         client=client,
     )
 

@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { useOptionalAuth } from '../../app/AuthContext';
 import { BrandMark } from '../common/BrandMark';
+import { AccountAvatar, accountName } from './AccountBits';
 import { CollabPreview, EvidencePreview, FlowPreview, ProductPreview, ProjectsPreview } from './ProductPreview';
 import { Reveal, loadDelay, scrollToHash, usePrefersReducedMotion } from './Motion';
 
@@ -91,13 +92,9 @@ export const Hero: React.FC = () => {
     <div className="landing-hero-glow pointer-events-none absolute inset-x-0 top-0 h-[520px]" aria-hidden="true" />
     <Container className="relative pb-16 pt-14 sm:pb-24 sm:pt-20">
       <div className="max-w-3xl">
-        <p style={loadDelay(90)} className="landing-load inline-flex items-center gap-2 rounded-full border border-line bg-panel px-3 py-1 text-xs text-ink-soft">
-          <span className="preview-breathe h-1.5 w-1.5 rounded-full bg-accent" />
-          Research projects for students, now with live collaboration
-        </p>
         <h1
           id="hero-heading"
-          className="mt-6 font-serif text-[40px] leading-[1.08] tracking-[-0.02em] text-ink sm:text-[56px] lg:text-[64px]"
+          className="font-serif text-[40px] leading-[1.08] tracking-[-0.02em] text-ink sm:text-[56px] lg:text-[64px]"
         >
           <span className="landing-title-mask">
             <span className="landing-load landing-load--headline-line" style={loadDelay(150)}>
@@ -144,7 +141,7 @@ export const Hero: React.FC = () => {
 export const Flow: React.FC = () => (
   <section id="flow" className="scroll-mt-16 border-b border-line py-20 sm:py-28" aria-labelledby="flow-heading">
     <Container>
-      <SectionHeading id="flow-heading" kicker="See it in action" title="From a question to an answer with receipts">
+      <SectionHeading id="flow-heading" kicker="See it in action" title="From a question to a cited answer">
         You type a question. The assistant gathers sources, reads them, and only writes what the
         sources support, with a numbered citation on every claim.
       </SectionHeading>
@@ -173,7 +170,7 @@ const STEPS = [
 export const HowItWorks: React.FC = () => (
   <section id="how-it-works" className="scroll-mt-16 border-b border-line bg-subtle/40 py-20 sm:py-28" aria-labelledby="how-heading">
     <Container>
-      <SectionHeading id="how-heading" kicker="How it works" title="Three steps, no guesswork">
+      <SectionHeading id="how-heading" kicker="How it works" title="Add sources, ask, check the answer">
         Answers are written only from the sources you can see. If the sources don’t cover
         something, it says so instead of making it up.
       </SectionHeading>
@@ -298,7 +295,7 @@ const FEATURES = [
 export const Features: React.FC = () => (
   <section id="features" className="scroll-mt-16 border-b border-line py-20 sm:py-28" aria-labelledby="features-heading">
     <Container>
-      <SectionHeading id="features-heading" kicker="Features" title="Built around the evidence, not the chat window" />
+      <SectionHeading id="features-heading" kicker="Features" title="Every answer points back to its source" />
 
       <div className="mt-14 grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
         <Reveal>
@@ -375,7 +372,7 @@ export const Pipeline: React.FC = () => (
       <div className="grid gap-12 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-16">
         <SectionHeading id="pipeline-heading" kicker="Under the hood" title="Open models, one database, runs local or in the cloud">
           The same pipeline runs fully on your own machine with local models, or on a light cloud
-          setup. PostgreSQL is the single source of truth for files, passages, vectors and reports.
+          setup. PostgreSQL holds everything: files, passages, vectors and reports.
         </SectionHeading>
 
         <Reveal as="ol" variant="scale" className="overflow-hidden rounded-xl border border-line bg-panel">
@@ -501,14 +498,24 @@ const HeroActions: React.FC = () => {
 
   if (user) {
     return (
-      <div className="flex flex-col items-start gap-3">
-        <div className="inline-flex items-center gap-2 rounded-full border border-line bg-panel px-3 py-1 text-xs text-ink-soft shadow-xs">
-          <span className="h-2 w-2 rounded-full bg-accent" aria-hidden="true" />
-          <span>
-            Signed in as <strong className="font-medium text-ink">{user.name}</strong> ({user.email})
-          </span>
+      <div
+        data-testid="hero-account-card"
+        className="landing-account-card w-full max-w-xl rounded-xl border border-line bg-panel p-4 shadow-sm sm:p-5"
+      >
+        <div className="flex items-center gap-3.5">
+          <AccountAvatar user={user} size="lg" />
+          <div className="min-w-0">
+            <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="truncate text-[17px] font-semibold text-ink">Welcome back, {accountName(user)}</span>
+              <span className="inline-flex items-center gap-1 rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-medium text-accent">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" aria-hidden="true" />
+                Signed in
+              </span>
+            </p>
+            <p className="mt-0.5 truncate text-[13px] text-ink-muted">{user.email}</p>
+          </div>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="mt-4 flex flex-wrap items-center gap-2.5">
           <Link
             to="/research/new"
             className="landing-btn group inline-flex h-11 items-center gap-2 rounded-md bg-solid px-5 text-sm font-medium text-on-solid shadow-sm transition-colors hover:bg-solid-hover"
@@ -519,9 +526,16 @@ const HeroActions: React.FC = () => {
           <button
             type="button"
             onClick={() => { void handleSwitchAccount(); }}
-            className="landing-btn inline-flex h-11 items-center rounded-md border border-line-strong bg-panel px-5 text-sm font-medium text-ink shadow-xs transition-colors hover:bg-subtle"
+            className="landing-btn inline-flex h-11 items-center rounded-md border border-line-strong bg-panel px-4 text-sm font-medium text-ink shadow-xs transition-colors hover:bg-subtle"
           >
             Switch account
+          </button>
+          <button
+            type="button"
+            onClick={() => { void auth?.logout(); }}
+            className="inline-flex h-11 items-center rounded-md px-3 text-sm font-medium text-ink-soft transition-colors hover:bg-subtle hover:text-ink"
+          >
+            Sign out
           </button>
         </div>
       </div>

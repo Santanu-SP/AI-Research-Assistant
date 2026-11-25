@@ -71,6 +71,9 @@ describe('LandingPage authentication state', () => {
     expect(screen.getAllByRole('link', { name: 'Sign in' }).length).toBeGreaterThanOrEqual(2);
     expect(screen.getByRole('link', { name: 'Get started' })).toHaveAttribute('href', '/register');
     expect(screen.queryByRole('link', { name: 'Open workspace' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Welcome back/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Account menu/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/now with live collaboration/i)).not.toBeInTheDocument();
   });
 
   it('shows signed-in identity, workspace CTA, sign out, and switch account when logged in', async () => {
@@ -89,8 +92,17 @@ describe('LandingPage authentication state', () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByText(/Signed in as/i)).toBeInTheDocument();
-    expect(screen.getAllByText(/santanu@example\.com/).length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText('Welcome back, Santanu')).toBeInTheDocument();
+    expect(screen.getByText('Signed in')).toBeInTheDocument();
+    expect(screen.getByText('santanu@example.com')).toBeInTheDocument();
+
+    const accountButton = screen.getByRole('button', { name: 'Account menu for Santanu' });
+    expect(accountButton).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(accountButton);
+    expect(accountButton).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('menuitem', { name: 'Sign out' })).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
     const workspaceLinks = screen.getAllByRole('link', { name: /Open workspace/i });
     expect(workspaceLinks[0]).toHaveAttribute('href', '/research/new');
 
@@ -117,7 +129,7 @@ describe('LandingPage authentication state', () => {
     for (const name of ['OpenAlex', 'arXiv', 'Crossref', 'Wikipedia', 'Trusted news']) {
       expect(screen.getByRole('heading', { name })).toBeInTheDocument();
     }
-    expect(screen.getByRole('heading', { name: /answer with receipts/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /From a question to a cited answer/i })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /Work on it together, live/i })).toBeInTheDocument();
   });
 });

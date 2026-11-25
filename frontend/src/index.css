@@ -1014,3 +1014,34 @@
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-accent) 35%, transparent);
   }
 }
+
+/* Signed-in account menu on the landing page */
+.landing-account-menu {
+  transform-origin: top right;
+  animation: landing-account-menu-in 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes landing-account-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.landing-account-card {
+  transition: border-color 200ms ease, box-shadow 200ms ease;
+}
+
+.landing-account-card:hover {
+  border-color: var(--color-line-strong);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-account-menu {
+    animation: none;
+  }
+}
