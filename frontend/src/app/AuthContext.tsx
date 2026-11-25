@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AuthUser, authService } from '../services/auth.service';
-import { ApiError } from '../services/api';
+import { ApiError, isCrossSiteApi, probeSameOriginApi, switchToSameOriginApi } from '../services/api';
 
 interface AuthState {
   user: AuthUser | null;
@@ -12,6 +12,17 @@ interface AuthState {
 }
 
 const AuthContext = createContext<AuthState | null>(null);
+
+/** False only when the server clearly says the session cookie did not come back. */
+const sessionCookieKept = async (): Promise<boolean> => {
+  try {
+    await authService.me();
+    return true;
+  } catch (error) {
+    // A network blip here should not undo a successful sign-in.
+    return !(error instanceof ApiError && error.status === 401);
+  }
+};
 
 const INACTIVITY_RECHECK_INTERVAL_MS = 60_000;
 
@@ -78,20 +89,21 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
   }, [refreshUser]);
 
   const login = useCallback(async (email: string, password: string) => {
-    const current = await authService.login(email, password);
+    let current = await authService.login(email, password);
     // Some browsers (Safari, Brave, private windows) silently drop a session
-    // cookie that comes from another site. Check that the cookie was kept, so
-    // the user gets a clear message now instead of being signed out on the
-    // next page load.
-    try {
-      await authService.me();
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 401) {
-        throw new ApiError('Sign-in cookie was blocked', 401, {
-          error: { code: SESSION_COOKIE_BLOCKED, message: SESSION_COOKIE_BLOCKED_MESSAGE },
-        });
-      }
-      // A network blip here should not undo a successful sign-in.
+    // cookie that comes from another site. Check that the cookie was kept.
+    let kept = await sessionCookieKept();
+    if (!kept && isCrossSiteApi() && (await probeSameOriginApi())) {
+      // This site has the same-origin /api proxy, where the cookie is
+      // first-party. Switch to it and sign in again.
+      switchToSameOriginApi();
+      current = await authService.login(email, password);
+      kept = await sessionCookieKept();
+    }
+    if (!kept) {
+      throw new ApiError('Sign-in cookie was blocked', 401, {
+        error: { code: SESSION_COOKIE_BLOCKED, message: SESSION_COOKIE_BLOCKED_MESSAGE },
+      });
     }
     lastCheckedRef.current = Date.now();
     setUser(current);

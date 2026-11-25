@@ -4,7 +4,9 @@ import {
   apiErrorCode,
   apiErrorMessage,
   apiRequest,
+  isCrossSiteApi,
   isTimeoutError,
+  probeSameOriginApi,
   resolveApiBaseUrl,
 } from '../services/api';
 
@@ -120,5 +122,34 @@ describe('resolveApiBaseUrl', () => {
     expect(resolveApiBaseUrl(page('http://192.168.1.5:3000/'), 'http://localhost:8000/api/v1')).toBe(
       'http://192.168.1.5:8000/api/v1',
     );
+  });
+});
+
+describe('cross-site API detection', () => {
+  const page = (hostname: string) => ({ hostname } as Location);
+
+  it('treats a backend on another site as cross-site', () => {
+    expect(isCrossSiteApi('https://ara-api.onrender.com/api/v1', page('ai-research-assistant.pages.dev'))).toBe(true);
+  });
+
+  it('treats the same-origin proxy path and same-site hosts as first-party', () => {
+    expect(isCrossSiteApi('/api/v1', page('ai-research-assistant.pages.dev'))).toBe(false);
+    expect(isCrossSiteApi('https://api.example.com/api/v1', page('app.example.com'))).toBe(false);
+  });
+});
+
+describe('probeSameOriginApi', () => {
+  const originalFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it('is true only when /api/v1/health answers like the API', async () => {
+    globalThis.fetch = vi.fn(async () => jsonResponse({ status: 'ok', service: 'ai-research-assistant-api' })) as typeof fetch;
+    await expect(probeSameOriginApi()).resolves.toBe(true);
+    globalThis.fetch = vi.fn(async () => new Response('<html></html>', { status: 200 })) as typeof fetch;
+    await expect(probeSameOriginApi()).resolves.toBe(false);
+    globalThis.fetch = vi.fn(async () => jsonResponse({ error: { code: 'proxy_not_configured' } }, 503)) as typeof fetch;
+    await expect(probeSameOriginApi()).resolves.toBe(false);
   });
 });
