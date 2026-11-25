@@ -731,6 +731,166 @@
   transition-delay: 0s, 0.05s, 0s;
 }
 
+/* Hero: soft accent glow and an underline that draws in under "check". */
+.landing-hero-glow {
+  background:
+    radial-gradient(60% 55% at 15% 0%, color-mix(in srgb, var(--app-accent) 14%, transparent), transparent 70%),
+    radial-gradient(45% 45% at 90% 10%, color-mix(in srgb, var(--app-accent) 8%, transparent), transparent 70%);
+  animation: landing-glow-in 1.4s 0.1s var(--ease-out-soft) both;
+}
+@keyframes landing-glow-in {
+  from { opacity: 0; transform: translateY(-24px); }
+}
+.landing-underline {
+  position: relative;
+  white-space: nowrap;
+}
+.landing-underline::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0.04em;
+  height: 0.09em;
+  border-radius: 999px;
+  background: var(--app-accent);
+  transform: scaleX(0);
+  transform-origin: left;
+  animation: landing-underline-in 0.8s 0.95s var(--ease-out-soft) forwards;
+}
+@keyframes landing-underline-in {
+  to { transform: scaleX(1); }
+}
+.landing-tag {
+  animation: landing-tag-in 0.45s var(--tag-delay, 0ms) var(--ease-out-quick) both;
+  transition: border-color 0.2s ease, color 0.2s ease, transform 0.2s var(--ease-out-quick);
+}
+.landing-tag:hover {
+  border-color: var(--app-accent);
+  color: var(--app-accent);
+  transform: translateY(-1px);
+}
+@keyframes landing-tag-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.96); }
+}
+
+/* Flow illustration: cards, links and chips play in order once revealed. */
+.flow .flow-card,
+.flow .flow-chip,
+.flow .flow-line,
+.flow .flow-link {
+  opacity: 0;
+}
+.is-visible .flow .flow-card,
+.is-visible .flow-card {
+  animation: flow-card-in 0.6s var(--step-delay, 0ms) var(--ease-out-soft) forwards;
+}
+.is-visible .flow-chip {
+  animation: flow-chip-in 0.45s var(--step-delay, 0ms) var(--ease-out-quick) forwards;
+}
+.is-visible .flow-line {
+  animation: flow-line-in 0.6s var(--step-delay, 0ms) ease forwards;
+}
+.is-visible .flow-link {
+  animation: flow-fade 0.3s var(--step-delay, 0ms) ease forwards;
+}
+.flow-link-track {
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+}
+.flow-link-dot {
+  left: calc(50% - 4px);
+  top: 0;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--app-accent) 20%, transparent);
+}
+.is-visible .flow-link-dot {
+  animation: flow-travel-y 2.6s var(--step-delay, 0ms) ease-in-out infinite;
+}
+@media (min-width: 1024px) {
+  .flow-link-track {
+    left: 6px;
+    right: 6px;
+    top: 50%;
+    bottom: auto;
+    width: auto;
+    height: 1px;
+  }
+  .flow-link-dot {
+    left: 2px;
+    top: calc(50% - 4px);
+  }
+  .is-visible .flow-link-dot {
+    animation-name: flow-travel-x;
+  }
+}
+.flow-caret {
+  animation: flow-caret 1s steps(1) infinite;
+}
+@keyframes flow-card-in {
+  from { opacity: 0; transform: translateY(14px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes flow-chip-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.95); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes flow-line-in {
+  from { opacity: 0; filter: blur(3px); }
+  to { opacity: 1; filter: none; }
+}
+@keyframes flow-fade {
+  to { opacity: 1; }
+}
+@keyframes flow-travel-x {
+  0% { left: 2px; opacity: 0; }
+  15%, 85% { opacity: 1; }
+  100% { left: calc(100% - 10px); opacity: 0; }
+}
+@keyframes flow-travel-y {
+  0% { top: 0; opacity: 0; }
+  15%, 85% { opacity: 1; }
+  100% { top: calc(100% - 8px); opacity: 0; }
+}
+@keyframes flow-caret {
+  50% { opacity: 0; }
+}
+
+/* Collaboration preview: avatars pop in, rows slide in. */
+.is-visible .collab-avatar {
+  animation: flow-chip-in 0.4s var(--step-delay, 0ms) var(--ease-out-quick) both;
+}
+.is-visible .collab-row {
+  animation: collab-row-in 0.5s var(--step-delay, 0ms) var(--ease-out-soft) both;
+}
+@keyframes collab-row-in {
+  from { opacity: 0; transform: translateX(-10px); }
+}
+
+/* Source cards and feature icons: small lift and tint on hover. */
+.landing-source-icon,
+.landing-feature-icon {
+  transition: transform 0.35s var(--ease-out-soft), background-color 0.25s ease, border-color 0.25s ease;
+}
+.landing-source-card:hover {
+  border-color: var(--app-accent-line, var(--app-accent));
+}
+.landing-source-card:hover .landing-source-icon {
+  transform: rotate(-6deg) scale(1.08);
+}
+.landing-feature:hover .landing-feature-icon {
+  border-color: var(--app-accent);
+  transform: translateY(-2px);
+}
+.landing-filetype {
+  transition: border-color 0.2s ease, transform 0.25s var(--ease-out-quick);
+}
+.landing-filetype:hover {
+  border-color: var(--app-accent);
+  transform: translateY(-1px);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .landing-reveal,
   .landing-reveal--clip,
@@ -750,8 +910,30 @@
     background-size: 100% 100%;
   }
   .preview-marker-ping::after,
-  .preview-breathe {
+  .preview-breathe,
+  .flow-caret,
+  .flow-link-dot,
+  .landing-hero-glow {
     animation: none;
+  }
+  .flow .flow-card,
+  .flow .flow-chip,
+  .flow .flow-line,
+  .flow .flow-link,
+  .collab-avatar,
+  .collab-row,
+  .landing-tag {
+    opacity: 1;
+    animation: none;
+    transform: none;
+    filter: none;
+  }
+  .landing-underline::after {
+    animation: none;
+    transform: scaleX(1);
+  }
+  .flow-link-dot {
+    display: none;
   }
 }
 

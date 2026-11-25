@@ -105,4 +105,19 @@ describe('LandingPage authentication state', () => {
       expect(mocks.logout).toHaveBeenCalledTimes(2);
     });
   });
+
+  it('lists the discovery sources and the question-to-answer flow', () => {
+    render(
+      <MemoryRouter>
+        <LandingPage />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByRole('heading', { name: /Bring your own files/i })).toBeInTheDocument();
+    for (const name of ['OpenAlex', 'arXiv', 'Crossref', 'Wikipedia', 'Trusted news']) {
+      expect(screen.getByRole('heading', { name })).toBeInTheDocument();
+    }
+    expect(screen.getByRole('heading', { name: /answer with receipts/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Work on it together, live/i })).toBeInTheDocument();
+  });
 });

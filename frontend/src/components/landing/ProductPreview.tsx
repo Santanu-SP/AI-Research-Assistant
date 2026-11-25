@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronRight, FileText, Search } from 'lucide-react';
+import { ChevronRight, FileAudio, FileSpreadsheet, FileText, Globe2, MessageSquareText, Presentation, Quote, Search } from 'lucide-react';
 
 const step = (ms: number) => ({ '--step-delay': `${ms}ms` }) as React.CSSProperties;
 
@@ -104,14 +104,16 @@ export const ProjectsPreview: React.FC = () => (
       <span>Document</span>
       <span>Status</span>
     </div>
-    {[
-      ['Kinetic selectivity of GPCR ligands', 'PDF · 14 pages', 'Indexed'],
-      ['β-arrestin recruitment: a review', 'PDF · 22 pages', 'Indexed'],
-      ['Lab notes, October', 'DOCX · 6 pages', 'Indexing'],
-    ].map(([title, meta, status]) => (
+    {([
+      ['Sleep and memory consolidation', 'PDF · 14 pages', 'Indexed', FileText],
+      ['Week 3 lecture slides', 'PPTX · 22 slides', 'Indexed', Presentation],
+      ['Survey results', 'XLSX · 3 sheets', 'Indexed', FileSpreadsheet],
+      ['Sleep, explained (Wikipedia)', 'Web page', 'Indexed', Globe2],
+      ['Interview recording', 'Audio · 12 min', 'Indexing', FileAudio],
+    ] as const).map(([title, meta, status, Icon]) => (
       <div key={title} className="grid grid-cols-[minmax(0,1fr)_72px] items-center gap-3 border-b border-line px-4 py-3 last:border-b-0">
         <div className="flex min-w-0 items-center gap-2.5">
-          <FileText className="h-4 w-4 shrink-0 text-ink-muted" strokeWidth={1.75} />
+          <Icon className="h-4 w-4 shrink-0 text-ink-muted" strokeWidth={1.75} />
           <div className="min-w-0">
             <p className="truncate text-[13px] font-medium text-ink">{title}</p>
             <p className="text-[11px] text-ink-muted">{meta}</p>
@@ -139,9 +141,133 @@ export const EvidencePreview: React.FC = () => (
       <p className="text-xs text-ink-muted">Question</p>
       <p className="mt-1 text-[14px] font-medium text-ink">What dose was used in the phase III trial?</p>
       <div className="mt-4 rounded-lg border border-info-line bg-info-soft px-3.5 py-3 text-[13px] leading-relaxed text-info">
-        <span className="font-medium">Limited evidence.</span> The documents in this project only
-        partly cover the question, so the answer below may be incomplete.
+        <span className="font-medium">Limited evidence.</span> The sources only partly cover this
+        question, so the gap is flagged instead of guessed. Credits for an ungrounded run are refunded.
       </div>
     </div>
+    <div className="landing-card ml-6 rounded-xl border border-line bg-panel p-4 shadow-sm sm:ml-10">
+      <p className="text-[12px] font-medium text-ink">Competing accounts</p>
+      <p className="mt-1 text-[12.5px] leading-relaxed text-ink-soft">
+        Source <span className="font-mono text-accent">[2]</span> reports 40 mg, while source{' '}
+        <span className="font-mono text-accent">[4]</span> reports 20 mg. Both are shown, side by side.
+      </p>
+    </div>
+  </div>
+);
+
+const FLOW_SOURCES: Array<[string, string]> = [
+  ['OpenAlex', 'Scholarly'],
+  ['arXiv', 'Preprint'],
+  ['Crossref', 'DOI record'],
+  ['Wikipedia', 'Encyclopedia'],
+  ['Reuters · BBC', 'News'],
+  ['lecture-notes.pptx', 'Your file'],
+];
+
+/**
+ * The question → sources → cited answer flow. Each stage animates in once the
+ * parent Reveal becomes visible (see the .flow-* rules in index.css).
+ */
+export const FlowPreview: React.FC = () => (
+  <div className="flow grid items-stretch gap-4 lg:grid-cols-[minmax(0,0.9fr)_40px_minmax(0,1.1fr)_40px_minmax(0,1.2fr)] lg:gap-0" aria-hidden="true">
+    <div className="flow-card landing-card rounded-xl border border-line bg-panel p-5 shadow-md" style={step(0)}>
+      <p className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-ink-muted">
+        <MessageSquareText className="h-3.5 w-3.5" /> 1 · You ask
+      </p>
+      <p className="mt-3 text-[15px] font-medium leading-snug text-ink">
+        How does sleep affect memory in students?
+        <span className="flow-caret ml-0.5 inline-block h-4 w-[2px] translate-y-0.5 bg-accent" />
+      </p>
+      <div className="mt-4 flex flex-wrap gap-1.5 text-[11px]">
+        <span className="rounded-md border border-line bg-subtle px-2 py-0.5 text-ink-soft">Standard depth</span>
+        <span className="rounded-md border border-accent-line bg-accent-soft px-2 py-0.5 text-accent">Find sources online</span>
+      </div>
+    </div>
+
+    <FlowLink delay={350} />
+
+    <div className="flow-card landing-card rounded-xl border border-line bg-panel p-5 shadow-md" style={step(450)}>
+      <p className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-ink-muted">
+        <Globe2 className="h-3.5 w-3.5" /> 2 · Sources are found and read
+      </p>
+      <ul className="mt-3 grid grid-cols-2 gap-1.5">
+        {FLOW_SOURCES.map(([name, kind], index) => (
+          <li
+            key={name}
+            className="flow-chip flex min-w-0 flex-col rounded-lg border border-line bg-canvas/60 px-2.5 py-1.5"
+            style={step(600 + index * 110)}
+          >
+            <span className="truncate text-[12px] font-medium text-ink">{name}</span>
+            <span className="text-[10.5px] text-ink-muted">{kind}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+
+    <FlowLink delay={1300} />
+
+    <div className="flow-card landing-card rounded-xl border border-line bg-panel p-5 shadow-md" style={step(1400)}>
+      <p className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-ink-muted">
+        <Quote className="h-3.5 w-3.5" /> 3 · Cited answer
+      </p>
+      <p className="mt-3 font-serif text-[14.5px] leading-[1.7] text-ink">
+        <span className="flow-line" style={step(1550)}>Students who sleep 7–9 hours remember more of what they studied</span>
+        <Marker n={1} />
+        <span className="flow-line" style={step(1800)}>, mostly because sleep helps lock in new memories</span>
+        <Marker n={2} />.
+      </p>
+      <div className="flow-chip mt-3 rounded-md border border-info-line bg-info-soft px-2.5 py-1.5 text-[11.5px] text-info" style={step(2100)}>
+        <span className="font-medium">Not covered:</span> exam-week caffeine use.
+      </div>
+    </div>
+  </div>
+);
+
+const FlowLink: React.FC<{ delay: number }> = ({ delay }) => (
+  <div className="flow-link relative mx-auto h-8 w-px lg:h-auto lg:w-full" style={step(delay)}>
+    <span className="flow-link-track absolute bg-line-strong" />
+    <span className="flow-link-dot absolute h-2 w-2 rounded-full bg-accent" />
+  </div>
+);
+
+/** Live collaboration: who is here and what they are doing. */
+export const CollabPreview: React.FC = () => (
+  <div className="landing-card overflow-hidden rounded-xl border border-line bg-panel shadow-md" aria-hidden="true">
+    <div className="flex items-center justify-between border-b border-line bg-subtle/50 px-4 py-2.5">
+      <p className="text-[13px] font-medium text-ink">Thesis literature review</p>
+      <div className="flex -space-x-1.5">
+        {[
+          ['SR', 'bg-accent text-on-solid'],
+          ['SP', 'bg-solid text-on-solid'],
+          ['AK', 'bg-subtle text-ink border border-line-strong'],
+        ].map(([initials, tone], index) => (
+          <span
+            key={initials}
+            className={`collab-avatar flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-semibold ring-2 ring-panel ${tone}`}
+            style={step(200 + index * 140)}
+          >
+            {initials}
+          </span>
+        ))}
+      </div>
+    </div>
+    <ul className="divide-y divide-line">
+      {[
+        ['Shubham', 'Owner', 'asking a question', true],
+        ['Santanu', 'Editor', 'uploading slides.pptx', true],
+        ['Guest reviewer', 'Viewer', 'viewing the report', false],
+      ].map(([name, role, activity, live], index) => (
+        <li key={name as string} className="collab-row flex items-center justify-between gap-3 px-4 py-3" style={step(500 + index * 160)}>
+          <div className="min-w-0">
+            <p className="text-[13px] font-medium text-ink">{name}</p>
+            <p className="flex items-center gap-1.5 truncate text-[11.5px] text-ink-muted">
+              {live && <span className="preview-breathe h-1.5 w-1.5 rounded-full bg-accent" />}
+              {activity}
+            </p>
+          </div>
+          <span className="rounded-md border border-line px-1.5 py-0.5 text-[11px] text-ink-soft">{role}</span>
+        </li>
+      ))}
+    </ul>
   </div>
 );

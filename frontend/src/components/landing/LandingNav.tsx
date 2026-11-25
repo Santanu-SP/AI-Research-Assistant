@@ -7,6 +7,7 @@ import { scrollToHash } from './Motion';
 
 const NAV_ITEMS = [
   ['How it works', '#how-it-works'],
+  ['Sources', '#sources'],
   ['Features', '#features'],
   ['Under the hood', '#pipeline'],
   ['FAQ', '#faq'],
