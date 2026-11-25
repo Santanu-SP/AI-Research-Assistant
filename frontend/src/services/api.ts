@@ -39,7 +39,60 @@ export const resolveApiBaseUrl = (
   return configured.replace(/\/+$/, '');
 };
 
-export const API_BASE_URL = resolveApiBaseUrl(window.location, import.meta.env.VITE_API_BASE_URL);
+/** Path of the same-origin API proxy (frontend/functions/api/[[path]].ts on Cloudflare Pages). */
+export const SAME_ORIGIN_API_PATH = '/api/v1';
+const SAME_ORIGIN_API_STORAGE_KEY = 'ara_api_same_origin';
+
+const readSameOriginPreference = (): boolean => {
+  try {
+    return window.localStorage.getItem(SAME_ORIGIN_API_STORAGE_KEY) === '1';
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * The API base URL in use. It is a live binding: it can switch to the
+ * same-origin proxy at runtime (see switchToSameOriginApi), and every caller
+ * reads it at request time.
+ */
+export let API_BASE_URL =
+  readSameOriginPreference() && !isLoopbackHost(window.location.hostname)
+    ? SAME_ORIGIN_API_PATH
+    : resolveApiBaseUrl(window.location, import.meta.env.VITE_API_BASE_URL);
+
+/** True when the API lives on another site, so its cookie is a third-party cookie. */
+export const isCrossSiteApi = (base: string = API_BASE_URL, page: Location = window.location): boolean => {
+  if (!/^https?:\/\//i.test(base)) return false;
+  const siteOf = (hostname: string) => hostname.split('.').slice(-2).join('.');
+  const api = new URL(base);
+  return siteOf(api.hostname) !== siteOf(page.hostname);
+};
+
+/**
+ * Checks whether this site has a working same-origin API proxy, by asking
+ * /api/v1/health on the page's own origin.
+ */
+export const probeSameOriginApi = async (): Promise<boolean> => {
+  try {
+    const response = await fetch(`${SAME_ORIGIN_API_PATH}/health`, { credentials: 'omit', cache: 'no-store' });
+    if (!response.ok) return false;
+    const body = (await response.json()) as { status?: string };
+    return body?.status === 'ok';
+  } catch {
+    return false;
+  }
+};
+
+/** Send all later API calls through the same-origin proxy, and remember it. */
+export const switchToSameOriginApi = () => {
+  API_BASE_URL = SAME_ORIGIN_API_PATH;
+  try {
+    window.localStorage.setItem(SAME_ORIGIN_API_STORAGE_KEY, '1');
+  } catch {
+    // Private mode may block storage; the switch still holds for this tab.
+  }
+};
 
 export class ApiError extends Error {
   constructor(

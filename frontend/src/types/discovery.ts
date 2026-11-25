@@ -1,12 +1,13 @@
 import { ContentLevel, Document, SourceType } from './document';
 
 export type DiscoveryScope = 'all' | 'scholarly' | 'web';
-export type DiscoveryProvider = 'openalex' | 'crossref' | 'arxiv' | 'wikipedia';
+export type DiscoveryProvider = 'openalex' | 'crossref' | 'arxiv' | 'wikipedia' | 'news';
 export type DiscoveryTrustTier =
   | 'peer-reviewed'
   | 'preprint'
   | 'institutional'
-  | 'official-documentation';
+  | 'official-documentation'
+  | 'news';
 
 export interface DiscoveredSourceCandidate {
   candidateId: string;

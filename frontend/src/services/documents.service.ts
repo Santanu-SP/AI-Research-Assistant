@@ -181,11 +181,20 @@ export const getDocumentErrorMessage = (
     ) {
       return 'Please enter a valid public http://, https://, or YouTube URL.';
     }
-    if (code === 'youtube_transcript_unavailable') {
-      return 'This YouTube video does not expose an accessible transcript.';
+    if (
+      code === 'youtube_transcript_unavailable' ||
+      code === 'youtube_video_unavailable' ||
+      code === 'youtube_video_restricted' ||
+      code === 'youtube_rate_limited'
+    ) {
+      // The server explains the exact reason (deleted video, sign-in needed, rate limit, no captions).
+      return apiErrorMessage(error, 'This YouTube video does not expose an accessible transcript.');
     }
     if (code === 'audio_transcription_key_missing' || code === 'vision_api_key_missing') {
-      return 'Server transcription/vision key is not configured for this media type.';
+      return apiErrorMessage(
+        error,
+        'This file type needs a speech-to-text or image-reading key on the server, and none is set up yet.',
+      );
     }
     if (error.status === 422) {
       const data = error.data as { detail?: unknown } | null;

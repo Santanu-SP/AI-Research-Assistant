@@ -9,6 +9,8 @@
 
 export interface ProxyEnv {
   BACKEND_ORIGIN?: string;
+  /** Used when BACKEND_ORIGIN is not set: the build-time API URL, if it is absolute. */
+  VITE_API_BASE_URL?: string;
 }
 
 export interface PagesFunctionContext {
@@ -86,13 +88,14 @@ function buildUpstreamHeaders(
 
 export async function onRequest(context: PagesFunctionContext): Promise<Response> {
   const { request, env } = context;
-  const backendOrigin = resolveBackendOrigin(env.BACKEND_ORIGIN);
+  const backendOrigin =
+    resolveBackendOrigin(env.BACKEND_ORIGIN) ?? resolveBackendOrigin(env.VITE_API_BASE_URL);
   if (!backendOrigin) {
     return new Response(
       JSON.stringify({
         error: {
           code: 'proxy_not_configured',
-          message: 'BACKEND_ORIGIN is not configured on Cloudflare Pages.',
+          message: 'BACKEND_ORIGIN (or an absolute VITE_API_BASE_URL) is not configured on Cloudflare Pages.',
         },
       }),
       {

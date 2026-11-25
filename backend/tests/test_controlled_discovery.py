@@ -213,7 +213,7 @@ def test_provider_normalization_deduplication_and_partial_outage() -> None:
     attention = next(item for item in outcome.items if item.title == "Attention Is All You Need")
     assert attention.provider == "openalex"
     assert attention.trust_tier == "peer-reviewed"
-    assert attention.open_access_pdf_url == "https://arxiv.org/pdf/1706.03762.pdf"
+    assert attention.open_access_pdf_url == "https://arxiv.org/pdf/1706.03762"
     assert attention.content_level == ContentLevel.FULL_TEXT
     assert attention.abstract is not None and "sequence transduction models" in attention.abstract
 
@@ -713,6 +713,9 @@ def test_reputable_news_rss_multi_part_distillation_and_contradiction_prompt(
         )
 
     assert [item.publisher for item in news_items] == ["Reuters", "Al Jazeera"]
+    # News is labelled as news, not as Wikipedia or an institution.
+    assert {item.provider for item in news_items} == {"news"}
+    assert {item.trust_tier for item in news_items} == {"news"}
     assert news_items[0].url == "https://www.reuters.com/world/middle-east/israel-iran-strikes"
     assert "conflicting casualty estimates" in (news_items[0].abstract or "")
     assert news_items[0].publication_year == 2026
@@ -799,3 +802,47 @@ def test_reputable_news_rss_multi_part_distillation_and_contradiction_prompt(
     assert 'publisher="Reuters"' in prompt
     assert 'year="2026"' in prompt
     assert "contradiction" in prompt.lower()
+
+
+def test_arxiv_requires_every_key_word_then_falls_back_to_loose_query() -> None:
+    seen: list[str] = []
+    empty_feed = '<feed xmlns="http://www.w3.org/2005/Atom"></feed>'
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        query = request.url.params["search_query"]
+        seen.append(query)
+        if " AND " in query:
+            return httpx.Response(200, text=empty_feed)
+        return httpx.Response(200, text=_ARXIV_ATOM_SAMPLE)
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        items = discovery_providers.search_arxiv("retrieval augmented generation reranking", client=client)
+
+    assert seen == [
+        "all:retrieval AND all:augmented AND all:generation AND all:reranking",
+        "all:retrieval AND all:augmented AND all:generation",
+        "all:retrieval augmented generation reranking",
+    ]
+    assert len(items) == 1
+
+
+def test_arxiv_single_word_query_skips_the_strict_search() -> None:
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.params["search_query"])
+        return httpx.Response(200, text=_ARXIV_ATOM_SAMPLE)
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        discovery_providers.search_arxiv("transformers", client=client)
+
+    assert seen == ["all:transformers"]
+
+
+def test_arxiv_pdf_links_skip_the_relative_redirect() -> None:
+    canonical = discovery_providers.canonical_arxiv_pdf_url
+    assert canonical("https://arxiv.org/pdf/1706.03762.pdf") == "https://arxiv.org/pdf/1706.03762"
+    assert canonical("http://arxiv.org/pdf/2312.10997v5.pdf") == "https://arxiv.org/pdf/2312.10997v5"
+    assert canonical("https://arxiv.org/pdf/hep-th/9901001v1") == "https://arxiv.org/pdf/hep-th/9901001v1"
+    assert canonical("https://publisher.example.org/paper.pdf") == "https://publisher.example.org/paper.pdf"
+    assert canonical(None) is None

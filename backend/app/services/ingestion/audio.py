@@ -109,7 +109,7 @@ class GroqAudioTranscriber:
             ) from exc
         except (httpx.HTTPError, ValueError) as exc:
             raise DocumentIngestionError(
-                "Gemini audio transcription fallback is unavailable",
+                "The speech-to-text service could not be reached. Please retry in a few minutes.",
                 code="audio_transcription_unavailable",
                 status_code=503,
             ) from exc
@@ -121,7 +121,7 @@ class GroqAudioTranscriber:
         ).strip()
         if not transcript_text:
             raise DocumentIngestionError(
-                "The audio recording contains no recognizable speech",
+                "No speech could be heard in this recording, so there is nothing to transcribe.",
                 code="empty_audio_transcript",
                 status_code=422,
             )
@@ -130,7 +130,7 @@ class GroqAudioTranscriber:
     def transcribe_file(self, path: Path) -> list[TranscriptSegment]:
         if not path.is_file() or path.stat().st_size == 0:
             raise DocumentIngestionError(
-                "Audio file is missing or empty",
+                "This audio file is empty.",
                 code="empty_audio_file",
                 status_code=400,
             )
@@ -140,14 +140,16 @@ class GroqAudioTranscriber:
             if self.gemini_api_key and file_size <= GEMINI_MAX_INLINE_AUDIO_BYTES:
                 return self._transcribe_with_gemini(path)
             raise DocumentIngestionError(
-                "GROQ_API_KEY (or GEMINI_API_KEY for audio <= 15 MB) is required for audio transcription",
+                "Audio and video need a speech-to-text key on the server, and none is set up. "
+                "Ask the admin to add GROQ_API_KEY (or GEMINI_API_KEY for files up to 15 MB).",
                 code="audio_transcription_key_missing",
                 status_code=503,
             )
 
         if file_size > self.max_groq_file_bytes:
             raise DocumentIngestionError(
-                "Audio exceeds Groq Free tier 25 MB limit; compress to 16 kHz mono MP3/FLAC or split into chunks",
+                "This recording is bigger than 25 MB, which is the most the speech-to-text service accepts. "
+                "Save it as a smaller MP3 (mono, 16 kHz) or split it into parts and upload again.",
                 code="audio_file_too_large",
                 status_code=413,
             )
@@ -172,7 +174,8 @@ class GroqAudioTranscriber:
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code == 413:
                 raise DocumentIngestionError(
-                    "Audio exceeds Groq Free tier 25 MB upload limit; compress to 16 kHz mono MP3/FLAC or split",
+                    "This recording is bigger than 25 MB, which is the most the speech-to-text service accepts. "
+                    "Save it as a smaller MP3 (mono, 16 kHz) or split it into parts and upload again.",
                     code="audio_file_too_large",
                     status_code=413,
                 ) from exc
@@ -196,7 +199,7 @@ class GroqAudioTranscriber:
                 logger.warning("Groq Whisper unavailable (%s); falling back to Gemini audio transcription", exc)
                 return self._transcribe_with_gemini(path)
             raise DocumentIngestionError(
-                "Groq Whisper transcription service is unavailable",
+                "The speech-to-text service could not be reached. Please retry in a few minutes.",
                 code="audio_transcription_unavailable",
                 status_code=503,
             ) from exc
@@ -227,7 +230,7 @@ class GroqAudioTranscriber:
 
         if not segments:
             raise DocumentIngestionError(
-                "The audio recording contains no recognizable speech",
+                "No speech could be heard in this recording, so there is nothing to transcribe.",
                 code="empty_audio_transcript",
                 status_code=422,
             )

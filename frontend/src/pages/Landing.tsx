@@ -4,10 +4,12 @@ import {
   FAQ,
   Features,
   FinalCta,
+  Flow,
   Hero,
   HowItWorks,
   LandingFooter,
   Pipeline,
+  Sources,
 } from '../components/landing/LandingSections';
 
 export const LandingPage: React.FC = () => (
@@ -21,7 +23,9 @@ export const LandingPage: React.FC = () => (
     <LandingNav />
     <main id="main">
       <Hero />
+      <Flow />
       <HowItWorks />
+      <Sources />
       <Features />
       <Pipeline />
       <FAQ />

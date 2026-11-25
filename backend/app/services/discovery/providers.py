@@ -223,6 +223,23 @@ def _title_key(title: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", title.lower()).strip()
 
 
+_ARXIV_PDF_SUFFIX_RE = re.compile(r"^(https?://(?:export\.)?arxiv\.org/pdf/[^?#]+?)\.pdf$", re.IGNORECASE)
+
+
+def canonical_arxiv_pdf_url(url: str | None) -> str | None:
+    """arXiv answers ``/pdf/<id>.pdf`` with a relative redirect to ``/pdf/<id>``.
+
+    The PDF fetcher refuses relative redirects, so the full text was lost and
+    only the abstract was saved. Asking for ``/pdf/<id>`` directly avoids the
+    redirect.
+    """
+    if not url:
+        return url
+    cleaned = url.strip().replace("http://arxiv.org/", "https://arxiv.org/")
+    match = _ARXIV_PDF_SUFFIX_RE.match(cleaned)
+    return match.group(1) if match else cleaned
+
+
 def _candidate_id(provider: str, identifier: str) -> str:
     digest = hashlib.sha256(f"{provider}:{identifier}".encode("utf-8")).hexdigest()[:16]
     return f"{provider}-{digest}"
@@ -335,7 +352,7 @@ def search_openalex(
                 doi=doi,
                 openalex_id=openalex_id,
                 url=str(landing_url)[:2048],
-                open_access_pdf_url=str(pdf_url)[:2048] if pdf_url else None,
+                open_access_pdf_url=(canonical_arxiv_pdf_url(str(pdf_url)) or "")[:2048] if pdf_url else None,
                 citation_count=int(work.get("cited_by_count")) if work.get("cited_by_count") is not None else None,
                 is_open_access=is_oa,
             )
@@ -448,19 +465,38 @@ def search_arxiv(
     timeout_seconds: float = 12.0,
     client: httpx.Client | None = None,
 ) -> list[DiscoveredSourceCandidate]:
-    params = {
-        "search_query": f"all:{query.strip()}",
-        "start": 0,
-        "max_results": min(max(limit, 1), 10),
-        "sortBy": "relevance",
-        "sortOrder": "descending",
-    }
+    # arXiv only applies "all:" to the first word of a plain query and ORs the
+    # rest, which brings back loosely related papers. Require every key word
+    # first, then the first three, and only fall back to the loose query if
+    # neither finds anything.
+    terms = _core_query_tokens(query)[:6]
+    attempts: list[str] = []
+    if len(terms) >= 2:
+        attempts.append(" AND ".join(f"all:{term}" for term in terms))
+    if len(terms) > 3:
+        attempts.append(" AND ".join(f"all:{term}" for term in terms[:3]))
+    attempts.append(f"all:{query.strip()}")
+
     own_client = client is None
     active = client or httpx.Client(timeout=httpx.Timeout(timeout_seconds, connect=5.0))
-    try:
+
+    def _fetch(search_query: str) -> ET.Element:
+        params = {
+            "search_query": search_query,
+            "start": 0,
+            "max_results": min(max(limit, 1), 10),
+            "sortBy": "relevance",
+            "sortOrder": "descending",
+        }
         resp = active.get("https://export.arxiv.org/api/query", params=params, headers=_build_headers(None))
         resp.raise_for_status()
-        root = ET.fromstring(resp.text)
+        return ET.fromstring(resp.text)
+
+    try:
+        for search_query in attempts:
+            root = _fetch(search_query)
+            if root.findall("atom:entry", _ARXIV_NS):
+                break
     finally:
         if own_client:
             active.close()
@@ -486,10 +522,10 @@ def search_arxiv(
             if rel == "alternate" and href:
                 html_url = href
             elif (link_title == "pdf" or "/pdf/" in href) and href:
-                pdf_url = href if href.endswith(".pdf") else f"{href}.pdf"
+                pdf_url = canonical_arxiv_pdf_url(href)
         html_url = html_url.replace("http://arxiv.org/", "https://arxiv.org/")
         if not pdf_url and "/abs/" in html_url:
-            pdf_url = html_url.replace("/abs/", "/pdf/") + ".pdf"
+            pdf_url = html_url.replace("/abs/", "/pdf/")
 
         authors = [
             " ".join((name_el.text or "").split()).strip()
@@ -568,8 +604,8 @@ def _build_news_candidate(
         abstract = f"{abstract} {summary}"
     return DiscoveredSourceCandidate(
         candidate_id=_candidate_id("news", f"{publisher}:{clean_title}"),
-        provider="wikipedia",
-        trust_tier="institutional",
+        provider="news",
+        trust_tier="news",
         source_type=SourceType.WEB_PAGE,
         content_level=ContentLevel.WEB_PAGE,
         title=clean_title[:1000],
@@ -834,7 +870,7 @@ def _merge_candidates(
 
 
 def _provider_priority(provider: DiscoveryProviderName) -> int:
-    return {"openalex": 4, "crossref": 3, "arxiv": 2, "wikipedia": 1}.get(provider, 0)
+    return {"openalex": 4, "crossref": 3, "arxiv": 2, "wikipedia": 1, "news": 1}.get(provider, 0)
 
 
 def _score_candidate(
@@ -848,6 +884,7 @@ def _score_candidate(
         "preprint": 3.0,
         "official-documentation": 2.5,
         "institutional": 2.0,
+        "news": 2.0,
     }.get(candidate.trust_tier, 1.0)
     full_text_bonus = (
         2.0
@@ -874,7 +911,7 @@ def _score_candidate(
     )
 
     wiki_topic_bonus = 0.0
-    if candidate.provider == "wikipedia" and active_subject:
+    if candidate.provider in {"wikipedia", "news"} and active_subject:
         if subject_title_hits == len(active_subject):
             wiki_topic_bonus = 5.5
         elif subject_title_hits >= 1 and subject_any_hits == len(active_subject):

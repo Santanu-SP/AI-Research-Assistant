@@ -2,16 +2,30 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
+  AudioLines,
+  BookOpen,
   Combine,
   Copy,
   FileDown,
+  FileText,
   FolderLock,
+  Gauge,
+  Globe2,
+  Image as ImageIcon,
+  KeyRound,
+  Layers,
+  Link2,
   ListOrdered,
-  RefreshCw,
+  Newspaper,
+  PauseCircle,
+  Presentation,
+  Scale,
+  Sheet,
+  Video,
 } from 'lucide-react';
 import { useOptionalAuth } from '../../app/AuthContext';
 import { BrandMark } from '../common/BrandMark';
-import { EvidencePreview, ProductPreview, ProjectsPreview } from './ProductPreview';
+import { CollabPreview, EvidencePreview, FlowPreview, ProductPreview, ProjectsPreview } from './ProductPreview';
 import { Reveal, loadDelay, scrollToHash, usePrefersReducedMotion } from './Motion';
 
 const Container: React.FC<React.PropsWithChildren<{ className?: string }>> = ({ className = '', children }) => (
@@ -67,39 +81,54 @@ const useHeroParallax = () => {
   return ref;
 };
 
+const HERO_TAGS = ['OpenAlex', 'arXiv', 'Crossref', 'Wikipedia', 'News', 'PDF', 'Slides', 'Audio', 'Video'];
+
 export const Hero: React.FC = () => {
   const mediaRef = useHeroParallax();
 
   return (
-  <section className="relative overflow-hidden border-b border-line" aria-labelledby="hero-heading">
-    <Container className="pb-16 pt-14 sm:pb-24 sm:pt-20">
+  <section className="landing-hero relative overflow-hidden border-b border-line" aria-labelledby="hero-heading">
+    <div className="landing-hero-glow pointer-events-none absolute inset-x-0 top-0 h-[520px]" aria-hidden="true" />
+    <Container className="relative pb-16 pt-14 sm:pb-24 sm:pt-20">
       <div className="max-w-3xl">
         <p style={loadDelay(90)} className="landing-load inline-flex items-center gap-2 rounded-full border border-line bg-panel px-3 py-1 text-xs text-ink-soft">
-          <span className="h-1.5 w-1.5 rounded-full bg-accent" />
-          Runs on your own machine with a local model
+          <span className="preview-breathe h-1.5 w-1.5 rounded-full bg-accent" />
+          Research projects for students, now with live collaboration
         </p>
         <h1
           id="hero-heading"
-          className="mt-6 font-serif text-[40px] leading-[1.08] tracking-[-0.025em] text-ink sm:text-[56px] lg:text-[64px]"
+          className="mt-6 font-serif text-[40px] leading-[1.08] tracking-[-0.02em] text-ink sm:text-[56px] lg:text-[64px]"
         >
           <span className="landing-title-mask">
             <span className="landing-load landing-load--headline-line" style={loadDelay(150)}>
-              Ask your papers a question.
+              Ask a research question.
             </span>
           </span>
           <span className="landing-title-mask">
             <span className="landing-load landing-load--headline-line" style={loadDelay(225)}>
-              Check every answer against the page.
+              Get an answer you can <span className="landing-underline">check</span>.
             </span>
           </span>
         </h1>
         <p style={loadDelay(300)} className="landing-load mt-6 max-w-2xl text-[17px] leading-relaxed text-ink-soft">
-          Upload PDF and DOCX files, ask in plain language, and get a written answer where each
-          sentence cites the document, page and passage it came from.
+          It finds papers, articles and encyclopedia pages for you, reads your own PDFs, slides,
+          sheets, recordings and links, and writes a clear answer where every sentence points to
+          the exact source and page it came from.
         </p>
         <div style={loadDelay(375)} className="landing-load mt-8">
           <HeroActions />
         </div>
+        <ul style={loadDelay(450)} className="landing-load mt-8 flex flex-wrap gap-1.5" aria-label="Supported sources">
+          {HERO_TAGS.map((tag, index) => (
+            <li
+              key={tag}
+              className="landing-tag rounded-full border border-line bg-panel/80 px-2.5 py-1 text-[12px] text-ink-soft"
+              style={{ '--tag-delay': `${520 + index * 45}ms` } as React.CSSProperties}
+            >
+              {tag}
+            </li>
+          ))}
+        </ul>
       </div>
 
       <div ref={mediaRef} className="landing-parallax mt-14 sm:mt-20">
@@ -112,26 +141,41 @@ export const Hero: React.FC = () => {
   );
 };
 
+export const Flow: React.FC = () => (
+  <section id="flow" className="scroll-mt-16 border-b border-line py-20 sm:py-28" aria-labelledby="flow-heading">
+    <Container>
+      <SectionHeading id="flow-heading" kicker="See it in action" title="From a question to an answer with receipts">
+        You type a question. The assistant gathers sources, reads them, and only writes what the
+        sources support, with a numbered citation on every claim.
+      </SectionHeading>
+      <Reveal variant="scale" className="mt-14">
+        <FlowPreview />
+      </Reveal>
+    </Container>
+  </section>
+);
+
 const STEPS = [
   {
-    title: 'Upload your papers',
-    body: 'PDF and DOCX files are parsed with Docling, split into sections, tables and captions, and indexed in the background. Duplicates are caught before they are stored.',
+    title: 'Add or discover sources',
+    body: 'Upload files, paste a web or YouTube link, or switch on “find sources online” so it searches OpenAlex, arXiv, Crossref, Wikipedia and trusted news for you.',
   },
   {
-    title: 'Ask a question',
-    body: 'Your question is matched against the papers with both semantic and keyword search, and the strongest passages are reranked before anything is written.',
+    title: 'Ask in plain language',
+    body: 'Pick Quick, Standard or Deep. Your question is matched with both meaning and keyword search, and the best passages are reranked before anything is written.',
   },
   {
-    title: 'Read and verify',
-    body: 'The answer comes back with numbered citations. Click one to see the exact excerpt, page and section it is based on.',
+    title: 'Read, verify and follow up',
+    body: 'Click any citation to see the exact passage and page. Ask follow-up questions on the same report, copy BibTeX, or export it as Markdown.',
   },
 ];
 
 export const HowItWorks: React.FC = () => (
-  <section id="how-it-works" className="scroll-mt-16 border-b border-line py-20 sm:py-28" aria-labelledby="how-heading">
+  <section id="how-it-works" className="scroll-mt-16 border-b border-line bg-subtle/40 py-20 sm:py-28" aria-labelledby="how-heading">
     <Container>
-      <SectionHeading id="how-heading" kicker="How it works" title="From a folder of papers to an answer you can check">
-        Three steps. The models run locally, so your papers are not sent to an outside AI service.
+      <SectionHeading id="how-heading" kicker="How it works" title="Three steps, no guesswork">
+        Answers are written only from the sources you can see. If the sources don’t cover
+        something, it says so instead of making it up.
       </SectionHeading>
 
       <ol className="mt-14 grid gap-px overflow-hidden rounded-xl border border-line bg-line md:grid-cols-3">
@@ -147,11 +191,67 @@ export const HowItWorks: React.FC = () => (
   </section>
 );
 
+const DISCOVERY_SOURCES = [
+  { icon: BookOpen, name: 'OpenAlex', body: 'Hundreds of millions of scholarly works, with open-access PDFs read in full.' },
+  { icon: Layers, name: 'arXiv', body: 'Preprints in science, maths and computing, straight from the source.' },
+  { icon: Link2, name: 'Crossref', body: 'DOI records with authors, journal and year for proper references.' },
+  { icon: Globe2, name: 'Wikipedia', body: 'Background and definitions, pulled section by section.' },
+  { icon: Newspaper, name: 'Trusted news', body: 'Recent coverage filtered to outlets like Reuters, AP, BBC and The Hindu.' },
+];
+
+const FILE_TYPES = [
+  { icon: FileText, label: 'PDF & Word', detail: 'Scanned pages are read with OCR' },
+  { icon: Presentation, label: 'Slides', detail: '.pptx' },
+  { icon: Sheet, label: 'Spreadsheets', detail: '.xlsx' },
+  { icon: Globe2, label: 'Web pages', detail: 'Links and .html' },
+  { icon: AudioLines, label: 'Audio', detail: 'Transcribed automatically' },
+  { icon: Video, label: 'Video & YouTube', detail: 'Speech and key frames' },
+  { icon: ImageIcon, label: 'Images', detail: 'Charts and figures described' },
+];
+
+export const Sources: React.FC = () => (
+  <section id="sources" className="scroll-mt-16 border-b border-line py-20 sm:py-28" aria-labelledby="sources-heading">
+    <Container>
+      <SectionHeading id="sources-heading" kicker="Sources" title="Bring your own files, or let it find sources for you">
+        Discovery uses free, public research services, so there is nothing to sign up for. Every
+        source keeps its title, authors, year and link, so citations are ready for your report.
+      </SectionHeading>
+
+      <div className="mt-14 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        {DISCOVERY_SOURCES.map(({ icon: Icon, name, body }, index) => (
+          <Reveal key={name} delay={index * 70} className="landing-card landing-source-card rounded-xl border border-line bg-panel p-5">
+            <span className="landing-source-icon flex h-9 w-9 items-center justify-center rounded-lg bg-accent-soft text-accent">
+              <Icon className="h-[18px] w-[18px]" strokeWidth={1.75} aria-hidden="true" />
+            </span>
+            <h3 className="mt-4 text-[15px] font-semibold text-ink">{name}</h3>
+            <p className="mt-1.5 text-[13px] leading-relaxed text-ink-soft">{body}</p>
+          </Reveal>
+        ))}
+      </div>
+
+      <Reveal delay={120} className="mt-10 rounded-xl border border-line bg-subtle/40 p-5 sm:p-6">
+        <p className="text-[13px] font-medium text-ink">Files and links you can add</p>
+        <ul className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          {FILE_TYPES.map(({ icon: Icon, label, detail }) => (
+            <li key={label} className="landing-filetype flex items-center gap-3 rounded-lg border border-line bg-panel px-3 py-2.5">
+              <Icon className="h-4 w-4 shrink-0 text-accent" strokeWidth={1.75} aria-hidden="true" />
+              <span className="min-w-0">
+                <span className="block text-[13px] font-medium text-ink">{label}</span>
+                <span className="block truncate text-[11.5px] text-ink-muted">{detail}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      </Reveal>
+    </Container>
+  </section>
+);
+
 const FEATURES = [
   {
     icon: Combine,
     title: 'Hybrid search',
-    body: 'Vector search and full-text search run together and are merged with reciprocal rank fusion, so exact terms and paraphrases both match.',
+    body: 'Meaning-based and keyword search run together and are merged, so exact terms and paraphrases both match.',
   },
   {
     icon: ListOrdered,
@@ -159,24 +259,39 @@ const FEATURES = [
     body: 'A reranking model reorders the candidates so the passages that actually answer the question are the ones used.',
   },
   {
-    icon: Copy,
-    title: 'Duplicate detection',
-    body: 'Each upload is fingerprinted, so the same paper added twice is flagged instead of being indexed again.',
+    icon: KeyRound,
+    title: 'Many models, your choice',
+    body: 'A router tries Gemini, OpenRouter and others in turn, or runs a local model. Add your own OpenAI, Claude, Grok or Groq key if you like.',
   },
   {
-    icon: RefreshCw,
-    title: 'Background indexing',
-    body: 'Uploads return straight away. Parsing and indexing run in a job queue with retries, and a failed document can be retried from the list.',
+    icon: Gauge,
+    title: 'Fair, clear credits',
+    body: 'Free credits refill every 3 hours and every 2 days. Follow-ups cost a quarter, and failed runs are refunded. Your own key or a local model is unlimited.',
+  },
+  {
+    icon: PauseCircle,
+    title: 'Pause, edit and retry',
+    body: 'Pause a run, fix the question in place, or switch model if one is busy, without losing your history.',
+  },
+  {
+    icon: Copy,
+    title: 'Duplicate detection',
+    body: 'Each upload is fingerprinted, so the same file added twice is caught instead of being indexed again.',
   },
   {
     icon: FolderLock,
     title: 'Private by default',
-    body: 'Documents, projects and reports belong to your account. Retrieval never reaches into another user’s files.',
+    body: 'Files, projects and reports belong to you. Search never reaches into anyone else’s files unless they share them.',
   },
   {
     icon: FileDown,
-    title: 'Export to Markdown',
-    body: 'Download a report with its references to paste into notes, a draft or a literature review.',
+    title: 'Export and cite',
+    body: 'Download a report as Markdown and copy a BibTeX entry for any source, ready for your references.',
+  },
+  {
+    icon: Scale,
+    title: 'Disagreements shown',
+    body: 'When sources disagree, both sides are shown with their own citations, instead of one being quietly picked.',
   },
 ];
 
@@ -187,10 +302,11 @@ export const Features: React.FC = () => (
 
       <div className="mt-14 grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
         <Reveal>
-          <h3 className="text-xl font-semibold tracking-[-0.015em] text-ink">Projects keep each question in scope</h3>
+          <h3 className="text-xl font-semibold tracking-[-0.015em] text-ink">Projects keep every file in one place</h3>
           <p className="mt-3 text-[15px] leading-relaxed text-ink-soft">
-            Group papers by topic or assignment. A question asked inside a project only searches that
-            project’s documents, so an answer about one literature review never borrows from another.
+            Group papers, slides, sheets, links and recordings by topic or assignment. A question asked
+            inside a project only searches that project, and it can find new sources online and add
+            them for you.
           </p>
         </Reveal>
         <Reveal variant="scale" delay={80}>
@@ -200,13 +316,28 @@ export const Features: React.FC = () => (
 
       <div className="mt-16 grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
         <Reveal className="lg:order-2">
-          <h3 className="text-xl font-semibold tracking-[-0.015em] text-ink">It tells you when the papers don’t say</h3>
+          <h3 className="text-xl font-semibold tracking-[-0.015em] text-ink">Work on it together, live</h3>
           <p className="mt-3 text-[15px] leading-relaxed text-ink-soft">
-            Before writing, the assistant checks whether the retrieved passages are enough to answer.
-            When they aren’t, the answer is marked as limited instead of being padded out.
+            Invite teammates by email or a share link and give each one a role: owner, editor or
+            viewer. You see who is online and what they are doing, and new files and answers show up
+            for everyone straight away.
           </p>
         </Reveal>
         <Reveal variant="scale" delay={80} className="lg:order-1">
+          <CollabPreview />
+        </Reveal>
+      </div>
+
+      <div className="mt-16 grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
+        <Reveal>
+          <h3 className="text-xl font-semibold tracking-[-0.015em] text-ink">It tells you when the sources don’t say</h3>
+          <p className="mt-3 text-[15px] leading-relaxed text-ink-soft">
+            Before writing, it checks whether the passages are enough to answer. When they aren’t,
+            the answer is marked as limited instead of being padded out, and gaps are listed under
+            “Not covered in the sources”.
+          </p>
+        </Reveal>
+        <Reveal variant="scale" delay={80}>
           <EvidencePreview />
         </Reveal>
       </div>
@@ -214,7 +345,9 @@ export const Features: React.FC = () => (
       <div className="mt-20 grid gap-x-10 gap-y-10 border-t border-line pt-14 sm:grid-cols-2 lg:grid-cols-3">
         {FEATURES.map(({ icon: Icon, title, body }, index) => (
           <Reveal key={title} delay={(index % 3) * 80} className="landing-feature">
-            <Icon className="h-5 w-5 text-accent" strokeWidth={1.75} aria-hidden="true" />
+            <span className="landing-feature-icon inline-flex h-9 w-9 items-center justify-center rounded-lg border border-line bg-panel">
+              <Icon className="h-[18px] w-[18px] text-accent" strokeWidth={1.75} aria-hidden="true" />
+            </span>
             <h3 className="mt-4 text-[15px] font-semibold text-ink">{title}</h3>
             <p className="mt-1.5 text-[14px] leading-relaxed text-ink-soft">{body}</p>
           </Reveal>
@@ -225,23 +358,24 @@ export const Features: React.FC = () => (
 );
 
 const PIPELINE = [
-  ['Parse', 'Docling, with a pypdf fallback'],
-  ['Chunk', 'HybridChunker with pages, sections and tables kept'],
-  ['Embed', 'Qwen3 embeddings'],
+  ['Read', 'Docling, or a light reader with OCR for scanned pages'],
+  ['Transcribe', 'Whisper for audio and video, vision for images'],
+  ['Chunk', 'Pages, sections and tables kept together'],
+  ['Embed', 'Qwen3 locally, or Cloudflare bge-m3 in the cloud'],
   ['Store', 'PostgreSQL with pgvector and full-text indexes'],
   ['Retrieve', 'Vector + keyword search, reciprocal rank fusion'],
-  ['Rerank', 'Qwen3 reranker'],
-  ['Generate', 'qwen3.5:9b through Ollama'],
-  ['Cite', 'Sentence-level citation validation'],
+  ['Rerank', 'Qwen3, Cloudflare or Jina reranker'],
+  ['Generate', 'Local Ollama, or the cloud model router'],
+  ['Cite', 'Every sentence and table cell checked'],
 ];
 
 export const Pipeline: React.FC = () => (
   <section id="pipeline" className="scroll-mt-16 border-b border-line bg-subtle/50 py-20 sm:py-28" aria-labelledby="pipeline-heading">
     <Container>
       <div className="grid gap-12 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-16">
-        <SectionHeading id="pipeline-heading" kicker="Under the hood" title="Open models, one database, no hosted AI service">
-          Retrieval and generation run locally. PostgreSQL is the single source of truth for
-          documents, chunks, vectors and reports.
+        <SectionHeading id="pipeline-heading" kicker="Under the hood" title="Open models, one database, runs local or in the cloud">
+          The same pipeline runs fully on your own machine with local models, or on a light cloud
+          setup. PostgreSQL is the single source of truth for files, passages, vectors and reports.
         </SectionHeading>
 
         <Reveal as="ol" variant="scale" className="overflow-hidden rounded-xl border border-line bg-panel">
@@ -266,23 +400,27 @@ export const Pipeline: React.FC = () => (
 const FAQS = [
   [
     'What does “grounded” mean here?',
-    'The answer is written only from passages retrieved from your own indexed documents, and each sentence carries a citation to the passage it relies on. If the passages are not enough, the answer is marked as limited.',
+    'The answer is written only from passages taken from your sources, and each sentence carries a citation to the passage it relies on. If the passages are not enough, the answer is marked as limited.',
   ],
   [
-    'Which file types can I upload?',
-    'PDF and DOCX. Files are checked, fingerprinted to catch duplicates, and then parsed and indexed in the background.',
+    'Where do the sources come from?',
+    'From the files and links you add, and, if you switch it on, from OpenAlex, arXiv, Crossref, Wikipedia and trusted news outlets. Open-access papers are read in full when a free PDF exists.',
   ],
   [
-    'Can other users see or search my documents?',
-    'No. Documents, projects and reports are tied to your account, and every search is filtered to your own files. Inside a project, only that project’s documents are searched.',
+    'Which file types can I add?',
+    'PDF, Word, PowerPoint, Excel, HTML, images, audio and video files, plus web page and YouTube links. Files are checked, fingerprinted to catch duplicates, then read and indexed in the background.',
   ],
   [
-    'Which models does it use?',
-    'Qwen3 models for embeddings and reranking, and qwen3.5:9b through Ollama for writing the answer. All of them run locally.',
+    'Can other people see my documents?',
+    'Only if you share a project or research with them. Each person gets a role (owner, editor or viewer), and everything else stays tied to your account.',
   ],
   [
-    'What happens if a document fails to process?',
-    'It is marked as failed with a short reason, and you can retry it from the documents list once the problem is fixed.',
+    'Which AI models does it use?',
+    'A local model through Ollama, or a cloud router that tries Gemini, then OpenRouter and other free models. You can also add your own OpenAI, Claude, Grok or Groq key, which is not limited by credits.',
+  ],
+  [
+    'What are credits?',
+    'Each model gives you 20 runs every 3 hours and 100 every 2 days. A follow-up question costs a quarter of a run, and runs that fail or find too little evidence are refunded.',
   ],
 ] as const;
 
@@ -339,10 +477,10 @@ export const FinalCta: React.FC = () => (
       <Reveal variant="scale" className="flex flex-col items-start justify-between gap-8 rounded-xl border border-line bg-panel p-8 shadow-sm sm:p-12 lg:flex-row lg:items-center">
         <div className="max-w-xl">
           <h2 id="cta-heading" className="font-serif text-[28px] leading-tight tracking-[-0.015em] text-ink sm:text-[34px]">
-            Start with the papers you already have.
+            Start with the question you already have.
           </h2>
           <p className="mt-3 text-[15px] leading-relaxed text-ink-soft">
-            Create a project, upload a few PDFs and ask your first question.
+            Create a project, add a few files or let it find sources, and ask your first question.
           </p>
         </div>
         <FinalCtaActions />
@@ -462,11 +600,12 @@ export const LandingFooter: React.FC = () => {
       <Container className="flex flex-col gap-6 py-10 sm:flex-row sm:items-center sm:justify-between">
         <Reveal>
           <BrandMark nameClassName="text-[14px]" />
-          <p className="mt-2 text-[13px] text-ink-muted">Answers from your own papers, with the sources attached.</p>
+          <p className="mt-2 text-[13px] text-ink-muted">Answers from papers, files and the web, with the sources attached.</p>
         </Reveal>
         <Reveal delay={80}>
         <nav aria-label="Footer" className="flex flex-wrap gap-x-6 gap-y-2 text-[13px] text-ink-soft">
           <a href="#how-it-works" onClick={scrollToHash} className="hover:text-ink">How it works</a>
+          <a href="#sources" onClick={scrollToHash} className="hover:text-ink">Sources</a>
           <a href="#features" onClick={scrollToHash} className="hover:text-ink">Features</a>
           <a href="#faq" onClick={scrollToHash} className="hover:text-ink">FAQ</a>
           {user ? (

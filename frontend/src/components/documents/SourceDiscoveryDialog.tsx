@@ -33,6 +33,7 @@ const PROVIDER_LABELS: Record<DiscoveredSourceCandidate['provider'], string> = {
   crossref: 'Crossref',
   arxiv: 'arXiv',
   wikipedia: 'Wikipedia',
+  news: 'News',
 };
 
 const TRUST_BADGE: Record<
@@ -54,6 +55,10 @@ const TRUST_BADGE: Record<
   'official-documentation': {
     label: 'Official docs',
     className: 'border-accent-line bg-accent-soft text-accent',
+  },
+  news: {
+    label: 'News',
+    className: 'border-line bg-subtle text-ink-soft',
   },
 };
 
@@ -319,7 +324,7 @@ export const SourceDiscoveryDialog: React.FC<SourceDiscoveryDialogProps> = ({
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
                           <span className={`rounded border px-1.5 py-0.5 font-medium ${badge.className}`}>
-                            {item.provider === 'wikipedia' && item.publisher && item.publisher !== 'Wikipedia'
+                            {item.provider === 'news' && item.publisher
                               ? `${item.publisher} · News`
                               : `${PROVIDER_LABELS[item.provider]} · ${badge.label}`}
                           </span>

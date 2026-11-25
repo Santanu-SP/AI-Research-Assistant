@@ -334,7 +334,7 @@ def _parse_curated_abstract(
     meta_lines.append(abstract_body)
     full_block = "\n".join(meta_lines)
 
-    section_name = "Overview" if candidate.provider == "wikipedia" else "Abstract"
+    section_name = "Overview" if candidate.provider in {"wikipedia", "news"} else "Abstract"
     nodes = chunk_web_sections(
         document_id,
         [(section_name, full_block)],
@@ -536,7 +536,7 @@ def _ingest_single_candidate(
         parsed is None
         and fetch_full_text
         and not is_google_news_wrapper
-        and (candidate.provider == "wikipedia" or not candidate.abstract)
+        and (candidate.provider in {"wikipedia", "news"} or not candidate.abstract)
     ):
         try:
             web_adapter = WebsiteIngestionAdapter(
@@ -567,7 +567,7 @@ def _ingest_single_candidate(
         )
         content_level = (
             ContentLevel.WEB_PAGE
-            if candidate.provider == "wikipedia"
+            if candidate.provider in {"wikipedia", "news"}
             else ContentLevel.ABSTRACT
         )
 

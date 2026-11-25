@@ -19,6 +19,20 @@ describe('Cloudflare Pages /api/* same-origin proxy', () => {
     expect(body.error?.code).toBe('proxy_not_configured');
   });
 
+  it('falls back to the origin of an absolute VITE_API_BASE_URL when BACKEND_ORIGIN is not set', async () => {
+    let capturedUrl = '';
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      capturedUrl = typeof input === 'string' ? input : input.toString();
+      return new Response('{"status":"ok"}', { status: 200 });
+    }) as typeof fetch;
+    const response = await onRequest({
+      request: new Request('https://ai-research-assistant.pages.dev/api/v1/health'),
+      env: { VITE_API_BASE_URL: 'https://ara-api.onrender.com/api/v1' },
+    });
+    expect(response.status).toBe(200);
+    expect(capturedUrl).toBe('https://ara-api.onrender.com/api/v1/health');
+  });
+
   it('forwards HTTP requests manually preserving redirects, Set-Cookie, Origin, and stripping cf-* headers', async () => {
     let capturedUrl = '';
     let capturedInit: RequestInit | undefined;

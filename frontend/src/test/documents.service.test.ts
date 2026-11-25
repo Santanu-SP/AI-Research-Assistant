@@ -119,6 +119,16 @@ describe('getDocumentErrorMessage', () => {
     );
   });
 
+  it('shows the server reason for YouTube import errors', () => {
+    const err = new ApiError('Unprocessable', 422, {
+      error: {
+        code: 'youtube_video_unavailable',
+        message: "This YouTube video can't be opened. It may be private, deleted, or the link may be wrong.",
+      },
+    });
+    expect(getDocumentErrorMessage(err, 'fallback')).toMatch(/private, deleted/);
+  });
+
   it('returns fallback for unknown errors', () => {
     expect(getDocumentErrorMessage(new Error('timeout'), 'fallback')).toBe(
       'fallback'

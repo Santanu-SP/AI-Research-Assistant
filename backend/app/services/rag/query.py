@@ -472,17 +472,13 @@ def _select_diverse_discovery_candidates(
     if scope != "all" or len(items) <= 1:
         return list(items)
 
-    news_items = [
-        item
-        for item in items
-        if item.provider == "wikipedia" and item.publisher and item.publisher != "Wikipedia"
-    ]
+    news_items = [item for item in items if item.provider == "news"]
     wiki_items = [
         item
         for item in items
         if item.provider == "wikipedia" and (not item.publisher or item.publisher == "Wikipedia")
     ]
-    scholarly_items = [item for item in items if item.provider != "wikipedia"]
+    scholarly_items = [item for item in items if item.provider not in {"wikipedia", "news"}]
 
     ordered: list = []
     seen_ids: set[str] = set()
