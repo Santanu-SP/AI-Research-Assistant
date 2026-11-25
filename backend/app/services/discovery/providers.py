@@ -448,19 +448,38 @@ def search_arxiv(
     timeout_seconds: float = 12.0,
     client: httpx.Client | None = None,
 ) -> list[DiscoveredSourceCandidate]:
-    params = {
-        "search_query": f"all:{query.strip()}",
-        "start": 0,
-        "max_results": min(max(limit, 1), 10),
-        "sortBy": "relevance",
-        "sortOrder": "descending",
-    }
+    # arXiv only applies "all:" to the first word of a plain query and ORs the
+    # rest, which brings back loosely related papers. Require every key word
+    # first, then the first three, and only fall back to the loose query if
+    # neither finds anything.
+    terms = _core_query_tokens(query)[:6]
+    attempts: list[str] = []
+    if len(terms) >= 2:
+        attempts.append(" AND ".join(f"all:{term}" for term in terms))
+    if len(terms) > 3:
+        attempts.append(" AND ".join(f"all:{term}" for term in terms[:3]))
+    attempts.append(f"all:{query.strip()}")
+
     own_client = client is None
     active = client or httpx.Client(timeout=httpx.Timeout(timeout_seconds, connect=5.0))
-    try:
+
+    def _fetch(search_query: str) -> ET.Element:
+        params = {
+            "search_query": search_query,
+            "start": 0,
+            "max_results": min(max(limit, 1), 10),
+            "sortBy": "relevance",
+            "sortOrder": "descending",
+        }
         resp = active.get("https://export.arxiv.org/api/query", params=params, headers=_build_headers(None))
         resp.raise_for_status()
-        root = ET.fromstring(resp.text)
+        return ET.fromstring(resp.text)
+
+    try:
+        for search_query in attempts:
+            root = _fetch(search_query)
+            if root.findall("atom:entry", _ARXIV_NS):
+                break
     finally:
         if own_client:
             active.close()
