@@ -128,3 +128,14 @@ def test_failed_run_stores_the_reason_and_logs_telemetry(
     progress = client.get(f"/api/v1/research/{research_id}/status").json()
     assert progress["status"] == "completed"
     assert progress["failureType"] is None
+
+
+def test_newer_google_key_format_is_hidden_and_detected() -> None:
+    from app.services.auth.api_keys import detect_provider_from_key
+
+    # Fake key in Google's newer "AQ." format, built in pieces for secret scanners.
+    fake_new_google_key = "AQ." + "Ab8Fake1234567890abcdefghijklmnop"
+    cleaned = redact_secrets(f"API key not valid: {fake_new_google_key}")
+    assert "Ab8Fake" not in cleaned
+    assert "[hidden]" in cleaned
+    assert detect_provider_from_key(fake_new_google_key) == "gemini"

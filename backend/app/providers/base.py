@@ -171,6 +171,8 @@ def model_error_type(exc: Exception) -> str:
 
 _SECRET_PATTERNS = (
     re.compile(r"AIza[0-9A-Za-z_\-]{20,}"),
+    # Google's newer key format starts with "AQ.".
+    re.compile(r"\bAQ\.[0-9A-Za-z_\-]{20,}"),
     re.compile(r"\b(?:sk|pk|gsk|csk|xai)-[A-Za-z0-9_\-]{8,}"),
     re.compile(r"(?i)(bearer\s+)[A-Za-z0-9._\-]{8,}"),
     re.compile(r"(?i)((?:api[_-]?key|key|token|secret)\s*[=:]\s*)[^\s&,;\"']{6,}"),
