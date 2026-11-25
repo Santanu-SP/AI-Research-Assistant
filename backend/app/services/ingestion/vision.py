@@ -82,6 +82,13 @@ def _map_ocr_output_to_pages(text: str, batch: list[int]) -> dict[int, str]:
     return mapped
 
 
+_IMAGE_SKIP_MESSAGES = {
+    "low_visual_variance_blank_or_solid": "This image is almost blank or a single colour, so there is nothing to read in it.",
+    "image_below_minimum_dimensions": "This image is too small to read. Please upload a larger version.",
+    "extreme_aspect_ratio_banner": "This image is a thin strip or banner, not a chart or figure, so it was skipped.",
+}
+
+
 @dataclass(frozen=True)
 class ImageInspection:
     should_analyze: bool
@@ -131,7 +138,7 @@ def inspect_image_for_vision(
             return ImageInspection(True, width, height, round(std_dev, 2), "informative_figure")
     except Exception as exc:
         raise DocumentIngestionError(
-            "The image could not be decoded for analysis",
+            "This image file could not be opened. It may be damaged or not really an image.",
             code="invalid_image_content",
         ) from exc
 
@@ -174,7 +181,7 @@ class GeminiVisionAnalyzer:
         mime_type: str,
         data_bytes: bytes,
         max_output_tokens: int = 512,
-        missing_key_message: str = "GEMINI_API_KEY is required for Gemini vision analysis",
+        missing_key_message: str = "Reading images needs a Gemini key on the server, and none is set up. Ask the admin to add GEMINI_API_KEY.",
     ) -> str | None:
         if not self.api_key:
             raise DocumentIngestionError(
@@ -227,7 +234,7 @@ class GeminiVisionAnalyzer:
                     )
                     continue
                 raise DocumentIngestionError(
-                    f"Gemini Vision API returned HTTP {exc.response.status_code}",
+                    f"The image-reading service returned an error (HTTP {exc.response.status_code}). Please retry in a few minutes.",
                     code="vision_provider_error",
                     status_code=503,
                 ) from exc
@@ -236,14 +243,14 @@ class GeminiVisionAnalyzer:
                 if idx + 1 < len(candidate_models):
                     continue
                 raise DocumentIngestionError(
-                    "Gemini Vision API is unreachable",
+                    "The image-reading service could not be reached. Please retry in a few minutes.",
                     code="vision_provider_unavailable",
                     status_code=503,
                 ) from exc
 
         if data is None and last_exc is not None:
             raise DocumentIngestionError(
-                "Gemini Vision API is unreachable",
+                "The image-reading service could not be reached. Please retry in a few minutes.",
                 code="vision_provider_unavailable",
                 status_code=503,
             ) from last_exc
@@ -290,7 +297,7 @@ class GeminiVisionAnalyzer:
             mime_type=send_mime,
             data_bytes=send_bytes,
             max_output_tokens=512,
-            missing_key_message="GEMINI_API_KEY is required for image and diagram analysis",
+            missing_key_message="Reading images needs a Gemini key on the server, and none is set up. Ask the admin to add GEMINI_API_KEY.",
         )
 
     def ocr_pdf_pages(
@@ -306,7 +313,8 @@ class GeminiVisionAnalyzer:
             return {}
         if not self.api_key:
             raise DocumentIngestionError(
-                "GEMINI_API_KEY is required for scanned PDF OCR",
+                "This PDF is a scan (pictures of pages), and reading scans needs a Gemini key on the server. "
+                "Ask the admin to add GEMINI_API_KEY, or upload a PDF with selectable text.",
                 code="vision_api_key_missing",
                 status_code=503,
             )
@@ -331,7 +339,8 @@ class GeminiVisionAnalyzer:
                 mime_type="application/pdf",
                 data_bytes=pdf_slice,
                 max_output_tokens=4096,
-                missing_key_message="GEMINI_API_KEY is required for scanned PDF OCR",
+                missing_key_message="This PDF is a scan (pictures of pages), and reading scans needs a Gemini key on the server. "
+                "Ask the admin to add GEMINI_API_KEY, or upload a PDF with selectable text.",
             )
             if not text:
                 continue
@@ -354,7 +363,10 @@ class GeminiVisionAnalyzer:
         )
         if not inspection.should_analyze:
             raise DocumentIngestionError(
-                f"Image does not meet minimum research figure requirements ({inspection.reason})",
+                _IMAGE_SKIP_MESSAGES.get(
+                    inspection.reason,
+                    "This image doesn't look like a chart, figure or diagram, so it was skipped.",
+                ),
                 code="uninformative_image",
                 status_code=422,
             )
@@ -365,7 +377,7 @@ class GeminiVisionAnalyzer:
         )
         if not description:
             raise DocumentIngestionError(
-                "Vision model returned an empty description for the image",
+                "The image-reading service could not describe this image.",
                 code="vision_empty_description",
                 status_code=422,
             )

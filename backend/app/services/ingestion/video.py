@@ -72,13 +72,13 @@ class VideoIngestionAdapter:
             )
         except FileNotFoundError as exc:
             raise DocumentIngestionError(
-                "FFmpeg binary is not installed or not on PATH",
+                "Videos can't be processed on this server because FFmpeg is not installed.",
                 code="ffmpeg_unavailable",
                 status_code=503,
             ) from exc
         except subprocess.TimeoutExpired as exc:
             raise DocumentIngestionError(
-                "FFmpeg timed out while extracting audio from the video",
+                "Reading the sound from this video took too long. Try a shorter or smaller video.",
                 code="video_processing_timeout",
                 status_code=504,
             ) from exc
@@ -262,7 +262,7 @@ class VideoIngestionAdapter:
                 if audio_error is not None:
                     raise audio_error
                 raise DocumentIngestionError(
-                    "The video contains neither spoken speech nor readable visual frames",
+                    "No speech or readable picture could be found in this video, so there is nothing to index.",
                     code="document_processing_failed",
                     status_code=422,
                 )

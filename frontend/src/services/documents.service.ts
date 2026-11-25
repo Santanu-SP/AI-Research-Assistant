@@ -191,7 +191,10 @@ export const getDocumentErrorMessage = (
       return apiErrorMessage(error, 'This YouTube video does not expose an accessible transcript.');
     }
     if (code === 'audio_transcription_key_missing' || code === 'vision_api_key_missing') {
-      return 'Server transcription/vision key is not configured for this media type.';
+      return apiErrorMessage(
+        error,
+        'This file type needs a speech-to-text or image-reading key on the server, and none is set up yet.',
+      );
     }
     if (error.status === 422) {
       const data = error.data as { detail?: unknown } | null;
