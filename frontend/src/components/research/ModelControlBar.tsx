@@ -160,7 +160,7 @@ const API_KEY_PROVIDER_CHOICES = [
 
 const detectProviderPrefix = (rawKey: string): string | null => {
   const cleaned = rawKey.trim();
-  if (cleaned.startsWith('AIza')) return 'gemini';
+  if (cleaned.startsWith('AIza') || cleaned.startsWith('AQ.')) return 'gemini';
   if (cleaned.startsWith('gsk_')) return 'groq';
   if (cleaned.startsWith('sk-ant-')) return 'claude';
   if (cleaned.startsWith('sk-or-')) return 'openrouter';

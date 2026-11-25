@@ -96,7 +96,7 @@ def normalize_provider_name(provider: str) -> str:
 
 def detect_provider_from_key(raw_key: str) -> str | None:
     cleaned = raw_key.strip()
-    if cleaned.startswith("AIza"):
+    if cleaned.startswith(("AIza", "AQ.")):
         return "gemini"
     if cleaned.startswith("gsk_"):
         return "groq"
