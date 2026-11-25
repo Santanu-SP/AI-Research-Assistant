@@ -56,17 +56,47 @@ def attach_trailing_citations(answer: str) -> str:
     return _CITATION_AFTER_STOP.sub(move, answer)
 
 
-def tidy_answer_lines(answer: str) -> str:
-    """Remove lines the model repeated and fix doubled list markers.
+_TABLE_SEPARATOR = re.compile(
+    r"^\s*\|?(?:\s*:?-{2,}:?\s*\|)+\s*(?::?-{2,}:?)?\s*\|?\s*$"
+)
 
-    Smaller models sometimes loop and write the same steps several times, or
-    write "- 1. Step"; both make the answer look broken.
+
+def _is_table_separator(line: str) -> bool:
+    return bool(_TABLE_SEPARATOR.match(line))
+
+
+def _is_table_row(line: str) -> bool:
+    stripped = line.strip()
+    return stripped.startswith("|") and "|" in stripped[1:]
+
+
+def tidy_answer_lines(answer: str) -> str:
+    """Normalize bullets/headings and remove duplicate lines emitted by models.
+
+    Smaller models sometimes emit Unicode bullets, omit spaces after `#`
+    headings, loop and write the same steps repeatedly, or write "- 1. Step".
+    Table separator rows and non-consecutive table rows are preserved so
+    multiple tables with similar columns do not get broken.
     """
     seen: set[str] = set()
     lines: list[str] = []
+    prev_table_key: str | None = None
     for line in answer.split("\n"):
+        line = re.sub(r"^(\s*)[•‣]\s+", r"\1- ", line)
         line = re.sub(r"^(\s*)[-*+]\s+(\d+[.)]\s+)", r"\1\2", line)
+        line = re.sub(r"^(#{1,4})([^\s#])", r"\1 \2", line)
+        if _is_table_separator(line):
+            lines.append(line)
+            prev_table_key = None
+            continue
         key = " ".join(SOURCE_REFERENCE.sub("", line).split()).lower()
+        if _is_table_row(line):
+            if key and key == prev_table_key:
+                continue
+            prev_table_key = key or None
+            lines.append(line)
+            continue
+        prev_table_key = None
         if key and len(key) > 12:
             if key in seen:
                 continue
@@ -78,10 +108,13 @@ def tidy_answer_lines(answer: str) -> str:
 def _is_claim(sentence: str) -> bool:
     """Whether a piece of the answer states something that needs a source.
 
-    Headings, labels ending in ":" and very short fragments are structure,
-    not claims.
+    Headings, table separators, labels ending in ":" and very short fragments
+    are structure, not claims.
     """
-    text = _LIST_MARKER.sub("", SOURCE_REFERENCE.sub("", sentence)).strip()
+    if _is_table_separator(sentence):
+        return False
+    text = _LIST_MARKER.sub("", SOURCE_REFERENCE.sub("", sentence))
+    text = text.replace("|", " ").strip()
     if not text or text.startswith("#") or text.endswith(":"):
         return False
     if _NOT_COVERED.match(text):
@@ -95,7 +128,23 @@ def _is_claim(sentence: str) -> bool:
 def citation_coverage(answer: str) -> tuple[int, int]:
     """Return (claims with a citation, all claims) for an answer."""
     cited = total = 0
-    for line in attach_trailing_citations(answer).split("\n"):
+    lines = attach_trailing_citations(answer).split("\n")
+    for idx, line in enumerate(lines):
+        if _is_table_separator(line):
+            continue
+        # Skip Markdown table header rows directly above a separator row.
+        if (
+            _is_table_row(line)
+            and idx + 1 < len(lines)
+            and _is_table_separator(lines[idx + 1])
+        ):
+            continue
+        if _is_table_row(line):
+            if _is_claim(line):
+                total += 1
+                if SOURCE_REFERENCE.search(line):
+                    cited += 1
+            continue
         for sentence in SENTENCE_BOUNDARY.split(line):
             if not _is_claim(sentence):
                 continue
@@ -103,6 +152,105 @@ def citation_coverage(answer: str) -> tuple[int, int]:
             if SOURCE_REFERENCE.search(sentence):
                 cited += 1
     return cited, total
+
+
+_CITATION_CLUSTER = re.compile(r"\[S\d+\](?:[ \t]*\[S\d+\])+", re.IGNORECASE)
+
+
+def _dedup_citation_cluster(
+    sentence: str,
+    evidence_by_id: dict[str, EvidenceItem],
+) -> str:
+    """Drop repeated or same-(document, page) chunk markers within one cluster."""
+
+    def shrink(match: re.Match[str]) -> str:
+        cluster = match.group(0)
+        tokens = list(SOURCE_REFERENCE.finditer(cluster))
+        if len(tokens) <= 1:
+            return cluster
+        seen_ids: set[str] = set()
+        seen_doc_pages: set[tuple[object, object]] = set()
+        kept: list[tuple[str, str]] = []
+        last_end = 0
+        for idx, tok in enumerate(tokens):
+            gap = cluster[last_end : tok.start()] if idx > 0 else ""
+            last_end = tok.end()
+            sid = f"S{int(tok.group(1))}"
+            if sid in seen_ids:
+                continue
+            item = evidence_by_id.get(sid)
+            if item is not None and item.document_id is not None:
+                doc_page = (item.document_id, item.page)
+                if doc_page in seen_doc_pages:
+                    continue
+                seen_doc_pages.add(doc_page)
+            seen_ids.add(sid)
+            kept.append((" " if (kept and gap) else "", f"[{sid}]"))
+        return "".join(f"{sep}{marker}" for sep, marker in kept)
+
+    return _CITATION_CLUSTER.sub(shrink, sentence)
+
+
+def _dedup_sentence_repeats(sentence: str) -> str:
+    """When the same [S#] repeats across one sentence, keep its final position."""
+    matches = list(SOURCE_REFERENCE.finditer(sentence))
+    if len(matches) <= 1:
+        return sentence
+    last_index_by_id: dict[str, int] = {}
+    for idx, match in enumerate(matches):
+        last_index_by_id[f"S{int(match.group(1))}"] = idx
+    parts: list[str] = []
+    cursor = 0
+    for idx, match in enumerate(matches):
+        sid = f"S{int(match.group(1))}"
+        parts.append(sentence[cursor : match.start()])
+        if last_index_by_id[sid] == idx:
+            parts.append(f"[{sid}]")
+        cursor = match.end()
+    parts.append(sentence[cursor:])
+    return "".join(parts)
+
+
+def _clean_text_segment(
+    text: str,
+    evidence_by_id: dict[str, EvidenceItem],
+    replace_reference,
+) -> str:
+    kept_sentences = []
+    for sentence in SENTENCE_BOUNDARY.split(text):
+        markers = SOURCE_REFERENCE.findall(sentence)
+        if markers and not any(
+            f"S{int(number)}" in evidence_by_id for number in markers
+        ):
+            # Every source this sentence cites is invented, so the
+            # claim is not grounded in the evidence: drop it.
+            continue
+        cleaned = SOURCE_REFERENCE.sub(replace_reference, sentence)
+        cleaned = _dedup_citation_cluster(cleaned, evidence_by_id)
+        cleaned = _dedup_sentence_repeats(cleaned)
+        kept_sentences.append(cleaned)
+    return " ".join(part for part in kept_sentences if part.strip())
+
+
+def _clean_table_row(
+    line: str,
+    evidence_by_id: dict[str, EvidenceItem],
+    replace_reference,
+) -> str | None:
+    if _is_table_separator(line):
+        return line
+    row_markers = SOURCE_REFERENCE.findall(line)
+    if row_markers and not any(
+        f"S{int(number)}" in evidence_by_id for number in row_markers
+    ):
+        return None
+    stripped = line.strip()
+    inner = stripped[1:-1] if stripped.endswith("|") else stripped[1:]
+    cleaned_cells = [
+        _clean_text_segment(cell.strip(), evidence_by_id, replace_reference).strip()
+        for cell in inner.split("|")
+    ]
+    return f"| {' | '.join(cleaned_cells)} |"
 
 
 @dataclass(frozen=True)
@@ -125,35 +273,34 @@ class CitationValidator:
         evidence: list[EvidenceItem],
     ) -> CitationValidationResult:
         evidence_by_id = {item.source_id.upper(): item for item in evidence}
-        cited_ids: list[str] = []
         answer = attach_trailing_citations(split_grouped_citations(answer))
 
         def replace_reference(match: re.Match[str]) -> str:
             source_id = f"S{int(match.group(1))}"
             if source_id not in evidence_by_id:
                 return ""
-            if source_id not in cited_ids:
-                cited_ids.append(source_id)
             return f"[{source_id}]"
 
         kept_lines = []
         for line in answer.split("\n"):
-            kept_sentences = []
-            for sentence in SENTENCE_BOUNDARY.split(line):
-                markers = SOURCE_REFERENCE.findall(sentence)
-                if markers and not any(
-                    f"S{int(number)}" in evidence_by_id for number in markers
-                ):
-                    # Every source this sentence cites is invented, so the
-                    # claim is not grounded in the evidence: drop it.
-                    continue
-                kept_sentences.append(SOURCE_REFERENCE.sub(replace_reference, sentence))
-            kept_lines.append(" ".join(part for part in kept_sentences if part.strip()))
+            if _is_table_row(line) or _is_table_separator(line):
+                cleaned_row = _clean_table_row(line, evidence_by_id, replace_reference)
+                if cleaned_row is not None:
+                    kept_lines.append(cleaned_row)
+                continue
+            kept_lines.append(
+                _clean_text_segment(line, evidence_by_id, replace_reference)
+            )
         sanitized = "\n".join(kept_lines)
         sanitized = tidy_answer_lines(_REPEATED_REFERENCE.sub(r"\1", sanitized))
         sanitized = re.sub(r"[ \t]+([,.;:!?])", r"\1", sanitized)
-        sanitized = re.sub(r" {2,}", " ", sanitized)
+        sanitized = re.sub(r"(?<=\S) {2,}", " ", sanitized)
         sanitized = re.sub(r"\n{3,}", "\n\n", sanitized).strip()
+        cited_ids: list[str] = []
+        for number in SOURCE_REFERENCE.findall(sanitized):
+            source_id = f"S{int(number)}"
+            if source_id in evidence_by_id and source_id not in cited_ids:
+                cited_ids.append(source_id)
         citations = [self._citation(evidence_by_id[source_id]) for source_id in cited_ids]
         cited_claims, total_claims = citation_coverage(sanitized)
         return CitationValidationResult(
