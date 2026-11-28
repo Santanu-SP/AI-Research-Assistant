@@ -83,6 +83,7 @@ def search_and_annotate(
     limit: int,
     project_id: UUID | None,
     settings: Settings,
+    strict_relevance: bool = False,
     client: httpx.Client | None = None,
 ) -> DiscoverySearchResponse:
     if not settings.discovery_enabled:
@@ -101,6 +102,7 @@ def search_and_annotate(
         scope=scope,
         limit=min(limit, settings.discovery_max_results),
         settings=settings,
+        strict_relevance=strict_relevance,
         client=client,
     )
     annotated: list[DiscoveredSourceCandidate] = []
@@ -536,7 +538,7 @@ def _ingest_single_candidate(
         parsed is None
         and fetch_full_text
         and not is_google_news_wrapper
-        and (candidate.provider in {"wikipedia", "news"} or not candidate.abstract)
+        and (candidate.provider in {"wikipedia", "news", "web"} or not candidate.abstract)
     ):
         try:
             web_adapter = WebsiteIngestionAdapter(
@@ -567,7 +569,7 @@ def _ingest_single_candidate(
         )
         content_level = (
             ContentLevel.WEB_PAGE
-            if candidate.provider in {"wikipedia", "news"}
+            if candidate.provider in {"wikipedia", "news", "web"}
             else ContentLevel.ABSTRACT
         )
 

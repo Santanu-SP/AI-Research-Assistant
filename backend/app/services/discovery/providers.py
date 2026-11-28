@@ -17,6 +17,7 @@ import xml.etree.ElementTree as ET
 import httpx
 
 from app.core.config import Settings
+from app.core.errors import AppError
 from app.domain.documents import ContentLevel, SourceType
 from app.schemas.discovery import (
     DiscoveredSourceCandidate,
@@ -24,6 +25,7 @@ from app.schemas.discovery import (
     DiscoveryScope,
     DiscoveryTrustTier,
 )
+from app.services.ingestion.web import validate_public_url
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +64,99 @@ _QUERY_STOPWORDS: frozenset[str] = frozenset(
 _WIKI_QUALIFIERS: frozenset[str] = frozenset(
     {"biological", "chemical", "clinical", "engineering", "general", "medical", "mechanism", "mechanisms", "physical"}
 )
+_QUERY_URL_RE = re.compile(
+    r"(?<![/@.\w])(?:"
+    r"https?://[^\s<>'\"()]+"
+    r"|(?:www\.)?[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*"
+    r"\.(?:com|org|net|io|dev|ai|edu|gov|co|app|in|uk)"
+    r"(?:/[^\s<>'\"()]*)?"
+    r")",
+    re.IGNORECASE,
+)
+_VAGUE_META_TOKENS: frozenset[str] = frozenset(
+    {
+        "app", "application", "applications", "apps", "document", "documents",
+        "file", "files", "info", "information", "link", "links", "page", "pages",
+        "platform", "platforms", "portal", "portals", "project", "projects",
+        "site", "sites", "stuff", "thing", "things", "tool", "tools",
+        "url", "urls", "webpage", "webpages", "website", "websites",
+    }
+)
+_NSFW_TERMS: frozenset[str] = frozenset(
+    {
+        "brazzers", "chaturbate", "erotica", "hentai", "nsfw", "onlyfans",
+        "porn", "pornhub", "pornographic", "pornography", "redtube",
+        "xhamster", "xnxx", "xvideos", "youporn",
+    }
+)
+_NSFW_PHRASES: tuple[str, ...] = ("adult video", "adult website", "pornographic website")
+
+
+def _extract_raw_and_valid_urls(raw_query: str) -> tuple[bool, list[str]]:
+    saw_any = False
+    urls: list[str] = []
+    seen: set[str] = set()
+    for match in _QUERY_URL_RE.finditer(raw_query or ""):
+        raw = match.group(0).rstrip(".,;:!?)]}\"'")
+        if not raw:
+            continue
+        saw_any = True
+        normalized = raw if raw.lower().startswith(("http://", "https://")) else f"https://{raw}"
+        try:
+            validated = validate_public_url(normalized)
+        except AppError:
+            continue
+        if validated not in seen:
+            seen.add(validated)
+            urls.append(validated)
+    return saw_any, urls
+
+
+def extract_query_urls(raw_query: str) -> list[str]:
+    """Extract and SSRF-validate explicit website URLs or domains from a question."""
+    _, urls = _extract_raw_and_valid_urls(raw_query)
+    return urls
+
+
+def is_vague_discovery_query(raw_query: str) -> bool:
+    """Return True when a question lacks a specific topic or URL (e.g. 'tell me about the website')."""
+    if extract_query_urls(raw_query):
+        return False
+    distilled = distill_search_query(raw_query)
+    core = _core_query_tokens(distilled)
+    return not core or all(tok in _VAGUE_META_TOKENS for tok in core)
+
+
+def _direct_web_candidate(url: str) -> DiscoveredSourceCandidate:
+    parsed = urlparse(url)
+    host = (parsed.hostname or url).removeprefix("www.")
+    path = parsed.path.strip("/")
+    title = f"{host} ({path[:80]})" if path else host
+    return DiscoveredSourceCandidate(
+        candidate_id=_candidate_id("web", url),
+        provider="web",
+        trust_tier="official-documentation",
+        source_type=SourceType.WEB_PAGE,
+        content_level=ContentLevel.WEB_PAGE,
+        title=title[:1000],
+        authors=[],
+        publication_year=None,
+        publisher=host[:300],
+        abstract=None,
+        url=url[:2048],
+        is_open_access=True,
+    )
+
+
+def _is_nsfw_candidate(candidate: DiscoveredSourceCandidate, query_tokens: set[str]) -> bool:
+    if query_tokens & _NSFW_TERMS:
+        return False
+    combined = " ".join(
+        filter(None, (candidate.title, candidate.url, candidate.abstract, candidate.publisher))
+    ).lower()
+    if set(_TOKEN_RE.findall(combined)) & _NSFW_TERMS:
+        return True
+    return any(phrase in combined for phrase in _NSFW_PHRASES)
 
 
 def _core_query_tokens(text: str) -> list[str]:
@@ -873,12 +968,12 @@ def _provider_priority(provider: DiscoveryProviderName) -> int:
     return {"openalex": 4, "crossref": 3, "arxiv": 2, "wikipedia": 1, "news": 1}.get(provider, 0)
 
 
-def _score_candidate(
+def _evaluate_candidate(
     candidate: DiscoveredSourceCandidate,
     core_terms: set[str],
     subject_terms: set[str],
     subject_phrase: str,
-) -> float:
+) -> tuple[float, int, int, int]:
     tier_score = {
         "peer-reviewed": 4.0,
         "preprint": 3.0,
@@ -918,7 +1013,7 @@ def _score_candidate(
             wiki_topic_bonus = 4.5
 
     citation_bonus = math.log1p(max(0, candidate.citation_count or 0)) * 0.45
-    return (
+    score = (
         tier_score
         + full_text_bonus
         + phrase_bonus
@@ -928,6 +1023,16 @@ def _score_candidate(
         + wiki_topic_bonus
         + citation_bonus
     )
+    return score, subject_title_hits, subject_any_hits, len(active_subject)
+
+
+def _score_candidate(
+    candidate: DiscoveredSourceCandidate,
+    core_terms: set[str],
+    subject_terms: set[str],
+    subject_phrase: str,
+) -> float:
+    return _evaluate_candidate(candidate, core_terms, subject_terms, subject_phrase)[0]
 
 
 @dataclass(frozen=True)
@@ -942,10 +1047,24 @@ def search_curated_sources(
     scope: DiscoveryScope = "all",
     limit: int = 8,
     settings: Settings | None = None,
+    strict_relevance: bool = False,
     client: httpx.Client | None = None,
 ) -> ProviderSearchOutcome:
     cleaned = " ".join(query.split()).strip()
     if not cleaned:
+        return ProviderSearchOutcome(items=[], provider_errors=[])
+
+    if scope in {"all", "web"}:
+        saw_raw_url, direct_urls = _extract_raw_and_valid_urls(cleaned)
+        if direct_urls:
+            return ProviderSearchOutcome(
+                items=[_direct_web_candidate(url) for url in direct_urls[:limit]],
+                provider_errors=[],
+            )
+        if strict_relevance and saw_raw_url:
+            return ProviderSearchOutcome(items=[], provider_errors=[])
+
+    if strict_relevance and is_vague_discovery_query(cleaned):
         return ProviderSearchOutcome(items=[], provider_errors=[])
 
     distilled = distill_search_query(cleaned)
@@ -1024,8 +1143,26 @@ def search_curated_sources(
     core_terms = set(core_list) or set(_TOKEN_RE.findall(cleaned.lower()))
     subject_terms = set(subject_list)
     subject_phrase = wiki_query.lower() if len(subject_list) >= 2 else ""
-    deduped.sort(
-        key=lambda item: _score_candidate(item, core_terms, subject_terms, subject_phrase),
-        reverse=True,
+    raw_query_tokens = set(_TOKEN_RE.findall(cleaned.lower()))
+
+    scored: list[tuple[float, DiscoveredSourceCandidate]] = []
+    for item in deduped:
+        if _is_nsfw_candidate(item, raw_query_tokens):
+            continue
+        score, title_hits, any_hits, subject_len = _evaluate_candidate(
+            item, core_terms, subject_terms, subject_phrase
+        )
+        if strict_relevance:
+            if subject_len > 0 and any_hits == 0:
+                continue
+            if subject_len >= 2 and title_hits == 0 and any_hits < 2:
+                continue
+            if score < 3.5:
+                continue
+        scored.append((score, item))
+
+    scored.sort(key=lambda pair: pair[0], reverse=True)
+    return ProviderSearchOutcome(
+        items=[item for _, item in scored[:limit]],
+        provider_errors=errors,
     )
-    return ProviderSearchOutcome(items=deduped[:limit], provider_errors=errors)
