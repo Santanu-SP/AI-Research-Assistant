@@ -34,6 +34,7 @@ const PROVIDER_LABELS: Record<DiscoveredSourceCandidate['provider'], string> = {
   arxiv: 'arXiv',
   wikipedia: 'Wikipedia',
   news: 'News',
+  web: 'Website',
 };
 
 const TRUST_BADGE: Record<

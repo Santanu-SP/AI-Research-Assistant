@@ -117,6 +117,8 @@ export interface ModelUsageBreakdownItem {
   lastUsedAt?: string | null;
 }
 
+export type LiveQuotaSource = "provider_api" | "response_headers" | "app_tracked";
+
 export interface ProviderCreditItem {
   provider: string;
   label: string;
@@ -132,6 +134,20 @@ export interface ProviderCreditItem {
   shortCap: number;
   longRemaining: number;
   longCap: number;
+  requestsToday?: number;
+  tokensToday?: number;
+  liveSource?: LiveQuotaSource;
+  liveLimitRequests?: number | null;
+  liveRemainingRequests?: number | null;
+  liveResetRequests?: string | null;
+  liveLimitTokens?: number | null;
+  liveRemainingTokens?: number | null;
+  liveResetTokens?: string | null;
+  liveCreditUsageUsd?: number | null;
+  liveCreditLimitUsd?: number | null;
+  liveCreditRemainingUsd?: number | null;
+  liveIsFreeTier?: boolean | null;
+  liveSyncedAt?: string | null;
 }
 
 export interface ModelUsageQuotaSummary {
@@ -211,12 +227,14 @@ export const byokService = {
     });
   },
 
-  async getModelsStatus(): Promise<ModelsStatusResponse> {
-    return apiRequest<ModelsStatusResponse>("/auth/api-keys/models-status");
+  async getModelsStatus(options?: { live?: boolean }): Promise<ModelsStatusResponse> {
+    const query = options?.live ? "?live=true" : "";
+    return apiRequest<ModelsStatusResponse>(`/auth/api-keys/models-status${query}`);
   },
 
-  async getUsage(): Promise<ModelUsageQuotaSummary> {
-    return apiRequest<ModelUsageQuotaSummary>("/auth/api-keys/usage");
+  async getUsage(options?: { live?: boolean }): Promise<ModelUsageQuotaSummary> {
+    const query = options?.live ? "?live=true" : "";
+    return apiRequest<ModelUsageQuotaSummary>(`/auth/api-keys/usage${query}`);
   },
 
   async setLocalFallback(connected: boolean): Promise<LocalModelStatus> {
