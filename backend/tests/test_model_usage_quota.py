@@ -946,3 +946,213 @@ def test_alembic_0016_upgrade_and_downgrade_sqlite(tmp_path, monkeypatch) -> Non
     finally:
         monkeypatch.delenv("DATABASE_URL", raising=False)
         get_settings.cache_clear()
+
+
+def test_live_rate_limit_header_capture_and_scope_isolation() -> None:
+    """Response rate-limit headers are scoped by key hash so BYOK never leaks into shared or other users."""
+    import httpx
+
+    from app.providers.base import (
+        capture_rate_limit_headers,
+        clear_rate_limit_snapshots,
+        get_rate_limit_snapshot,
+    )
+
+    clear_rate_limit_snapshots()
+    try:
+        capture_rate_limit_headers(
+            "groq",
+            httpx.Headers(
+                {
+                    "x-ratelimit-limit-requests": "100",
+                    "x-ratelimit-remaining-requests": "97",
+                    "x-ratelimit-limit-tokens": "20000",
+                    "x-ratelimit-remaining-tokens": "19250",
+                    "x-ratelimit-reset-requests": "12s",
+                }
+            ),
+            api_key="server-shared-key",
+            is_byok=False,
+        )
+        capture_rate_limit_headers(
+            "claude",
+            httpx.Headers(
+                {
+                    "anthropic-ratelimit-requests-limit": "50",
+                    "anthropic-ratelimit-requests-remaining": "49",
+                    "anthropic-ratelimit-tokens-limit": "40000",
+                    "anthropic-ratelimit-tokens-remaining": "39100",
+                    "anthropic-ratelimit-requests-reset": "2026-11-26T00:00:00Z",
+                }
+            ),
+            api_key="sk-ant-" + "user-a-key",
+            is_byok=True,
+        )
+
+        shared_groq = get_rate_limit_snapshot("groq", api_key="server-shared-key", is_byok=False)
+        assert shared_groq is not None
+        assert shared_groq.limit_requests == 100
+        assert shared_groq.remaining_requests == 97
+        assert shared_groq.limit_tokens == 20000
+        assert shared_groq.remaining_tokens == 19250
+        assert shared_groq.reset_requests == "12s"
+        # Same provider with BYOK scope must remain isolated.
+        assert get_rate_limit_snapshot("groq", api_key="user-byok-key", is_byok=True) is None
+
+        user_claude = get_rate_limit_snapshot("claude", api_key="sk-ant-" + "user-a-key", is_byok=True)
+        assert user_claude is not None
+        assert user_claude.limit_requests == 50
+        assert user_claude.remaining_requests == 49
+        assert user_claude.remaining_tokens == 39100
+        assert get_rate_limit_snapshot("claude", api_key="sk-ant-" + "user-b-key", is_byok=True) is None
+    finally:
+        clear_rate_limit_snapshots()
+
+
+def test_openrouter_probe_ttl_cache_and_live_usage_endpoints(
+    client: TestClient,
+    test_app: FastAPI,
+    db_session_factory: sessionmaker[Session],
+    monkeypatch,
+) -> None:
+    """?live=true merges OpenRouter /auth/key balance, response headers, and ModelUsageDaily counters."""
+    import httpx
+
+    from app.providers.base import capture_rate_limit_headers, clear_rate_limit_snapshots
+    from app.services.observability import live_quota
+
+    clear_rate_limit_snapshots()
+    live_quota.clear_live_quota_cache()
+    test_or_key = "sk-or-v1-" + "live-test-key-1234"
+    probe_calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal probe_calls
+        probe_calls += 1
+        assert request.url.path.endswith("/auth/key")
+        assert request.headers.get("Authorization") == f"Bearer {test_or_key}"
+        return httpx.Response(
+            200,
+            json={
+                "data": {
+                    "limit": 10.0,
+                    "limit_remaining": 9.88,
+                    "usage": 0.12,
+                    "is_free_tier": False,
+                    "rate_limit": {"requests": 200, "interval": "10s"},
+                }
+            },
+        )
+
+    mock_client = httpx.Client(transport=httpx.MockTransport(handler))
+    monkeypatch.setattr(live_quota, "get_shared_http_client", lambda: mock_client)
+
+    settings = test_app.state.settings
+    settings.groq_api_key = "server-groq-live-key"
+    settings.gemini_api_key = ""
+    settings.openai_api_key = ""
+    settings.openrouter_api_key = ""
+    settings.llm_router_providers = ["groq"]
+
+    try:
+        # 1. Verify OpenRouter key probing caches for TTL unless force_refresh=True.
+        first = live_quota.probe_openrouter_key(test_or_key, ttl_seconds=60.0)
+        second = live_quota.probe_openrouter_key(test_or_key, ttl_seconds=60.0)
+        assert first is not None and second is not None
+        assert first.credit_limit_usd == 10.0
+        assert first.credit_remaining_usd == 9.88
+        assert first.credit_usage_usd == 0.12
+        assert first.limit_requests == 200
+        assert probe_calls == 1
+
+        forced = live_quota.probe_openrouter_key(
+            test_or_key,
+            ttl_seconds=60.0,
+            force_refresh=True,
+        )
+        assert forced is not None and forced.credit_remaining_usd == 9.88
+        assert probe_calls == 2
+
+        # 2. Save user BYOK OpenRouter key + record daily model usage + capture shared Groq headers.
+        assert client.put(
+            "/api/v1/auth/api-keys/openrouter",
+            json={"apiKey": test_or_key},
+        ).status_code == 200
+
+        me = client.get("/api/v1/auth/me").json()
+        user_id = UUID(me["id"])
+        with db_session_factory() as db:
+            for _ in range(3):
+                record_model_usage(
+                    db,
+                    user_id=user_id,
+                    provider="openrouter",
+                    model_name="openrouter/free",
+                    usage_source="byok",
+                    input_tokens=300,
+                    output_tokens=150,
+                    increment_shared_quota=False,
+                    settings=settings,
+                )
+            record_model_usage(
+                db,
+                user_id=user_id,
+                provider="groq",
+                model_name="llama-3.3-70b-versatile",
+                usage_source="shared",
+                input_tokens=200,
+                output_tokens=100,
+                increment_shared_quota=True,
+                settings=settings,
+            )
+
+        capture_rate_limit_headers(
+            "groq",
+            httpx.Headers(
+                {
+                    "x-ratelimit-limit-requests": "100",
+                    "x-ratelimit-remaining-requests": "98",
+                    "x-ratelimit-limit-tokens": "20000",
+                    "x-ratelimit-remaining-tokens": "19800",
+                }
+            ),
+            api_key="server-groq-live-key",
+            is_byok=False,
+        )
+
+        # 3. Call /usage?live=true and /models-status?live=true and verify merged real telemetry.
+        usage_resp = client.get("/api/v1/auth/api-keys/usage?live=true")
+        assert usage_resp.status_code == 200, usage_resp.text
+        usage_data = usage_resp.json()
+        by_prov = {item["provider"]: item for item in usage_data["providerCredits"]}
+
+        or_item = by_prov["openrouter"]
+        assert or_item["mode"] == "byok"
+        assert or_item["liveSource"] == "provider_api"
+        assert or_item["liveCreditRemainingUsd"] == 9.88
+        assert or_item["liveCreditLimitUsd"] == 10.0
+        assert or_item["requestsToday"] == 3
+        assert or_item["tokensToday"] == 1350
+
+        groq_item = by_prov["groq"]
+        assert groq_item["mode"] == "shared"
+        assert groq_item["liveSource"] == "response_headers"
+        assert groq_item["liveLimitRequests"] == 100
+        assert groq_item["liveRemainingRequests"] == 98
+        assert groq_item["liveLimitTokens"] == 20000
+        assert groq_item["liveRemainingTokens"] == 19800
+        assert groq_item["requestsToday"] == 1
+        assert groq_item["tokensToday"] == 300
+
+        models_resp = client.get("/api/v1/auth/api-keys/models-status?live=true")
+        assert models_resp.status_code == 200, models_resp.text
+        models_credits = {
+            item["provider"]: item for item in models_resp.json()["usage"]["providerCredits"]
+        }
+        assert models_credits["openrouter"]["liveSource"] == "provider_api"
+        assert models_credits["openrouter"]["liveCreditRemainingUsd"] == 9.88
+        assert models_credits["groq"]["liveSource"] == "response_headers"
+    finally:
+        mock_client.close()
+        live_quota.clear_live_quota_cache()
+        clear_rate_limit_snapshots()

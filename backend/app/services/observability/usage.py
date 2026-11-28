@@ -1049,6 +1049,38 @@ def _load_user_credit_buckets(
     return short_used, long_used
 
 
+def _live_credit_fields(live: Any | None) -> dict[str, Any]:
+    if live is None:
+        return {
+            "live_source": "app_tracked",
+            "live_limit_requests": None,
+            "live_remaining_requests": None,
+            "live_reset_requests": None,
+            "live_limit_tokens": None,
+            "live_remaining_tokens": None,
+            "live_reset_tokens": None,
+            "live_credit_usage_usd": None,
+            "live_credit_limit_usd": None,
+            "live_credit_remaining_usd": None,
+            "live_is_free_tier": None,
+            "live_synced_at": None,
+        }
+    return {
+        "live_source": live.source,
+        "live_limit_requests": live.limit_requests,
+        "live_remaining_requests": live.remaining_requests,
+        "live_reset_requests": live.reset_requests,
+        "live_limit_tokens": live.limit_tokens,
+        "live_remaining_tokens": live.remaining_tokens,
+        "live_reset_tokens": live.reset_tokens,
+        "live_credit_usage_usd": live.credit_usage_usd,
+        "live_credit_limit_usd": live.credit_limit_usd,
+        "live_credit_remaining_usd": live.credit_remaining_usd,
+        "live_is_free_tier": live.is_free_tier,
+        "live_synced_at": live.synced_at,
+    }
+
+
 def get_user_model_usage_and_quota(
     session: Session,
     user_id: UUID,
@@ -1057,9 +1089,14 @@ def get_user_model_usage_and_quota(
     byok_providers: set[str] | None = None,
     user_models: dict[str, str] | None = None,
     local_available: bool | None = None,
+    include_live_quota: bool = False,
+    force_live_refresh: bool = False,
     now: datetime | None = None,
 ) -> dict[str, Any]:
     """Compute a user's fixed per-model 3-hour and 2-day credits and usage rollup."""
+    from app.services.auth import api_keys as api_key_service
+    from app.services.observability.live_quota import resolve_live_provider_quota
+
     active_settings = settings or get_settings()
     current_now = (now or _utc_now()).astimezone(timezone.utc)
     today = current_now.date()
@@ -1075,6 +1112,15 @@ def get_user_model_usage_and_quota(
         byok_set = {_normalize_provider(p) for p in byok_rows} - {None}
     else:
         byok_set = {_normalize_provider(p) for p in byok_providers} - {None}
+
+    byok_keys: dict[str, str] = {}
+    if include_live_quota and byok_set:
+        try:
+            byok_keys = api_key_service.get_decrypted_user_api_keys(
+                session, user_id, active_settings
+            )
+        except Exception:
+            byok_keys = {}
 
     if user_models is None:
         pref_rows = session.execute(
@@ -1124,6 +1170,21 @@ def get_user_model_usage_and_quota(
         label, key_attr, model_attr = _PROVIDER_META[pid]
         has_byok = pid in byok_set
         model_name = selected_models.get(pid) or str(getattr(active_settings, model_attr, ""))
+        raw_api_key = (
+            byok_keys.get(pid)
+            if has_byok
+            else (str(getattr(active_settings, key_attr, "") or "") or None)
+        )
+        live_quota = resolve_live_provider_quota(
+            pid,
+            api_key=raw_api_key,
+            is_byok=has_byok,
+            settings=active_settings,
+            allow_live_probe=include_live_quota,
+            force_refresh=force_live_refresh,
+        )
+        live_fields = _live_credit_fields(live_quota)
+
         if has_byok:
             provider_credits.append(
                 {
@@ -1141,6 +1202,9 @@ def get_user_model_usage_and_quota(
                     "short_cap": short_cap,
                     "long_remaining": long_cap,
                     "long_cap": long_cap,
+                    "requests_today": 0,
+                    "tokens_today": 0,
+                    **live_fields,
                 }
             )
             continue
@@ -1172,6 +1236,9 @@ def get_user_model_usage_and_quota(
                 "short_cap": short_cap,
                 "long_remaining": l_rem,
                 "long_cap": long_cap,
+                "requests_today": 0,
+                "tokens_today": 0,
+                **live_fields,
             }
         )
 
@@ -1192,6 +1259,9 @@ def get_user_model_usage_and_quota(
                 "short_cap": short_cap,
                 "long_remaining": long_cap,
                 "long_cap": long_cap,
+                "requests_today": 0,
+                "tokens_today": 0,
+                **_live_credit_fields(None),
             }
         )
 
@@ -1284,6 +1354,8 @@ def get_user_model_usage_and_quota(
     total_tokens_today = 0
     total_requests_all_time = 0
     total_tokens_all_time = 0
+    provider_today_reqs: dict[str, int] = {}
+    provider_today_tokens: dict[str, int] = {}
     models_list: list[dict[str, Any]] = []
 
     for (
@@ -1302,6 +1374,9 @@ def get_user_model_usage_and_quota(
         reqs_today_i = int(reqs_today or 0)
         toks_today_i = int(toks_today or 0)
         toks_total_i = int(toks_total or 0)
+        prov_key = str(provider or "").strip().lower()
+        provider_today_reqs[prov_key] = provider_today_reqs.get(prov_key, 0) + reqs_today_i
+        provider_today_tokens[prov_key] = provider_today_tokens.get(prov_key, 0) + toks_today_i
         byok_today += int(byok_reqs_today or 0)
         local_today += int(local_reqs_today or 0)
         total_today += reqs_today_i
@@ -1320,6 +1395,11 @@ def get_user_model_usage_and_quota(
                 "last_used_at": _parse_dt(last_used_raw),
             }
         )
+
+    for credit_item in provider_credits:
+        prov_key = str(credit_item.get("provider") or "").strip().lower()
+        credit_item["requests_today"] = provider_today_reqs.get(prov_key, 0)
+        credit_item["tokens_today"] = provider_today_tokens.get(prov_key, 0)
 
     return {
         "overall_remaining_pct": overall_remaining_pct,

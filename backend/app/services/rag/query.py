@@ -508,6 +508,7 @@ def discover_documents(
     settings: Settings,
 ) -> list[UUID]:
     """Search the trusted providers, import the best diverse matches and return their ids."""
+    from app.services.discovery import providers as discovery_providers
     from app.services.discovery import service as discovery_service
 
     search_result = discovery_service.search_and_annotate(
@@ -518,10 +519,17 @@ def discover_documents(
         limit=settings.discovery_max_results,
         project_id=project_id,
         settings=settings,
+        strict_relevance=True,
     )
     if not search_result.items:
+        detail = (
+            "This question is too general for online discovery or refers to a website without its URL. "
+            "Include the website URL (for example, https://example.com) or upload files for this question."
+            if discovery_providers.is_vague_discovery_query(query)
+            else "No trustworthy external sources were found for this question."
+        )
         raise AppError(
-            "No trustworthy external sources were found for this question.",
+            detail,
             status_code=422,
             code="no_discoverable_sources",
         )
@@ -666,6 +674,7 @@ def discover_project_sources(
     ``project_discovery_source_limit`` new ones are added. Returns the ids of
     the new files plus the matching files the project already had.
     """
+    from app.services.discovery import providers as discovery_providers
     from app.services.discovery import service as discovery_service
 
     search_result = discovery_service.search_and_annotate(
@@ -676,10 +685,17 @@ def discover_project_sources(
         limit=settings.discovery_max_results,
         project_id=project_id,
         settings=settings,
+        strict_relevance=True,
     )
     if not search_result.items:
+        detail = (
+            "This question is too general for online discovery or refers to a website without its URL. "
+            "Include the website URL (for example, https://example.com) or upload files for this question."
+            if discovery_providers.is_vague_discovery_query(query)
+            else "No trustworthy external sources were found for this question."
+        )
         raise AppError(
-            "No trustworthy external sources were found for this question.",
+            detail,
             status_code=422,
             code="no_discoverable_sources",
         )

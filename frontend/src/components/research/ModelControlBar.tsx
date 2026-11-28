@@ -6,6 +6,7 @@ import {
   KeyRound,
   Plug,
   PlugZap,
+  RefreshCw,
   Trash2,
   X,
 } from 'lucide-react';
@@ -21,12 +22,14 @@ import { ResearchDepth } from '../../types/research';
 import { SUGGESTED_MODELS_BY_PROVIDER } from '../../lib/modelCatalog';
 import {
   creditToneClasses,
+  formatCompactTokens,
+  formatLiveQuotaSummary,
   formatResetCountdown,
   getProviderCredit,
   resolveTopBarCreditBadge,
 } from '../../lib/modelCredits';
 
-const MODELS_STATUS_CACHE_TTL_MS = 60_000;
+const MODELS_STATUS_CACHE_TTL_MS = 15_000;
 
 export interface ModelControlBarProps {
   depth: ResearchDepth;
@@ -247,6 +250,7 @@ export const ModelControlBar: React.FC<ModelControlBarProps> = ({
   );
   const [statusError, setStatusError] = useState<string | null>(null);
   const [togglingLocal, setTogglingLocal] = useState(false);
+  const [refreshingCredits, setRefreshingCredits] = useState(false);
 
   const [keyProvider, setKeyProvider] = useState<string>('auto');
   const [apiKeyInput, setApiKeyInput] = useState('');
@@ -277,14 +281,24 @@ export const ModelControlBar: React.FC<ModelControlBarProps> = ({
     [cache]
   );
 
-  const refreshModelsStatus = useCallback(async () => {
-    try {
-      const data = await byokService.getModelsStatus();
-      applyModelsStatus(data);
-    } catch {
-      // Keep graceful static catalog when status endpoint is unavailable (e.g. offline/tests)
-    }
-  }, [applyModelsStatus]);
+  const refreshModelsStatus = useCallback(
+    async (options?: { live?: boolean }) => {
+      if (options?.live) {
+        setRefreshingCredits(true);
+      }
+      try {
+        const data = await byokService.getModelsStatus(options);
+        applyModelsStatus(data);
+      } catch {
+        // Keep graceful static catalog when status endpoint is unavailable (e.g. offline/tests)
+      } finally {
+        if (options?.live) {
+          setRefreshingCredits(false);
+        }
+      }
+    },
+    [applyModelsStatus]
+  );
 
   useEffect(() => {
     const cached = cache?.getModelsStatus();
@@ -359,7 +373,7 @@ export const ModelControlBar: React.FC<ModelControlBarProps> = ({
   const openModels = useCallback(() => {
     setModelsLayout(computePopoverLayout(modelsButtonRef.current, menuPlacement, 540, 660));
     setKeyOpen(false);
-    void refreshModelsStatus();
+    void refreshModelsStatus({ live: true });
     setModelsOpen(true);
   }, [menuPlacement, refreshModelsStatus]);
 
@@ -948,7 +962,21 @@ export const ModelControlBar: React.FC<ModelControlBarProps> = ({
                   <div className="rounded-md border border-line bg-panel p-2.5" aria-label="AI credits by model">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-[11px] font-medium text-ink">AI credits</span>
-                      <span className="text-[10px] text-ink-muted">Fixed per account</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] text-ink-muted">Fixed per account</span>
+                        <button
+                          type="button"
+                          onClick={() => void refreshModelsStatus({ live: true })}
+                          disabled={refreshingCredits}
+                          aria-label="Refresh AI credits"
+                          title="Sync live API key balance and response-header limits"
+                          className="inline-flex h-5 w-5 items-center justify-center rounded border border-line bg-subtle/60 text-ink-muted transition hover:text-ink disabled:opacity-50"
+                        >
+                          <RefreshCw
+                            className={`h-3 w-3 ${refreshingCredits ? 'animate-spin' : ''}`}
+                          />
+                        </button>
+                      </div>
                     </div>
                     <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-ink-muted">
                       <span>
@@ -976,11 +1004,20 @@ export const ModelControlBar: React.FC<ModelControlBarProps> = ({
                             <div className="mt-2 space-y-2">
                               {sharedCredits.map((credit) => {
                                 const tone = creditToneClasses(credit.remainingPct, false);
+                                const live = formatLiveQuotaSummary(credit);
+                                const reqsToday = credit.requestsToday ?? 0;
+                                const toksToday = credit.tokensToday ?? 0;
+                                const hasToday = reqsToday > 0 || toksToday > 0;
                                 return (
                                   <div key={credit.provider} className="space-y-1">
                                     <div className="flex items-baseline justify-between gap-2 text-[10.5px]">
-                                      <span className="min-w-0 truncate font-medium text-ink">
-                                        {credit.modelName ? `${credit.label} · ${credit.modelName}` : credit.label}
+                                      <span className="flex min-w-0 items-center gap-1.5 font-medium text-ink">
+                                        <span className="truncate">
+                                          {credit.modelName ? `${credit.label} · ${credit.modelName}` : credit.label}
+                                        </span>
+                                        <span className="shrink-0 rounded bg-subtle px-1 py-0.5 text-[9px] font-medium text-ink-muted">
+                                          {live.badge}
+                                        </span>
                                       </span>
                                       <span className={`shrink-0 font-semibold tabular-nums ${tone.textClass}`}>
                                         {credit.remainingPct}%
@@ -996,27 +1033,76 @@ export const ModelControlBar: React.FC<ModelControlBarProps> = ({
                                       <span>{usage.shortWindowHours ?? 3}h cycle: {credit.shortWindowPct}%</span>
                                       <span>{usage.longWindowDays ?? 2}-day cycle: {credit.longWindowPct}%</span>
                                     </div>
+                                    {live.detail || hasToday ? (
+                                      <div className="flex flex-wrap items-center justify-between gap-1 text-[9.5px] text-ink-soft">
+                                        {live.detail ? <span>{live.detail}</span> : <span />}
+                                        {hasToday ? (
+                                          <span className="tabular-nums text-ink-muted">
+                                            {reqsToday} {reqsToday === 1 ? 'run' : 'runs'}
+                                            {toksToday > 0 ? ` · ${formatCompactTokens(toksToday)} tok` : ''} today
+                                          </span>
+                                        ) : null}
+                                      </div>
+                                    ) : null}
                                   </div>
                                 );
                               })}
                             </div>
                           ) : (
                             <p className="mt-2 text-[10.5px] text-ink-muted">
-                              All active models run with unlimited access (own API key or Local Ollama).
+                              All active models run with your own API key or Local Ollama.
                             </p>
                           )}
 
                           {unlimitedCredits.length > 0 ? (
-                            <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-line pt-1.5 text-[10px]">
-                              <span className="text-ink-muted">Unlimited:</span>
-                              {unlimitedCredits.map((credit) => (
-                                <span
-                                  key={credit.provider}
-                                  className="rounded bg-emerald-500/15 px-1.5 py-0.5 font-medium text-emerald-700 dark:text-emerald-300"
-                                >
-                                  {credit.label} ({credit.mode === 'local' ? 'Local' : 'Own key'})
-                                </span>
-                              ))}
+                            <div className="mt-2 space-y-1.5 border-t border-line pt-1.5 text-[10px]">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span className="text-ink-muted">Own keys &amp; local:</span>
+                                {unlimitedCredits.map((credit) => {
+                                  const live = formatLiveQuotaSummary(credit);
+                                  const reqsToday = credit.requestsToday ?? 0;
+                                  const toksToday = credit.tokensToday ?? 0;
+                                  const showDetailRow =
+                                    credit.mode === 'byok' || live.detail !== null || reqsToday > 0 || toksToday > 0;
+                                  if (!showDetailRow) {
+                                    return (
+                                      <span
+                                        key={credit.provider}
+                                        className="rounded bg-emerald-500/15 px-1.5 py-0.5 font-medium text-emerald-700 dark:text-emerald-300"
+                                      >
+                                        {credit.label} ({credit.mode === 'local' ? 'Local' : 'Own key'})
+                                      </span>
+                                    );
+                                  }
+                                  return (
+                                    <div
+                                      key={credit.provider}
+                                      className="flex w-full flex-wrap items-center justify-between gap-1 rounded border border-line bg-subtle/40 px-1.5 py-1"
+                                    >
+                                      <span className="flex items-center gap-1 font-medium text-emerald-700 dark:text-emerald-300">
+                                        <span>
+                                          {credit.label} ({credit.mode === 'local' ? 'Local' : 'Own key'})
+                                        </span>
+                                        <span className="rounded bg-emerald-500/15 px-1 py-0.5 text-[9px]">
+                                          {live.badge}
+                                        </span>
+                                      </span>
+                                      <span className="tabular-nums text-[9.5px] text-ink-soft">
+                                        {[
+                                          live.detail,
+                                          reqsToday > 0 || toksToday > 0
+                                            ? `${reqsToday} ${reqsToday === 1 ? 'run' : 'runs'}${
+                                                toksToday > 0 ? ` · ${formatCompactTokens(toksToday)} tok` : ''
+                                              } today`
+                                            : null,
+                                        ]
+                                          .filter(Boolean)
+                                          .join(' · ') || 'Ready'}
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
                             </div>
                           ) : null}
                         </>
@@ -1024,7 +1110,7 @@ export const ModelControlBar: React.FC<ModelControlBarProps> = ({
                     })()}
 
                     <p className="mt-2 border-t border-line pt-1.5 text-[10px] leading-snug text-ink-muted">
-                      Every user gets the same fixed credits. Own API keys and Local Ollama are unlimited.
+                      Shared credits are tracked per account. Live API balance and provider header limits sync on open and Refresh.
                     </p>
                   </div>
                 ) : null}

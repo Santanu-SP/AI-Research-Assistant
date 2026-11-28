@@ -1,7 +1,7 @@
 import { ContentLevel, Document, SourceType } from './document';
 
 export type DiscoveryScope = 'all' | 'scholarly' | 'web';
-export type DiscoveryProvider = 'openalex' | 'crossref' | 'arxiv' | 'wikipedia' | 'news';
+export type DiscoveryProvider = 'openalex' | 'crossref' | 'arxiv' | 'wikipedia' | 'news' | 'web';
 export type DiscoveryTrustTier =
   | 'peer-reviewed'
   | 'preprint'

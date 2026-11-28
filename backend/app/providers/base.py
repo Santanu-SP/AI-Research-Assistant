@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
+import hashlib
 import re
 from threading import Lock
 from typing import Any
@@ -13,6 +16,8 @@ import httpx
 
 _HTTP_CLIENT_LOCK = Lock()
 _SHARED_HTTP_CLIENT: httpx.Client | None = None
+_RATE_LIMIT_LOCK = Lock()
+_RATE_LIMIT_SNAPSHOTS: dict[tuple[str, str], ProviderRateLimitSnapshot] = {}
 
 
 def get_shared_http_client() -> httpx.Client:
@@ -301,4 +306,141 @@ def validate_model_name(model_name: str, *, provider: str | None = None) -> str:
             "Model names may contain only letters, digits, '.', '_', '-', ':', and '/'."
         )
     return cleaned
+
+
+@dataclass(frozen=True)
+class ProviderRateLimitSnapshot:
+    """Latest rate-limit telemetry parsed from a provider's HTTP response headers."""
+
+    provider: str
+    limit_requests: int | None = None
+    remaining_requests: int | None = None
+    reset_requests: str | None = None
+    limit_tokens: int | None = None
+    remaining_tokens: int | None = None
+    reset_tokens: str | None = None
+    captured_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+def key_scope_fingerprint(api_key: str | None, *, is_byok: bool) -> str:
+    """Return a non-secret bucket key separating shared server keys from user BYOK keys."""
+    if not is_byok or not api_key:
+        return "shared"
+    digest = hashlib.sha256(api_key.strip().encode("utf-8")).hexdigest()[:16]
+    return f"byok:{digest}"
+
+
+def _header_value(headers: Mapping[str, str], *names: str) -> str | None:
+    if isinstance(headers, httpx.Headers):
+        for name in names:
+            val = headers.get(name)
+            if val is not None and str(val).strip():
+                return str(val).strip()
+        return None
+    lowered = {str(k).lower(): str(v) for k, v in headers.items()}
+    for name in names:
+        val = lowered.get(name.lower())
+        if val is not None and val.strip():
+            return val.strip()
+    return None
+
+
+def _parse_header_int(headers: Mapping[str, str], *names: str) -> int | None:
+    raw = _header_value(headers, *names)
+    if raw is None:
+        return None
+    try:
+        parsed = int(float(raw))
+        return parsed if parsed >= 0 else None
+    except ValueError:
+        return None
+
+
+def capture_rate_limit_headers(
+    provider: str,
+    headers: Mapping[str, str],
+    *,
+    api_key: str | None = None,
+    is_byok: bool = False,
+) -> ProviderRateLimitSnapshot | None:
+    """Parse standard OpenAI/Groq/OpenRouter/Anthropic rate-limit headers if present."""
+    limit_requests = _parse_header_int(
+        headers,
+        "x-ratelimit-limit-requests",
+        "anthropic-ratelimit-requests-limit",
+    )
+    remaining_requests = _parse_header_int(
+        headers,
+        "x-ratelimit-remaining-requests",
+        "anthropic-ratelimit-requests-remaining",
+    )
+    reset_requests = _header_value(
+        headers,
+        "x-ratelimit-reset-requests",
+        "anthropic-ratelimit-requests-reset",
+        "retry-after",
+    )
+    limit_tokens = _parse_header_int(
+        headers,
+        "x-ratelimit-limit-tokens",
+        "anthropic-ratelimit-tokens-limit",
+    )
+    remaining_tokens = _parse_header_int(
+        headers,
+        "x-ratelimit-remaining-tokens",
+        "anthropic-ratelimit-tokens-remaining",
+    )
+    reset_tokens = _header_value(
+        headers,
+        "x-ratelimit-reset-tokens",
+        "anthropic-ratelimit-tokens-reset",
+    )
+    if (
+        limit_requests is None
+        and remaining_requests is None
+        and limit_tokens is None
+        and remaining_tokens is None
+    ):
+        return None
+
+    norm_provider = (provider or "").strip().lower()
+    snapshot = ProviderRateLimitSnapshot(
+        provider=norm_provider,
+        limit_requests=limit_requests,
+        remaining_requests=remaining_requests,
+        reset_requests=reset_requests,
+        limit_tokens=limit_tokens,
+        remaining_tokens=remaining_tokens,
+        reset_tokens=reset_tokens,
+    )
+    scope = key_scope_fingerprint(api_key, is_byok=is_byok)
+    with _RATE_LIMIT_LOCK:
+        _RATE_LIMIT_SNAPSHOTS[(norm_provider, scope)] = snapshot
+    return snapshot
+
+
+def get_rate_limit_snapshot(
+    provider: str,
+    *,
+    api_key: str | None = None,
+    is_byok: bool = False,
+    max_age_seconds: float = 3600.0,
+) -> ProviderRateLimitSnapshot | None:
+    """Return the latest non-stale rate-limit header snapshot for ``(provider, key_scope)``."""
+    norm_provider = (provider or "").strip().lower()
+    scope = key_scope_fingerprint(api_key, is_byok=is_byok)
+    with _RATE_LIMIT_LOCK:
+        snapshot = _RATE_LIMIT_SNAPSHOTS.get((norm_provider, scope))
+    if snapshot is None:
+        return None
+    age = (datetime.now(timezone.utc) - snapshot.captured_at).total_seconds()
+    if age > max_age_seconds:
+        return None
+    return snapshot
+
+
+def clear_rate_limit_snapshots() -> None:
+    """Clear in-memory rate-limit header snapshots (for tests)."""
+    with _RATE_LIMIT_LOCK:
+        _RATE_LIMIT_SNAPSHOTS.clear()
 

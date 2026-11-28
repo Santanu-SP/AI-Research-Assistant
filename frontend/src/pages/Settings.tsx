@@ -16,7 +16,12 @@ import { ReadinessResponse, systemService } from '../services/system.service';
 import { byokService, ModelUsageQuotaSummary } from '../services/clientAi.service';
 import { authErrorMessage } from '../services/auth.service';
 import { shortcutLabel } from '../lib/shortcuts';
-import { creditToneClasses, formatResetCountdown } from '../lib/modelCredits';
+import {
+  creditToneClasses,
+  formatCompactTokens,
+  formatLiveQuotaSummary,
+  formatResetCountdown,
+} from '../lib/modelCredits';
 import { ModelsAndKeysPanel } from '../components/settings/ModelsAndKeysPanel';
 
 const Section: React.FC<
@@ -107,11 +112,11 @@ export const SettingsPage: React.FC = () => {
     }
   }, []);
 
-  const checkUsage = useCallback(async () => {
+  const checkUsage = useCallback(async (options?: { live?: boolean }) => {
     setUsageLoading(true);
     setUsageError(false);
     try {
-      setUsageSummary(await byokService.getUsage());
+      setUsageSummary(await byokService.getUsage(options));
     } catch {
       setUsageSummary(null);
       setUsageError(true);
@@ -331,16 +336,21 @@ export const SettingsPage: React.FC = () => {
                               <div className="space-y-3">
                                 {sharedCredits.map((credit) => {
                                   const tone = creditToneClasses(credit.remainingPct, false);
+                                  const live = formatLiveQuotaSummary(credit);
+                                  const hasToday = (credit.requestsToday ?? 0) > 0 || (credit.tokensToday ?? 0) > 0;
                                   return (
                                     <div key={credit.provider} className="space-y-1.5">
                                       <div className="flex flex-wrap items-baseline justify-between gap-2 text-[13px]">
-                                        <span className="font-medium text-ink">
-                                          {credit.label}
+                                        <span className="flex flex-wrap items-center gap-1.5 font-medium text-ink">
+                                          <span>{credit.label}</span>
                                           {credit.modelName ? (
-                                            <span className="ml-1.5 text-xs font-normal text-ink-muted">
+                                            <span className="text-xs font-normal text-ink-muted">
                                               {credit.modelName}
                                             </span>
                                           ) : null}
+                                          <span className="rounded bg-subtle px-1.5 py-0.5 text-[10px] font-medium text-ink-muted">
+                                            {live.badge}
+                                          </span>
                                         </span>
                                         <span className={`font-semibold tabular-nums ${tone.textClass}`}>
                                           {credit.remainingPct}% remaining
@@ -362,27 +372,66 @@ export const SettingsPage: React.FC = () => {
                                           {formatResetCountdown(credit.longResetsAt)})
                                         </span>
                                       </div>
+                                      {live.detail || hasToday ? (
+                                        <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-ink-soft">
+                                          {live.detail ? <span>{live.detail}</span> : <span />}
+                                          {hasToday ? (
+                                            <span className="tabular-nums text-ink-muted">
+                                              Today: {formatCount(credit.requestsToday ?? 0)} runs
+                                              {(credit.tokensToday ?? 0) > 0
+                                                ? ` · ${formatCompactTokens(credit.tokensToday ?? 0)} tok`
+                                                : ''}
+                                            </span>
+                                          ) : null}
+                                        </div>
+                                      ) : null}
                                     </div>
                                   );
                                 })}
                               </div>
                             ) : (
                               <p className="text-[13px] text-ink-muted">
-                                Unlimited access active with your own API key or Local Ollama (0 server credits used).
+                                Unlimited access active with your own API key or Local Ollama (0 app credits used).
                               </p>
                             )}
 
                             {unlimitedCredits.length > 0 ? (
-                              <div className="flex flex-wrap items-center gap-2 border-t border-line pt-3 text-xs">
-                                <span className="text-ink-muted">Unlimited models:</span>
-                                {unlimitedCredits.map((credit) => (
-                                  <span
-                                    key={credit.provider}
-                                    className="rounded-md bg-emerald-500/15 px-2 py-0.5 font-medium text-emerald-700 dark:text-emerald-300"
-                                  >
-                                    {credit.label} ({credit.mode === 'local' ? 'Local' : 'Own key'})
-                                  </span>
-                                ))}
+                              <div className="space-y-2 border-t border-line pt-3 text-xs">
+                                <span className="text-ink-muted">Own keys &amp; local models (live provider status):</span>
+                                <div className="space-y-1.5">
+                                  {unlimitedCredits.map((credit) => {
+                                    const live = formatLiveQuotaSummary(credit);
+                                    const hasToday = (credit.requestsToday ?? 0) > 0 || (credit.tokensToday ?? 0) > 0;
+                                    return (
+                                      <div
+                                        key={credit.provider}
+                                        className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-line bg-subtle/40 px-2.5 py-1.5"
+                                      >
+                                        <div className="flex flex-wrap items-center gap-1.5">
+                                          <span className="font-medium text-ink">
+                                            {credit.label} ({credit.mode === 'local' ? 'Local' : 'Own key'})
+                                          </span>
+                                          <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-300">
+                                            {live.badge}
+                                          </span>
+                                        </div>
+                                        <div className="flex flex-wrap items-center gap-2 text-[11px] tabular-nums text-ink-soft">
+                                          {live.detail ? <span>{live.detail}</span> : null}
+                                          {hasToday ? (
+                                            <span className="text-ink-muted">
+                                              {formatCount(credit.requestsToday ?? 0)} runs
+                                              {(credit.tokensToday ?? 0) > 0
+                                                ? ` · ${formatCompactTokens(credit.tokensToday ?? 0)} tok today`
+                                                : ' today'}
+                                            </span>
+                                          ) : !live.detail ? (
+                                            <span className="text-ink-muted">No usage recorded yet today</span>
+                                          ) : null}
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
                               </div>
                             ) : null}
                           </>
@@ -447,7 +496,7 @@ export const SettingsPage: React.FC = () => {
                   <PrimaryButton
                     variant="ghost"
                     size="sm"
-                    onClick={() => void checkUsage()}
+                    onClick={() => void checkUsage({ live: true })}
                     disabled={usageLoading}
                   >
                     <RefreshCw className={`h-3.5 w-3.5 ${usageLoading ? 'animate-spin' : ''}`} />

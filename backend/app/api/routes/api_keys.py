@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi import APIRouter, Depends, Query, Request, Response, status
 from pydantic import Field
 from sqlalchemy.orm import Session
 
@@ -102,6 +102,20 @@ class ProviderCreditItem(ApiSchema):
     short_cap: int
     long_remaining: int
     long_cap: int
+    requests_today: int = 0
+    tokens_today: int = 0
+    live_source: Literal["provider_api", "response_headers", "app_tracked"] = "app_tracked"
+    live_limit_requests: int | None = None
+    live_remaining_requests: int | None = None
+    live_reset_requests: str | None = None
+    live_limit_tokens: int | None = None
+    live_remaining_tokens: int | None = None
+    live_reset_tokens: str | None = None
+    live_credit_usage_usd: float | None = None
+    live_credit_limit_usd: float | None = None
+    live_credit_remaining_usd: float | None = None
+    live_is_free_tier: bool | None = None
+    live_synced_at: datetime | None = None
 
 
 class ModelUsageQuotaResponse(ApiSchema):
@@ -176,6 +190,7 @@ def get_models_status(
     session: DatabaseSession,
     request: Request,
     user: CurrentUser,
+    live: bool = Query(default=False),
 ) -> ModelsStatusResponse:
     settings = request.app.state.settings
     byok_records = {
@@ -263,6 +278,8 @@ def get_models_status(
         byok_providers=set(byok_records.keys()),
         user_models=user_models,
         local_available=local_available,
+        include_live_quota=live,
+        force_live_refresh=live,
     )
 
     return ModelsStatusResponse(
@@ -285,10 +302,19 @@ def get_model_usage_quota(
     session: DatabaseSession,
     request: Request,
     user: CurrentUser,
+    live: bool = Query(default=False),
 ) -> ModelUsageQuotaResponse:
     """Return this user's model usage breakdown and dynamic daily quota."""
     settings = request.app.state.settings
-    return ModelUsageQuotaResponse(**get_user_model_usage_and_quota(session, user.id, settings))
+    return ModelUsageQuotaResponse(
+        **get_user_model_usage_and_quota(
+            session,
+            user.id,
+            settings,
+            include_live_quota=live,
+            force_live_refresh=live,
+        )
+    )
 
 
 @router.post("/local-fallback", response_model=LocalModelStatus)

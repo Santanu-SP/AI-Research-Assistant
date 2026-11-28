@@ -22,6 +22,7 @@ const SOURCE_TYPE_CONFIG: Record<
 > = {
   uploaded_file: { label: 'Uploaded file', icon: FileUp },
   web_page: { label: 'Web page', icon: Globe },
+  web: { label: 'Website', icon: Globe },
   wikipedia: { label: 'Wikipedia', icon: Globe },
   youtube_video: { label: 'YouTube video', icon: Video },
   audio_file: { label: 'Audio', icon: Music },

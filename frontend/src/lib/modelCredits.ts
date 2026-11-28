@@ -41,6 +41,78 @@ export const formatResetCountdown = (
   return `${Math.max(1, Math.floor(diffSec / 60))}m`;
 };
 
+/** Format token counts compactly for credit rows (e.g., 1240 -> "1.2k"). */
+export const formatCompactTokens = (tokens: number): string => {
+  const safe = Math.max(0, Math.round(tokens));
+  if (safe >= 1_000_000) return `${(safe / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
+  if (safe >= 1_000) return `${(safe / 1_000).toFixed(1).replace(/\.0$/, '')}k`;
+  return String(safe);
+};
+
+export interface LiveQuotaSummary {
+  badge: string;
+  detail: string | null;
+}
+
+/** Summarize real provider balance / header limits alongside fallback source label. */
+export const formatLiveQuotaSummary = (credit: ProviderCreditItem): LiveQuotaSummary => {
+  if (credit.liveSource === 'provider_api') {
+    const parts: string[] = [];
+    if (
+      typeof credit.liveCreditLimitUsd === 'number' &&
+      typeof credit.liveCreditRemainingUsd === 'number'
+    ) {
+      parts.push(
+        `$${credit.liveCreditRemainingUsd.toFixed(2)} / $${credit.liveCreditLimitUsd.toFixed(2)} left`
+      );
+    } else if (typeof credit.liveCreditUsageUsd === 'number') {
+      parts.push(`$${credit.liveCreditUsageUsd.toFixed(2)} used`);
+    }
+    if (typeof credit.liveLimitRequests === 'number') {
+      const reqStr =
+        typeof credit.liveRemainingRequests === 'number'
+          ? `${credit.liveRemainingRequests}/${credit.liveLimitRequests} req left`
+          : `${credit.liveLimitRequests} req${credit.liveResetRequests ? ` / ${credit.liveResetRequests}` : ''}`;
+      parts.push(reqStr);
+    }
+    if (credit.liveIsFreeTier) {
+      parts.push('Free tier');
+    }
+    return {
+      badge: 'Live API',
+      detail: parts.length > 0 ? parts.join(' · ') : null,
+    };
+  }
+
+  if (credit.liveSource === 'response_headers') {
+    const parts: string[] = [];
+    if (typeof credit.liveRemainingRequests === 'number') {
+      parts.push(
+        typeof credit.liveLimitRequests === 'number'
+          ? `${credit.liveRemainingRequests}/${credit.liveLimitRequests} req left`
+          : `${credit.liveRemainingRequests} req left`
+      );
+    }
+    if (typeof credit.liveRemainingTokens === 'number') {
+      const remTok = formatCompactTokens(credit.liveRemainingTokens);
+      parts.push(
+        typeof credit.liveLimitTokens === 'number'
+          ? `${remTok}/${formatCompactTokens(credit.liveLimitTokens)} tok left`
+          : `${remTok} tok left`
+      );
+    }
+    return {
+      badge: 'Live headers',
+      detail: parts.length > 0 ? parts.join(' · ') : null,
+    };
+  }
+
+  return {
+    badge: credit.mode === 'byok' ? 'Own key' : credit.mode === 'local' ? 'Local' : 'App quota',
+    detail: null,
+  };
+};
+
 /** Pick subtle emerald / amber / danger styling matching credit remaining percentage. */
 export const creditToneClasses = (pct: number, unlimited = false): CreditTone => {
   if (unlimited) {
