@@ -846,3 +846,121 @@ def test_arxiv_pdf_links_skip_the_relative_redirect() -> None:
     assert canonical("https://arxiv.org/pdf/hep-th/9901001v1") == "https://arxiv.org/pdf/hep-th/9901001v1"
     assert canonical("https://publisher.example.org/paper.pdf") == "https://publisher.example.org/paper.pdf"
     assert canonical(None) is None
+
+
+def test_vague_website_query_skips_external_discovery_and_filters_nsfw() -> None:
+    """Vague meta queries must not search external indexes, and irrelevant/NSFW results are dropped."""
+    assert discovery_providers.is_vague_discovery_query("tell me about the website") is True
+    assert discovery_providers.is_vague_discovery_query("explain this app") is True
+    assert discovery_providers.is_vague_discovery_query("How does FastAPI dependency injection work?") is False
+
+    outbound_calls: list[str] = []
+
+    def fail_if_called_transport(request: httpx.Request) -> httpx.Response:
+        outbound_calls.append(str(request.url))
+        raise AssertionError(f"Unexpected external discovery call: {request.url}")
+
+    with httpx.Client(transport=httpx.MockTransport(fail_if_called_transport)) as guard_client:
+        vague_outcome = discovery_providers.search_curated_sources(
+            "tell me about the website",
+            scope="all",
+            strict_relevance=True,
+            client=guard_client,
+        )
+    assert vague_outcome.items == []
+    assert outbound_calls == []
+
+    # Verify NSFW and off-topic results are filtered in strict auto-discovery mode while genuine hits remain.
+    def noisy_handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if url.startswith("https://en.wikipedia.org/w/api.php"):
+            return httpx.Response(
+                200,
+                json={
+                    "query": {
+                        "pages": {
+                            "1": {
+                                "index": 1,
+                                "title": "Pornhub",
+                                "extract": "Pornhub is an adult video sharing website on the internet.",
+                                "fullurl": "https://en.wikipedia.org/wiki/Pornhub",
+                            },
+                            "2": {
+                                "index": 2,
+                                "title": "FastAPI",
+                                "extract": "FastAPI is a modern, fast Python web framework for building APIs.",
+                                "fullurl": "https://en.wikipedia.org/wiki/FastAPI",
+                            },
+                            "3": {
+                                "index": 3,
+                                "title": "Minnesota United FC",
+                                "extract": "Minnesota United FC is a professional soccer club in Saint Paul.",
+                                "fullurl": "https://en.wikipedia.org/wiki/Minnesota_United_FC",
+                            },
+                        }
+                    }
+                },
+            )
+        if url.startswith("https://api.openalex.org/works"):
+            return httpx.Response(
+                200,
+                json={
+                    "results": [
+                        {
+                            "id": "https://openalex.org/W999",
+                            "doi": "https://doi.org/10.1000/unrelated.site",
+                            "title": "Feasibility Study of Multi-Site Clinical Splice Variants",
+                            "publication_year": 2024,
+                            "cited_by_count": 5,
+                            "type": "article",
+                            "open_access": {"is_oa": True},
+                            "abstract_inverted_index": {"Clinical": [0], "variants": [1], "study.": [2]},
+                        }
+                    ]
+                },
+            )
+        if url.startswith("https://api.crossref.org/works"):
+            return httpx.Response(200, json={"message": {"items": []}})
+        if url.startswith("https://export.arxiv.org/api/query"):
+            return httpx.Response(200, text="<feed xmlns='http://www.w3.org/2005/Atom'></feed>")
+        return httpx.Response(404)
+
+    with httpx.Client(transport=httpx.MockTransport(noisy_handler)) as noisy_client:
+        strict_outcome = discovery_providers.search_curated_sources(
+            "FastAPI Python framework",
+            scope="all",
+            strict_relevance=True,
+            client=noisy_client,
+        )
+    titles = [item.title for item in strict_outcome.items]
+    assert titles == ["FastAPI"]
+
+
+def test_explicit_url_in_query_returns_direct_web_candidate() -> None:
+    """Queries naming a public website URL resolve directly to that URL and ignore SSRF targets."""
+    outbound_calls: list[str] = []
+
+    def no_search_transport(request: httpx.Request) -> httpx.Response:
+        outbound_calls.append(str(request.url))
+        raise AssertionError(f"Should not query search indexes when direct URL is given: {request.url}")
+
+    with httpx.Client(transport=httpx.MockTransport(no_search_transport)) as direct_client:
+        outcome = discovery_providers.search_curated_sources(
+            "tell me about https://fastapi.tiangolo.com and http://127.0.0.1/admin",
+            scope="all",
+            strict_relevance=True,
+            client=direct_client,
+        )
+        blocked_only = discovery_providers.search_curated_sources(
+            "tell me about http://127.0.0.1/admin",
+            scope="all",
+            strict_relevance=True,
+            client=direct_client,
+        )
+
+    assert outbound_calls == []
+    assert len(outcome.items) == 1
+    assert outcome.items[0].provider == "web"
+    assert outcome.items[0].url == "https://fastapi.tiangolo.com"
+    assert outcome.items[0].publisher == "fastapi.tiangolo.com"
+    assert blocked_only.items == []
