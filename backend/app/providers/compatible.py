@@ -13,6 +13,7 @@ from app.providers.base import (
     ProviderOutageError,
     ProviderTimeoutError,
     TokenUsage,
+    capture_rate_limit_headers,
     classify_http_error,
     post_json_with_client,
 )
@@ -76,6 +77,12 @@ class OpenAICompatibleProviderAdapter(LLMProviderAdapter):
             raise ProviderOutageError(self.provider_name, f"Network error: {exc}") from exc
 
         latency_ms = (monotonic() - started) * 1000.0
+        capture_rate_limit_headers(
+            self.provider_name,
+            response.headers,
+            api_key=effective_key,
+            is_byok=bool(request.api_key_override),
+        )
         if response.status_code >= 400:
             raise classify_http_error(self.provider_name, response)
 
@@ -202,6 +209,12 @@ class ClaudeProviderAdapter(LLMProviderAdapter):
             raise ProviderOutageError(self.provider_name, f"Network error: {exc}") from exc
 
         latency_ms = (monotonic() - started) * 1000.0
+        capture_rate_limit_headers(
+            self.provider_name,
+            response.headers,
+            api_key=effective_key,
+            is_byok=bool(request.api_key_override),
+        )
         if response.status_code >= 400:
             raise classify_http_error(self.provider_name, response)
 
